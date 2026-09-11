@@ -5,10 +5,10 @@ let roadNames = [];
 let activeRoad = "";
 let chartInstance = null;
 
-// Daftarkan plugin Datalabels global
+// Daftarkan plugin Datalabels global untuk Chart.js
 Chart.register(ChartDataLabels);
 
-// 1. Peta Leaflet
+// 1. Inisialisasi Peta Leaflet (Basemap Satelit)
 const map = L.map('map', { zoomControl: false }).setView([-2.0, 115.0], 15);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
@@ -36,7 +36,7 @@ async function loadExcelData() {
   }
 }
 
-// 3. Pindah Tab
+// 3. Pindah Tab Navigasi
 function switchTab(tabName) {
   currentTab = tabName;
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -44,13 +44,13 @@ function switchTab(tabName) {
   renderTabContent();
 }
 
-// 4. Ganti Jalan
+// 4. Ganti Jalan Aktif
 function changeRoad(roadName) {
   activeRoad = roadName;
   renderTabContent();
 }
 
-// 5. Render Konten Panel Bawah
+// 5. Render Konten Panel Bawah Sesuai Tab Aktif
 function renderTabContent() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
@@ -67,7 +67,7 @@ function renderTabContent() {
     panelTitle.innerHTML = `Profil Memanjang: ${roadSelectHtml}`;
     panelBody.innerHTML = `
       <div style="font-size:11px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
-        <span style="color:#555;">Titik Kuning: <b>Warning (>8%)</b> | Merah: <b>Overgrade (>10%)</b></span>
+        <span style="color:#555;">Kuning: <b>Warning (>8%)</b> | Merah: <b>Overgrade (>10%)</b></span>
         <span style="font-size:11px; color:#1f4e79;"><b>${roadData.length} STA</b></span>
       </div>
       <div class="chart-container" style="height:150px;"><canvas id="chartCanvas"></canvas></div>
@@ -101,7 +101,7 @@ function renderTabContent() {
   }
 }
 
-// 6. Grafik Profil Memanjang + Angka Grade Positif di Atas Garis Antar-Titik
+// 6. Grafik Profil Memanjang (Angka Grade Positif Permanen di Atas Garis)
 function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -169,7 +169,6 @@ function drawLongSectionChart(dataSubset) {
             const d = dataSubset[context.dataIndex];
             const g = d["Grade Longitudinal (%)"];
             if (g === undefined || g === null || isNaN(g)) return "";
-            // Wajib angka positif
             return Math.abs(g).toFixed(1) + "%";
           }
         }
@@ -188,7 +187,7 @@ function drawLongSectionChart(dataSubset) {
   });
 }
 
-// 7. Grafik Cross Section 3 Titik + Angka Grade Positif As ke Kiri & As ke Kanan
+// 7. Grafik Cross Section 3 Titik (Angka Kemiringan As ke Kiri & As ke Kanan)
 function drawCrossSectionChart(staTarget) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -201,7 +200,6 @@ function drawCrossSectionChart(staTarget) {
   }
   if (pts.length < 3) return;
 
-  // Ambil angka crossfall kiri & kanan dari Data_Monitoring
   const monRow = monitoringData.find(d => (d["Nama Jalan"] || "").trim() === activeRoad && d["STA"] === staTarget);
   const cfL = monRow ? Math.abs(parseFloat(monRow["Crossfall Kiri (%)"]) || 0).toFixed(2) : "0.00";
   const cfR = monRow ? Math.abs(parseFloat(monRow["Crossfall Kanan (%)"]) || 0).toFixed(2) : "0.00";
@@ -254,11 +252,8 @@ function drawCrossSectionChart(staTarget) {
           },
           formatter: function(value, context) {
             const idx = context.dataIndex;
-            // Tampilkan kemiringan positif As ke Kiri di titik kiri (index 0)
             if (idx === 0) return `Kemiringan: ${cfL}%`;
-            // Tampilkan elevasi As di titik tengah (index 1)
             if (idx === 1) return `Elevasi: ${value}m`;
-            // Tampilkan kemiringan positif As ke Kanan di titik kanan (index 2)
             if (idx === 2) return `Kemiringan: ${cfR}%`;
             return '';
           }
@@ -275,12 +270,80 @@ function drawCrossSectionChart(staTarget) {
   });
 }
 
-// 8. GPS
+// 8. Real-time Live GPS Tracking (Navigasi Lapangan Tanpa Dobel Titik)
+let userMarker = null;
+let userAccuracyCircle = null;
+let isTracking = false;
+let watchId = null;
+
 function locateUser() {
-  map.locate({ setView: true, maxZoom: 17 });
-  map.on('locationfound', (e) => {
-    L.circleMarker(e.latlng, { radius: 8, color: '#0078d4', fillColor: '#2b88d8', fillOpacity: 0.8 }).addTo(map);
-  });
+  const gpsBtn = document.querySelector('.gps-btn');
+
+  // Toggle on/off
+  if (isTracking) {
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    if (userMarker) map.removeLayer(userMarker);
+    if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
+    userMarker = null;
+    userAccuracyCircle = null;
+    isTracking = false;
+    gpsBtn.style.background = '#ffffff';
+    gpsBtn.style.color = '#000000';
+    return;
+  }
+
+  if (!navigator.geolocation) {
+    alert("Browser HP tidak mendukung fitur GPS.");
+    return;
+  }
+
+  isTracking = true;
+  gpsBtn.style.background = '#0078d4';
+  gpsBtn.style.color = '#ffffff';
+
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const accuracy = pos.coords.accuracy;
+      const latlng = [lat, lng];
+
+      if (!userMarker) {
+        userAccuracyCircle = L.circle(latlng, {
+          radius: accuracy,
+          color: '#0078d4',
+          fillColor: '#2b88d8',
+          fillOpacity: 0.15,
+          weight: 1
+        }).addTo(map);
+
+        userMarker = L.circleMarker(latlng, {
+          radius: 9,
+          color: '#ffffff',
+          fillColor: '#0078d4',
+          fillOpacity: 1,
+          weight: 3
+        }).addTo(map);
+
+        map.setView(latlng, 17);
+      } else {
+        // Pindahkan posisi yang sudah ada secara realtime
+        userMarker.setLatLng(latlng);
+        userAccuracyCircle.setLatLng(latlng);
+        userAccuracyCircle.setRadius(accuracy);
+        map.panTo(latlng);
+      }
+    },
+    (err) => {
+      console.warn(`GPS Error: ${err.message}`);
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 1000,
+      timeout: 10000
+    }
+  );
 }
 
+// Eksekusi Load Data Awal
 loadExcelData();
