@@ -19,7 +19,7 @@
 <body>
 
   <!-- ========================================== -->
-  <!-- 1. INTRO SPLASH SCREEN                     -->
+  <!-- 1. INTRO SPLASH SCREEN (5 DETIK + OUTRO)   -->
   <!-- ========================================== -->
   <div id="intro-splash">
     <div class="splash-logo-container" id="splash-logo-box">
@@ -48,12 +48,14 @@
   </header>
 
   <!-- ========================================== -->
-  <!-- 3. PETA & PANEL UTAMA                      -->
+  <!-- 3. PETA & TOMBOL GPS (INI YG KETINGGALAN)  -->
   <!-- ========================================== -->
   <div id="map"></div>
-
   <button class="gps-btn" onclick="locateUser()" title="Posisi Saya">📍</button>
 
+  <!-- ========================================== -->
+  <!-- 4. PANEL BAWAH (BOTTOM SHEET)              -->
+  <!-- ========================================== -->
   <div id="bottom-panel" class="bottom-panel">
     <div class="panel-header">
       <div class="drag-handle"></div>
@@ -89,7 +91,7 @@
   </div>
 
   <!-- ========================================== -->
-  <!-- 4. SCRIPT KONTROL ANIMASI INTRO (5 DETIK)  -->
+  <!-- 5. SCRIPT KONTROL ANIMASI INTRO (5 DETIK)  -->
   <!-- ========================================== -->
   <script>
     window.addEventListener('load', () => {
@@ -113,7 +115,7 @@
         bar.style.width = '100%';
         statusText.innerText = 'SYSTEM READY.';
         if (titleElement) titleElement.classList.add('glitch-outro');
-        if (logoBox) logoBox.classList.add('glitch-outro'); // Logo & tulisan pecah barengan
+        if (logoBox) logoBox.classList.add('glitch-outro');
       }, 4200);
 
       setTimeout(() => {
