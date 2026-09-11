@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Monitoring Haul Road - Overwatch</title>
+  
+  <!-- CSS Leaflet (Peta) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Library Pembaca Excel & Chart (Otomatis tanpa olah JSON) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+
+  <!-- 1. Header & Tab Navigasi -->
+  <header class="app-header">
+    <div class="brand">OVERWATCH ROAD INSPECTOR</div>
+    <nav class="tab-container">
+      <button class="tab-btn active" onclick="switchTab('grade')">Grade Jalan</button>
+      <button class="tab-btn" onclick="switchTab('lebar')">Lebar Jalan</button>
+      <button class="tab-btn" onclick="switchTab('crossfall')">Crossfall</button>
+    </nav>
+  </header>
+
+  <!-- 2. Kontainer Peta -->
+  <div id="map"></div>
+
+  <!-- Tombol GPS Lapangan -->
+  <button class="gps-btn" onclick="locateUser()" title="Posisi Saya">📍</button>
+
+  <!-- 3. Bottom Sheet / Panel Data Bawah -->
+  <div id="bottom-panel" class="bottom-panel">
+    <div class="panel-header">
+      <div class="drag-handle"></div>
+      <div class="panel-title" id="panel-title">Pilih Parameter / STA</div>
+    </div>
+    <div class="panel-body" id="panel-body">
+      <!-- Konten dinamis grafik & stats akan muncul di sini via app.js -->
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
