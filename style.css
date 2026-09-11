@@ -12,14 +12,14 @@ body, html {
   background: #1e1e1e;
 }
 
-/* Header & Tabs */
+/* Header & Tabs (Deep Navy Dikunci) */
 .app-header {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   z-index: 1000;
-  background: rgba(31, 78, 121, 0.95);
+  background: #0f172a;
   backdrop-filter: blur(5px);
   padding: 8px 12px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
@@ -81,7 +81,7 @@ body, html {
   cursor: pointer;
 }
 
-/* Bottom Sheet */
+/* Bottom Sheet & Animasi Toggle Minimize/Maximize */
 .bottom-panel {
   position: absolute;
   bottom: 0;
@@ -95,20 +95,33 @@ body, html {
   box-shadow: 0 -3px 12px rgba(0,0,0,0.25);
   display: flex;
   flex-direction: column;
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Kelas saat panel dilipat ke bawah (menyisakan garis handle) */
+.bottom-panel.minimized {
+  transform: translateY(calc(220px - 32px));
 }
 
 .panel-header {
   padding: 8px 16px;
   text-align: center;
   border-bottom: 1px solid #eee;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .drag-handle {
   width: 40px;
   height: 4px;
-  background: #ccc;
+  background: #b0b0b0;
   border-radius: 2px;
   margin: 0 auto 6px;
+  transition: background 0.2s;
+}
+
+.drag-handle:hover {
+  background: #ffc000;
 }
 
 .panel-title {
