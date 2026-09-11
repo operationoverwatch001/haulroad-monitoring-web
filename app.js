@@ -8,16 +8,33 @@ let chartInstance = null;
 // Daftarkan plugin Datalabels global untuk Chart.js
 Chart.register(ChartDataLabels);
 
-// 1. Inisialisasi Peta Leaflet (Basemap Satelit)
+// 1. Inisialisasi Peta Leaflet (Basemap Satelit Esri)
 const map = L.map('map', { zoomControl: false }).setView([-2.0, 115.0], 15);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
   attribution: 'Tiles &copy; Esri'
 }).addTo(map);
 
-// 2. Load File Excel Overwatch.xlsx
+// 2. Pengatur Animasi Intro Splash Screen
+function hideIntro() {
+  const intro = document.getElementById('intro-overlay');
+  const statusText = document.getElementById('intro-status-text');
+  if (statusText) statusText.innerText = "TELEMETRY CONNECTED";
+
+  setTimeout(() => {
+    if (intro) intro.classList.add('fade-out');
+  }, 400);
+
+  setTimeout(() => {
+    if (intro) intro.style.display = 'none';
+  }, 1200);
+}
+
+// 3. Load File Excel Overwatch.xlsx
 async function loadExcelData() {
+  const statusText = document.getElementById('intro-status-text');
   try {
+    if (statusText) statusText.innerText = "READING AUDIT DATABASE...";
     const response = await fetch('data/Overwatch.xlsx');
     const arrayBuffer = await response.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer, { type: 'array' });
@@ -30,13 +47,19 @@ async function loadExcelData() {
       activeRoad = roadNames[0] || "Jl Bontang";
       renderTabContent();
     }
+
+    if (statusText) statusText.innerText = "SYNCHRONIZING MAP MATRIX...";
+    setTimeout(hideIntro, 800);
+
   } catch (error) {
+    if (statusText) statusText.innerText = "ERROR LOADING DATA";
+    setTimeout(hideIntro, 1000);
     document.getElementById('panel-body').innerHTML = 
       `<p style="color:red; font-size:12px; text-align:center;">Gagal memuat data Excel. Pastikan file Overwatch.xlsx ada di folder data/.</p>`;
   }
 }
 
-// 3. Pindah Tab Navigasi
+// 4. Navigasi Tab
 function switchTab(tabName) {
   currentTab = tabName;
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -44,13 +67,13 @@ function switchTab(tabName) {
   renderTabContent();
 }
 
-// 4. Ganti Jalan Aktif
+// 5. Ubah Pilihan Nama Jalan
 function changeRoad(roadName) {
   activeRoad = roadName;
   renderTabContent();
 }
 
-// 5. Render Konten Panel Bawah Sesuai Tab Aktif
+// 6. Render Panel Bawah Sesuai Tab
 function renderTabContent() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
@@ -101,7 +124,7 @@ function renderTabContent() {
   }
 }
 
-// 6. Grafik Profil Memanjang (Angka Grade Positif Permanen di Atas Garis)
+// 7. Grafik Profil Memanjang (Grade Longitudinal Positif di Atas Garis)
 function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -187,7 +210,7 @@ function drawLongSectionChart(dataSubset) {
   });
 }
 
-// 7. Grafik Cross Section 3 Titik (Angka Kemiringan As ke Kiri & As ke Kanan)
+// 8. Grafik Cross Section 3 Titik (As Ditengah, Vertikal ±2m, Step 0.5m)
 function drawCrossSectionChart(staTarget) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -200,17 +223,45 @@ function drawCrossSectionChart(staTarget) {
   }
   if (pts.length < 3) return;
 
+  // Cari titik Kiri, As, dan Kanan
+  const ptLeft = pts.find(p => p["Point"].includes("Kiri")) || pts[0];
+  const ptAs = pts.find(p => p["Point"].includes("As")) || pts[1];
+  const ptRight = pts.find(p => p["Point"].includes("Kanan")) || pts[2];
+
+  const elevAs = parseFloat(ptAs["Elevasi_RL"]);
+  const distAs = parseFloat(ptAs["Lebar_m"]);
+  const distLeft = parseFloat(ptLeft["Lebar_m"]);
+  const distRight = parseFloat(ptRight["Lebar_m"]);
+
+  // Jadikan As Jalan sebagai titik 0 (lateral offset)
+  const offsetLeft = -(distAs - distLeft);
+  const offsetRight = distRight - distAs;
+
+  // Buat bentang simetris kiri-kanan agar As Jalan tepat di tengah sumbu X
+  const maxSpan = Math.max(Math.abs(offsetLeft), Math.abs(offsetRight), 15) + 2;
+
+  const scatterData = [
+    { x: offsetLeft, y: parseFloat(ptLeft["Elevasi_RL"]), label: `Tepi Kiri (${offsetLeft.toFixed(1)}m)` },
+    { x: 0, y: elevAs, label: `As Jalan (0.0m)` },
+    { x: offsetRight, y: parseFloat(ptRight["Elevasi_RL"]), label: `Tepi Kanan (+${offsetRight.toFixed(1)}m)` }
+  ];
+
+  // Data crossfall dari sheet Data_Monitoring
   const monRow = monitoringData.find(d => (d["Nama Jalan"] || "").trim() === activeRoad && d["STA"] === staTarget);
   const cfL = monRow ? Math.abs(parseFloat(monRow["Crossfall Kiri (%)"]) || 0).toFixed(2) : "0.00";
   const cfR = monRow ? Math.abs(parseFloat(monRow["Crossfall Kanan (%)"]) || 0).toFixed(2) : "0.00";
 
+  // Batas sumbu Y: Elevasi As ± 2 meter
+  const yMin = parseFloat((elevAs - 2.0).toFixed(2));
+  const yMax = parseFloat((elevAs + 2.0).toFixed(2));
+
   chartInstance = new Chart(ctx, {
-    type: 'line',
+    type: 'scatter',
     data: {
-      labels: pts.map(p => `${p["Point"]} (${p["Lebar_m"]}m)`),
       datasets: [{
-        label: 'Elevasi RL (m)',
-        data: pts.map(p => p["Elevasi_RL"]),
+        label: 'Cross Section',
+        data: scatterData,
+        showLine: true,
         borderColor: '#2e75b6',
         backgroundColor: '#ffc000',
         borderWidth: 2.5,
@@ -224,13 +275,13 @@ function drawCrossSectionChart(staTarget) {
       responsive: true,
       maintainAspectRatio: false,
       layout: {
-        padding: { top: 25 }
+        padding: { top: 25, bottom: 5, left: 10, right: 10 }
       },
       plugins: {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: (ctx) => ` Elevasi: ${ctx.parsed.y} m RL`
+            label: (c) => ` ${scatterData[c.dataIndex].label} | RL: ${c.parsed.y.toFixed(2)}m`
           }
         },
         datalabels: {
@@ -253,24 +304,50 @@ function drawCrossSectionChart(staTarget) {
           formatter: function(value, context) {
             const idx = context.dataIndex;
             if (idx === 0) return `Kemiringan: ${cfL}%`;
-            if (idx === 1) return `Elevasi: ${value}m`;
+            if (idx === 1) return `Elevasi: ${elevAs.toFixed(2)}m`;
             if (idx === 2) return `Kemiringan: ${cfR}%`;
             return '';
           }
         }
       },
       scales: {
-        x: { ticks: { font: { size: 10 } } },
+        x: {
+          type: 'linear',
+          position: 'bottom',
+          min: -maxSpan,
+          max: maxSpan,
+          grid: {
+            color: (ctx) => (ctx.tick.value === 0 ? '#1f4e79' : '#e0e0e0'),
+            lineWidth: (ctx) => (ctx.tick.value === 0 ? 2 : 1)
+          },
+          ticks: {
+            font: { size: 9 },
+            callback: (val) => {
+              if (val === 0) return 'As Jalan (0m)';
+              return val < 0 ? `Kiri ${Math.abs(val)}m` : `Kanan +${val}m`;
+            }
+          }
+        },
         y: {
-          title: { display: true, text: 'Elevasi (m RL)', font: { size: 10 } },
-          ticks: { font: { size: 9 } }
+          min: yMin,
+          max: yMax,
+          ticks: {
+            stepSize: 0.5,
+            font: { size: 9 },
+            callback: (val) => `${val.toFixed(2)}`
+          },
+          title: {
+            display: true,
+            text: 'Elevasi (m RL)',
+            font: { size: 10 }
+          }
         }
       }
     }
   });
 }
 
-// 8. Real-time Live GPS Tracking (Navigasi Lapangan Tanpa Dobel Titik)
+// 9. Real-time Live GPS Tracking
 let userMarker = null;
 let userAccuracyCircle = null;
 let isTracking = false;
@@ -279,7 +356,6 @@ let watchId = null;
 function locateUser() {
   const gpsBtn = document.querySelector('.gps-btn');
 
-  // Toggle on/off
   if (isTracking) {
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     if (userMarker) map.removeLayer(userMarker);
@@ -327,7 +403,6 @@ function locateUser() {
 
         map.setView(latlng, 17);
       } else {
-        // Pindahkan posisi yang sudah ada secara realtime
         userMarker.setLatLng(latlng);
         userAccuracyCircle.setLatLng(latlng);
         userAccuracyCircle.setRadius(accuracy);
@@ -345,5 +420,5 @@ function locateUser() {
   );
 }
 
-// Eksekusi Load Data Awal
+// Eksekusi Muat Data
 loadExcelData();
