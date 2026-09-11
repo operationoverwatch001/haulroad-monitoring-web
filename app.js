@@ -1,38 +1,40 @@
 let currentTab = 'grade';
 let monitoringData = [];
 let crossSectionData = [];
+let roadNames = [];
 let activeRoad = "";
 let chartInstance = null;
 
-// 1. Inisialisasi Peta Leaflet (Sementara Basemap Satelit)
+// 1. Inisialisasi Peta Leaflet
 const map = L.map('map', { zoomControl: false }).setView([-2.0, 115.0], 15);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
   attribution: 'Tiles &copy; Esri'
 }).addTo(map);
 
-// 2. Fungsi Load Langsung File Excel Overwatch.xlsx
+// 2. Load File Excel Overwatch.xlsx
 async function loadExcelData() {
   try {
     const response = await fetch('data/Overwatch.xlsx');
     const arrayBuffer = await response.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer, { type: 'array' });
 
-    // Baca Sheet Data_Monitoring & CrossSection_3Pts
     monitoringData = XLSX.utils.sheet_to_json(workbook.Sheets["Data_Monitoring"]);
     crossSectionData = XLSX.utils.sheet_to_json(workbook.Sheets["CrossSection_3Pts"]);
 
     if (monitoringData.length > 0) {
-      activeRoad = monitoringData[0]["Nama Jalan"];
+      // Ambil daftar nama jalan yang unik dan valid
+      roadNames = [...new Set(monitoringData.map(d => (d["Nama Jalan"] || "").trim()))].filter(n => n.length > 0);
+      activeRoad = roadNames[0] || "Jl Bontang";
       renderTabContent();
     }
   } catch (error) {
     document.getElementById('panel-body').innerHTML = 
-      `<p style="color:red; font-size:12px; text-align:center;">Gagal memuat file Overwatch.xlsx. Pastikan file ada di folder data/.</p>`;
+      `<p style="color:red; font-size:12px; text-align:center;">Gagal memuat data Excel. Pastikan file Overwatch.xlsx ada di folder data/.</p>`;
   }
 }
 
-// 3. Perpindahan 3 Tab
+// 3. Ganti Tab
 function switchTab(tabName) {
   currentTab = tabName;
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -40,59 +42,82 @@ function switchTab(tabName) {
   renderTabContent();
 }
 
-// 4. Render Konten Sesuai Tab
+// 4. Pilih Jalan Aktif
+function changeRoad(roadName) {
+  activeRoad = roadName;
+  renderTabContent();
+}
+
+// 5. Render Konten Panel Bawah
 function renderTabContent() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
 
+  // Filter HANYA untuk jalan yang sedang aktif
+  const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
+
+  // Selector Dropdown Jalan
+  const roadSelectHtml = `
+    <select onchange="changeRoad(this.value)" style="font-size:11px; font-weight:bold; padding:2px 4px; border-radius:4px;">
+      ${roadNames.map(r => `<option value="${r}" ${r === activeRoad ? 'selected' : ''}>${r}</option>`).join('')}
+    </select>
+  `;
+
   if (currentTab === 'grade') {
-    panelTitle.innerText = `Profil Memanjang: ${activeRoad}`;
+    panelTitle.innerHTML = `Profil Memanjang: ${roadSelectHtml}`;
     panelBody.innerHTML = `
-      <div style="font-size:11px; margin-bottom:4px; display:flex; justify-content:space-between;">
-        <span>Filter Range STA:</span>
-        <select id="sta-filter" onchange="updateGradeChart(this.value)" style="font-size:11px;">
-          <option value="all">Semua STA</option>
-          <option value="0+000-0+200">0+000 s/d 0+200</option>
-          <option value="0+200-0+500">0+200 s/d 0+500</option>
-          <option value="0+500-1+000">0+500 s/d 1+000</option>
-        </select>
+      <div style="font-size:11px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
+        <span style="color:#555;">Titik Kuning: <b>Warning (>8%)</b> | Merah: <b>Overgrade (>10%)</b></span>
+        <span style="font-size:11px; color:#1f4e79;"><b>${roadData.length} STA</b></span>
       </div>
-      <div class="chart-container"><canvas id="chartCanvas"></canvas></div>
+      <div class="chart-container" style="height:150px;"><canvas id="chartCanvas"></canvas></div>
     `;
-    drawLongSectionChart(monitoringData);
+    drawLongSectionChart(roadData);
 
   } else if (currentTab === 'lebar') {
-    panelTitle.innerText = `Audit Lebar Jalan: ${activeRoad}`;
-    const nonStd = monitoringData.filter(d => d["Status Lebar Jalan"] === "Nonstandard");
+    panelTitle.innerHTML = `Audit Lebar Jalan: ${roadSelectHtml}`;
+    const nonStd = roadData.filter(d => d["Status Lebar Jalan"] === "Nonstandard");
     let listHtml = nonStd.map(d => `
-      <div style="padding:6px; background:#fff0f0; border-left:4px solid #c00000; margin-bottom:6px; font-size:12px;">
-        <b>STA ${d["STA"]}</b>: Aktual <b>${d["Lebar Total (m)"]} m</b> (Standar: ${d["Lebar Standar (m)"]} m)
-        <span style="color:#c00000; float:right;">Sempit</span>
+      <div style="padding:6px 10px; background:#fff0f0; border-left:4px solid #c00000; margin-bottom:4px; font-size:12px; display:flex; justify-content:space-between;">
+        <span>STA <b>${d["STA"]}</b>: Aktual <b>${d["Lebar Total (m)"]} m</b> (Std: ${d["Lebar Standar (m)"]} m)</span>
+        <span style="color:#c00000; font-weight:bold;">Sempit</span>
       </div>
     `).join('');
 
-    panelBody.innerHTML = nonStd.length ? listHtml : `<p style="font-size:12px; color:green;">Semua segmen memenuhi standar.</p>`;
+    panelBody.innerHTML = nonStd.length ? listHtml : `<p style="font-size:12px; color:green; text-align:center; padding-top:20px;">Semua segmen di ${activeRoad} memenuhi standar lebar.</p>`;
 
   } else if (currentTab === 'crossfall') {
-    panelTitle.innerText = `Cross Section 3 Titik: ${activeRoad}`;
+    panelTitle.innerHTML = `Cross Section 3 Titik: ${roadSelectHtml}`;
     panelBody.innerHTML = `
-      <div style="font-size:11px; margin-bottom:4px;">
-        Pilih STA: 
-        <select id="select-sta-cs" onchange="drawCrossSectionChart(this.value)" style="font-size:11px;">
-          ${monitoringData.map(d => `<option value="${d['STA']}">${d['STA']}</option>`).join('')}
+      <div style="font-size:11px; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
+        <span>Pilih STA:</span>
+        <select id="select-sta-cs" onchange="drawCrossSectionChart(this.value)" style="font-size:11px; padding:2px 6px;">
+          ${roadData.map(d => `<option value="${d['STA']}">${d['STA']}</option>`).join('')}
         </select>
       </div>
-      <div class="chart-container"><canvas id="chartCanvas"></canvas></div>
+      <div class="chart-container" style="height:140px;"><canvas id="chartCanvas"></canvas></div>
     `;
-    drawCrossSectionChart(monitoringData[0]["STA"]);
+    if (roadData.length > 0) drawCrossSectionChart(roadData[0]["STA"]);
   }
 }
 
-// 5. Render Grafik Profil Memanjang (Tab Grade)
+// 6. Gambar Grafik Profil Memanjang Lengkap dengan Grade per STA
 function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
   if (chartInstance) chartInstance.destroy();
+
+  // Warna titik dinamis: Normal (Biru), Warning (Kuning/Oranye), Overgrade (Merah)
+  const pointColors = dataSubset.map(d => {
+    const status = d["Status Grade"];
+    if (status === "Overgrade") return "#c00000";
+    if (status === "Warning") return "#ffc000";
+    return "#1f4e79";
+  });
+
+  const pointSizes = dataSubset.map(d => {
+    return (d["Status Grade"] === "Warning" || d["Status Grade"] === "Overgrade") ? 6 : 3;
+  });
 
   chartInstance = new Chart(ctx, {
     type: 'line',
@@ -101,31 +126,67 @@ function drawLongSectionChart(dataSubset) {
       datasets: [{
         label: 'Elevasi As (m)',
         data: dataSubset.map(d => d["Elevasi As (m)"]),
-        borderColor: '#1f4e79',
-        backgroundColor: '#2e75b6',
+        borderColor: '#2e75b6',
+        backgroundColor: 'rgba(46, 117, 182, 0.1)',
         borderWidth: 2,
-        pointRadius: 3
+        fill: true,
+        pointBackgroundColor: pointColors,
+        pointBorderColor: pointColors,
+        pointRadius: pointSizes,
+        tension: 0.1
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      scales: {
-        x: { ticks: { font: { size: 9 } } },
-        y: { ticks: { font: { size: 9 } } }
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: function(context) {
+              const idx = context[0].dataIndex;
+              return `STA ${dataSubset[idx]["STA"]} (${activeRoad})`;
+            },
+            label: function(context) {
+              const idx = context.dataIndex;
+              const elev = dataSubset[idx]["Elevasi As (m)"];
+              const grade = dataSubset[idx]["Grade Longitudinal (%)"];
+              const status = dataSubset[idx]["Status Grade"] || "-";
+              
+              const gradeText = (grade !== undefined && grade !== null) ? `${grade > 0 ? '+' : ''}${grade.toFixed(2)}%` : '0.00%';
+              return [
+                ` Elevasi: ${elev} m RL`,
+                ` Grade Longitudinal: ${gradeText} (${status})`
+              ];
+            }
+          }
+        }
       },
-      plugins: { legend: { display: false } }
+      scales: {
+        x: {
+          ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 },
+          grid: { display: false }
+        },
+        y: {
+          title: { display: true, text: 'Elevasi (m RL)', font: { size: 10 } },
+          ticks: { font: { size: 9 } }
+        }
+      }
     }
   });
 }
 
-// 6. Render Grafik 3 Titik (Tab Crossfall)
+// 7. Gambar Grafik Cross Section 3 Titik
 function drawCrossSectionChart(staTarget) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
   if (chartInstance) chartInstance.destroy();
 
-  const pts = crossSectionData.filter(d => d["STA"] === staTarget);
+  const keyTarget = `${activeRoad}_${staTarget}`;
+  let pts = crossSectionData.filter(d => (d["Key"] || "").trim() === keyTarget);
+  if (pts.length < 3) {
+    pts = crossSectionData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad && d["STA"] === staTarget);
+  }
   if (pts.length < 3) return;
 
   chartInstance = new Chart(ctx, {
@@ -133,27 +194,40 @@ function drawCrossSectionChart(staTarget) {
     data: {
       labels: pts.map(p => `${p["Point"]} (${p["Lebar_m"]}m)`),
       datasets: [{
-        label: 'Elevasi RL',
+        label: 'Elevasi RL (m)',
         data: pts.map(p => p["Elevasi_RL"]),
-        borderColor: '#c00000',
+        borderColor: '#2e75b6',
         backgroundColor: '#ffc000',
-        borderWidth: 2,
-        pointRadius: 5
+        borderWidth: 2.5,
+        pointRadius: 6,
+        pointBackgroundColor: '#ffc000',
+        pointBorderColor: '#1f4e79',
+        tension: 0
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      scales: {
-        y: { ticks: { font: { size: 9 } } },
-        x: { ticks: { font: { size: 9 } } }
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => ` Elevasi: ${ctx.parsed.y} m RL`
+          }
+        }
       },
-      plugins: { legend: { display: false } }
+      scales: {
+        x: { ticks: { font: { size: 10 } } },
+        y: {
+          title: { display: true, text: 'Elevasi (m RL)', font: { size: 10 } },
+          ticks: { font: { size: 9 } }
+        }
+      }
     }
   });
 }
 
-// 7. Deteksi GPS Lapangan
+// 8. GPS Tracker Lapangan
 function locateUser() {
   map.locate({ setView: true, maxZoom: 17 });
   map.on('locationfound', (e) => {
@@ -161,5 +235,4 @@ function locateUser() {
   });
 }
 
-// Eksekusi Muat Data
 loadExcelData();
