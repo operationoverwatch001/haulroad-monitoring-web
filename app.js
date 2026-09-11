@@ -8,8 +8,8 @@ let chartInstance = null;
 // Daftarkan plugin Datalabels global untuk Chart.js
 Chart.register(ChartDataLabels);
 
-// 1. Inisialisasi Peta Leaflet (Basemap Satelit Esri)
-const map = L.map('map', { zoomControl: false }).setView([-2.0, 115.0], 15);
+// 1. Inisialisasi Peta Leaflet (Basemap Satelit Esri) - Koordinat dipindah ke pit tambang
+const map = L.map('map', { zoomControl: false }).setView([-2.169338, 115.572115], 15);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
   attribution: 'Tiles &copy; Esri'
@@ -223,7 +223,6 @@ function drawCrossSectionChart(staTarget) {
   }
   if (pts.length < 3) return;
 
-  // Cari titik Kiri, As, dan Kanan
   const ptLeft = pts.find(p => p["Point"].includes("Kiri")) || pts[0];
   const ptAs = pts.find(p => p["Point"].includes("As")) || pts[1];
   const ptRight = pts.find(p => p["Point"].includes("Kanan")) || pts[2];
@@ -233,11 +232,8 @@ function drawCrossSectionChart(staTarget) {
   const distLeft = parseFloat(ptLeft["Lebar_m"]);
   const distRight = parseFloat(ptRight["Lebar_m"]);
 
-  // Jadikan As Jalan sebagai titik 0 (lateral offset)
   const offsetLeft = -(distAs - distLeft);
   const offsetRight = distRight - distAs;
-
-  // Buat bentang simetris kiri-kanan agar As Jalan tepat di tengah sumbu X
   const maxSpan = Math.max(Math.abs(offsetLeft), Math.abs(offsetRight), 15) + 2;
 
   const scatterData = [
@@ -246,12 +242,10 @@ function drawCrossSectionChart(staTarget) {
     { x: offsetRight, y: parseFloat(ptRight["Elevasi_RL"]), label: `Tepi Kanan (+${offsetRight.toFixed(1)}m)` }
   ];
 
-  // Data crossfall dari sheet Data_Monitoring
   const monRow = monitoringData.find(d => (d["Nama Jalan"] || "").trim() === activeRoad && d["STA"] === staTarget);
   const cfL = monRow ? Math.abs(parseFloat(monRow["Crossfall Kiri (%)"]) || 0).toFixed(2) : "0.00";
   const cfR = monRow ? Math.abs(parseFloat(monRow["Crossfall Kanan (%)"]) || 0).toFixed(2) : "0.00";
 
-  // Batas sumbu Y: Elevasi As ± 2 meter
   const yMin = parseFloat((elevAs - 2.0).toFixed(2));
   const yMax = parseFloat((elevAs + 2.0).toFixed(2));
 
@@ -419,6 +413,21 @@ function locateUser() {
     }
   );
 }
+
+// 10. Toggle Show/Hide Panel Bawah (Minimize / Maximize)
+document.addEventListener("DOMContentLoaded", () => {
+  const bottomPanel = document.getElementById('bottom-panel');
+  const dragHandle = document.querySelector('.drag-handle');
+
+  if (bottomPanel && dragHandle) {
+    dragHandle.style.cursor = 'pointer';
+    dragHandle.title = 'Klik untuk Minimize/Maximize Panel';
+    
+    dragHandle.addEventListener('click', () => {
+      bottomPanel.classList.toggle('minimized');
+    });
+  }
+});
 
 // Eksekusi Muat Data
 loadExcelData();
