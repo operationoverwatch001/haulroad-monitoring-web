@@ -8,11 +8,13 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Library Excel, Chart, Datalabels, & Leaflet -->
+  <!-- Library Excel, Chart, Datalabels, Leaflet, & jsPDF/html2canvas -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
   <style>
     /* ========================================== */
@@ -142,7 +144,7 @@
     /* HEADER KUNCI: DEEP NAVY SOLID              */
     /* ========================================== */
     .app-header {
-      background-color: #0f172a !important; /* Warna Deep Navy dikunci */
+      background-color: #0f172a !important;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -206,6 +208,31 @@
       <div class="panel-title" id="panel-title">Pilih Parameter / STA</div>
     </div>
     <div class="panel-body" id="panel-body">
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- MODAL PILIHAN EXPORT PDF                   -->
+  <!-- ========================================== -->
+  <div id="pdfModalOverlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:99999; justify-content:center; align-items:center;">
+    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:8px; width:90%; max-width:350px; border:1px solid #1e293b; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+      <h3 style="margin-top:0; font-size:14px; color:#ff2b54; letter-spacing:1px; font-family:monospace;">EXPORT GRAFIK KE PDF</h3>
+      <p style="font-size:11px; color:#94a3b8; margin-bottom:15px;">Pilih format layout cetak grafik memanjang:</p>
+      
+      <label style="display:flex; align-items:center; gap:8px; font-size:12px; margin-bottom:10px; cursor:pointer;">
+        <input type="radio" name="pdfExportOpt" value="single" checked style="accent-color:#b81432;">
+        <span><b>Opsi 1:</b> Utuh 1 Lembar (Landscape Panjang)</span>
+      </label>
+      
+      <label style="display:flex; align-items:center; gap:8px; font-size:12px; margin-bottom:20px; cursor:pointer;">
+        <input type="radio" name="pdfExportOpt" value="paging" style="accent-color:#b81432;">
+        <span><b>Opsi 2:</b> Dipecah Per Section (Multi-Page Renggang)</span>
+      </label>
+      
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button onclick="closePdfModal()" style="background:#1e293b; color:#cbd5e1; border:none; padding:6px 12px; border-radius:4px; font-size:11px; cursor:pointer;">Batal</button>
+        <button onclick="executeExportPDF()" style="background:#b81432; color:#fff; border:none; padding:6px 14px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer;">Download</button>
+      </div>
     </div>
   </div>
 
