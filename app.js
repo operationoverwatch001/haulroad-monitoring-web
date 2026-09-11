@@ -5,7 +5,10 @@ let roadNames = [];
 let activeRoad = "";
 let chartInstance = null;
 
-// 1. Inisialisasi Peta Leaflet
+// Daftarkan plugin Datalabels global
+Chart.register(ChartDataLabels);
+
+// 1. Peta Leaflet
 const map = L.map('map', { zoomControl: false }).setView([-2.0, 115.0], 15);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
@@ -23,7 +26,6 @@ async function loadExcelData() {
     crossSectionData = XLSX.utils.sheet_to_json(workbook.Sheets["CrossSection_3Pts"]);
 
     if (monitoringData.length > 0) {
-      // Ambil daftar nama jalan yang unik dan valid
       roadNames = [...new Set(monitoringData.map(d => (d["Nama Jalan"] || "").trim()))].filter(n => n.length > 0);
       activeRoad = roadNames[0] || "Jl Bontang";
       renderTabContent();
@@ -34,7 +36,7 @@ async function loadExcelData() {
   }
 }
 
-// 3. Ganti Tab
+// 3. Pindah Tab
 function switchTab(tabName) {
   currentTab = tabName;
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -42,7 +44,7 @@ function switchTab(tabName) {
   renderTabContent();
 }
 
-// 4. Pilih Jalan Aktif
+// 4. Ganti Jalan
 function changeRoad(roadName) {
   activeRoad = roadName;
   renderTabContent();
@@ -53,10 +55,8 @@ function renderTabContent() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
 
-  // Filter HANYA untuk jalan yang sedang aktif
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
 
-  // Selector Dropdown Jalan
   const roadSelectHtml = `
     <select onchange="changeRoad(this.value)" style="font-size:11px; font-weight:bold; padding:2px 4px; border-radius:4px;">
       ${roadNames.map(r => `<option value="${r}" ${r === activeRoad ? 'selected' : ''}>${r}</option>`).join('')}
@@ -101,13 +101,12 @@ function renderTabContent() {
   }
 }
 
-// 6. Gambar Grafik Profil Memanjang Lengkap dengan Grade per STA
+// 6. Grafik Profil Memanjang + Angka Grade Positif di Atas Garis Antar-Titik
 function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
   if (chartInstance) chartInstance.destroy();
 
-  // Warna titik dinamis: Normal (Biru), Warning (Kuning/Oranye), Overgrade (Merah)
   const pointColors = dataSubset.map(d => {
     const status = d["Status Grade"];
     if (status === "Overgrade") return "#c00000";
@@ -127,7 +126,7 @@ function drawLongSectionChart(dataSubset) {
         label: 'Elevasi As (m)',
         data: dataSubset.map(d => d["Elevasi As (m)"]),
         borderColor: '#2e75b6',
-        backgroundColor: 'rgba(46, 117, 182, 0.1)',
+        backgroundColor: 'rgba(46, 117, 182, 0.08)',
         borderWidth: 2,
         fill: true,
         pointBackgroundColor: pointColors,
@@ -139,26 +138,39 @@ function drawLongSectionChart(dataSubset) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: {
+        padding: { top: 25 }
+      },
       plugins: {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            title: function(context) {
-              const idx = context[0].dataIndex;
-              return `STA ${dataSubset[idx]["STA"]} (${activeRoad})`;
-            },
-            label: function(context) {
-              const idx = context.dataIndex;
-              const elev = dataSubset[idx]["Elevasi As (m)"];
-              const grade = dataSubset[idx]["Grade Longitudinal (%)"];
-              const status = dataSubset[idx]["Status Grade"] || "-";
-              
-              const gradeText = (grade !== undefined && grade !== null) ? `${grade > 0 ? '+' : ''}${grade.toFixed(2)}%` : '0.00%';
-              return [
-                ` Elevasi: ${elev} m RL`,
-                ` Grade Longitudinal: ${gradeText} (${status})`
-              ];
+            title: (c) => `STA ${dataSubset[c[0].dataIndex]["STA"]} (${activeRoad})`,
+            label: (c) => {
+              const d = dataSubset[c.dataIndex];
+              const g = d["Grade Longitudinal (%)"];
+              const gVal = (g !== undefined && g !== null && !isNaN(g)) ? Math.abs(g).toFixed(2) + "%" : "-";
+              return [` Elevasi: ${d["Elevasi As (m)"]} m RL`, ` Grade: ${gVal} (${d["Status Grade"] || "-"})`];
             }
+          }
+        },
+        datalabels: {
+          align: 'top',
+          anchor: 'end',
+          offset: 4,
+          font: { size: 8, weight: 'bold' },
+          color: function(context) {
+            const d = dataSubset[context.dataIndex];
+            if (d["Status Grade"] === "Overgrade") return "#c00000";
+            if (d["Status Grade"] === "Warning") return "#b25900";
+            return "#444444";
+          },
+          formatter: function(value, context) {
+            const d = dataSubset[context.dataIndex];
+            const g = d["Grade Longitudinal (%)"];
+            if (g === undefined || g === null || isNaN(g)) return "";
+            // Wajib angka positif
+            return Math.abs(g).toFixed(1) + "%";
           }
         }
       },
@@ -176,7 +188,7 @@ function drawLongSectionChart(dataSubset) {
   });
 }
 
-// 7. Gambar Grafik Cross Section 3 Titik
+// 7. Grafik Cross Section 3 Titik + Angka Grade Positif As ke Kiri & As ke Kanan
 function drawCrossSectionChart(staTarget) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -188,6 +200,11 @@ function drawCrossSectionChart(staTarget) {
     pts = crossSectionData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad && d["STA"] === staTarget);
   }
   if (pts.length < 3) return;
+
+  // Ambil angka crossfall kiri & kanan dari Data_Monitoring
+  const monRow = monitoringData.find(d => (d["Nama Jalan"] || "").trim() === activeRoad && d["STA"] === staTarget);
+  const cfL = monRow ? Math.abs(parseFloat(monRow["Crossfall Kiri (%)"]) || 0).toFixed(2) : "0.00";
+  const cfR = monRow ? Math.abs(parseFloat(monRow["Crossfall Kanan (%)"]) || 0).toFixed(2) : "0.00";
 
   chartInstance = new Chart(ctx, {
     type: 'line',
@@ -208,11 +225,42 @@ function drawCrossSectionChart(staTarget) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: {
+        padding: { top: 25 }
+      },
       plugins: {
         legend: { display: false },
         tooltip: {
           callbacks: {
             label: (ctx) => ` Elevasi: ${ctx.parsed.y} m RL`
+          }
+        },
+        datalabels: {
+          align: 'top',
+          anchor: 'end',
+          offset: 6,
+          font: { size: 10, weight: 'bold' },
+          color: function(context) {
+            const idx = context.dataIndex;
+            if (idx === 0) {
+              const val = parseFloat(cfL);
+              return (val < 2.0 || val > 4.0) ? '#c00000' : '#1f4e79';
+            }
+            if (idx === 2) {
+              const val = parseFloat(cfR);
+              return (val < 2.0 || val > 4.0) ? '#c00000' : '#1f4e79';
+            }
+            return '#1f4e79';
+          },
+          formatter: function(value, context) {
+            const idx = context.dataIndex;
+            // Tampilkan kemiringan positif As ke Kiri di titik kiri (index 0)
+            if (idx === 0) return `Kemiringan: ${cfL}%`;
+            // Tampilkan elevasi As di titik tengah (index 1)
+            if (idx === 1) return `Elevasi: ${value}m`;
+            // Tampilkan kemiringan positif As ke Kanan di titik kanan (index 2)
+            if (idx === 2) return `Kemiringan: ${cfR}%`;
+            return '';
           }
         }
       },
@@ -227,7 +275,7 @@ function drawCrossSectionChart(staTarget) {
   });
 }
 
-// 8. GPS Tracker Lapangan
+// 8. GPS
 function locateUser() {
   map.locate({ setView: true, maxZoom: 17 });
   map.on('locationfound', (e) => {
