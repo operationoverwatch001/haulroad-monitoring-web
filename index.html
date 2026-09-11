@@ -34,10 +34,11 @@
       transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
+    /* Logo Splash Diperbesar Jadi 190px */
     .splash-logo-container {
       position: relative;
-      width: 120px;
-      height: 120px;
+      width: 190px;
+      height: 190px;
       animation: logoPulse 2s infinite ease-in-out;
     }
 
@@ -45,18 +46,17 @@
       width: 100%;
       height: 100%;
       object-fit: contain;
-      filter: drop-shadow(0 0 20px rgba(184, 20, 50, 0.7));
+      filter: drop-shadow(0 0 30px rgba(184, 20, 50, 0.85));
     }
 
-    /* Efek Glitch Teks Taktis */
     .glitch-title {
       position: relative;
       color: #ffffff;
       font-family: monospace, sans-serif;
       font-weight: 900;
-      letter-spacing: 4px;
-      margin-top: 24px;
-      font-size: 1.15rem;
+      letter-spacing: 5px;
+      margin-top: 26px;
+      font-size: 1.3rem;
       text-align: center;
       text-transform: uppercase;
     }
@@ -91,10 +91,10 @@
     }
 
     .loading-track {
-      width: 200px;
+      width: 220px;
       height: 4px;
       background: #121824;
-      margin-top: 20px;
+      margin-top: 22px;
       border-radius: 2px;
       overflow: hidden;
       border: 1px solid #1e293b;
@@ -110,14 +110,14 @@
     .loading-status {
       color: #64748b;
       font-family: monospace;
-      font-size: 0.7rem;
+      font-size: 0.75rem;
       margin-top: 12px;
       letter-spacing: 3px;
     }
 
     @keyframes logoPulse {
       0% { transform: scale(0.96); opacity: 0.85; }
-      50% { transform: scale(1.04); opacity: 1; filter: drop-shadow(0 0 30px rgba(184, 20, 50, 0.95)); }
+      50% { transform: scale(1.04); opacity: 1; filter: drop-shadow(0 0 45px rgba(184, 20, 50, 0.95)); }
       100% { transform: scale(0.96); opacity: 0.85; }
     }
 
@@ -139,30 +139,57 @@
       100% { clip: rect(40px, 9999px, 70px, 0); }
     }
 
-    /* Penyesuaian Logo di Header Utama */
-    .app-header .brand {
+    /* ========================================== */
+    /* PENYESUAIAN HEADER UTAMA                   */
+    /* ========================================== */
+    .app-header {
       display: flex;
       align-items: center;
-      gap: 10px;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    .header-left-brand {
+      display: flex;
+      align-items: center;
+      padding-left: 10px;
+      z-index: 2;
     }
     .header-logo-img {
-      height: 32px;
-      width: 32px;
+      height: 42px;
+      width: 42px;
       object-fit: contain;
-      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+      filter: drop-shadow(0 2px 5px rgba(0,0,0,0.6));
+    }
+
+    .header-center-title {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #f8fafc;
+      font-weight: 800;
+      letter-spacing: 2px;
+      font-size: 0.95rem;
+      font-family: sans-serif;
+      text-transform: uppercase;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .tab-container {
+      z-index: 2;
     }
   </style>
 </head>
 <body>
 
   <!-- ========================================== -->
-  <!-- INTRO SPLASH SCREEN (MUNCUL PERTAMA)       -->
+  <!-- INTRO SPLASH SCREEN                        -->
   <!-- ========================================== -->
   <div id="intro-splash">
     <div class="splash-logo-container">
       <img src="data/logo_overwatch.png" alt="Operation Overwatch" class="splash-logo">
     </div>
-    <!-- Teks dengan efek glitch taktis -->
     <h2 class="glitch-title" data-text="OPERATION OVERWATCH">OPERATION <span>OVERWATCH</span></h2>
     <div class="loading-track">
       <div id="loading-bar"></div>
@@ -174,10 +201,12 @@
   <!-- HEADER UTAMA APLIKASI                      -->
   <!-- ========================================== -->
   <header class="app-header">
-    <div class="brand">
+    <div class="header-left-brand">
       <img src="data/logo_overwatch.png" alt="Logo" class="header-logo-img">
-      <span>OVERWATCH ROAD INSPECTOR</span>
     </div>
+
+    <div class="header-center-title">OVERWATCH ROAD INSPECTOR</div>
+
     <nav class="tab-container">
       <button class="tab-btn active" onclick="switchTab('grade')">Grade Jalan</button>
       <button class="tab-btn" onclick="switchTab('lebar')">Lebar Jalan</button>
@@ -210,24 +239,21 @@
       const splash = document.getElementById('intro-splash');
       const statusText = document.getElementById('status-text');
 
-      // Tahap 1: Loading progres awal
       setTimeout(() => {
         bar.style.width = '75%';
         statusText.innerText = 'LOADING SPATIAL MESH...';
       }, 250);
 
-      // Tahap 2: Selesaikan bar loading 100%
       setTimeout(() => {
         bar.style.width = '100%';
         statusText.innerText = 'SYSTEM READY.';
       }, 1200);
 
-      // Tahap 3: Hilangkan splash screen dengan efek fade-out halus
       setTimeout(() => {
         splash.style.opacity = '0';
         setTimeout(() => {
           splash.style.display = 'none';
-        }, 800); // Durasi sinkron dengan transisi CSS (0.8s)
+        }, 800);
       }, 1800);
     });
   </script>
