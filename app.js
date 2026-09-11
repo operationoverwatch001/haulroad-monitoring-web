@@ -91,7 +91,10 @@ function renderTabContent() {
     panelBody.innerHTML = `
       <div style="font-size:11px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
         <span style="color:#555;">Kuning: <b>Warning (>8%)</b> | Merah: <b>Overgrade (>10%)</b></span>
-        <span style="font-size:11px; color:#1f4e79;"><b>${roadData.length} STA</b></span>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button onclick="openPdfModal()" style="background:#1f4e79; color:#fff; border:none; padding:2px 8px; border-radius:3px; font-size:10px; cursor:pointer; font-weight:bold;">📥 Export PDF</button>
+          <span style="font-size:11px; color:#1f4e79;"><b>${roadData.length} STA</b></span>
+        </div>
       </div>
       <div class="chart-container" style="height:150px;"><canvas id="chartCanvas"></canvas></div>
     `;
@@ -428,6 +431,118 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
+
+// ==========================================
+// MODAL & EXPORT PDF LOGIC
+// ==========================================
+function openPdfModal() {
+  document.getElementById('pdfModalOverlay').style.display = 'flex';
+}
+
+function closePdfModal() {
+  document.getElementById('pdfModalOverlay').style.display = 'none';
+}
+
+async function executeExportPDF() {
+  closePdfModal();
+  const selectedOpt = document.querySelector('input[name="pdfExportOpt"]:checked').value;
+
+  const { jsPDF } = window.jspdf;
+  if (!jsPDF) {
+    alert("Library jsPDF belum dimuat dengan benar.");
+    return;
+  }
+
+  const chartCtx = document.getElementById('chartCanvas');
+  const chartContainer = chartCtx.closest('.chart-container');
+  if (!chartInstance || !chartContainer) {
+    alert("Grafik tidak ditemukan atau belum dirender!");
+    return;
+  }
+
+  const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
+
+  if (selectedOpt === 'single') {
+    const originalWidth = chartContainer.style.width;
+    const totalLabels = chartInstance.data.labels.length;
+    
+    chartContainer.style.width = `${Math.max(totalLabels * 45, 1400)}px`;
+    chartInstance.resize();
+
+    setTimeout(async () => {
+      try {
+        const canvas = await html2canvas(chartContainer, { scale: 2, useCORS: true });
+        const imgData = canvas.toDataURL('image/png');
+
+        const pdf = new jsPDF('l', 'mm', 'a4');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(12);
+        pdf.text(`OPERATION OVERWATCH - PROFIL MEMANJANG JALAN: ${activeRoad.toUpperCase()}`, 10, 10);
+        
+        pdf.addImage(imgData, 'PNG', 10, 15, pdfWidth - 20, pdfHeight);
+        pdf.save(`Profil_Memanjang_${activeRoad.replace(/\s+/g, '_')}_Full.pdf`);
+      } catch (err) {
+        console.error(err);
+        alert("Gagal mengexport PDF.");
+      } finally {
+        chartContainer.style.width = originalWidth;
+        chartInstance.resize();
+      }
+    }, 400);
+
+  } else {
+    const originalLabels = [...chartInstance.data.labels];
+    const originalDatasets = chartInstance.data.datasets.map(d => [...d.data]);
+    
+    const chunkSize = 25;
+    const pdf = new jsPDF('l', 'mm', 'a4');
+
+    const originalWidth = chartContainer.style.width;
+    chartContainer.style.width = `1100px`;
+    chartInstance.resize();
+
+    try {
+      for (let i = 0; i < originalLabels.length; i += chunkSize) {
+        chartInstance.data.labels = originalLabels.slice(i, i + chunkSize);
+        chartInstance.data.datasets.forEach((dataset, idx) => {
+          dataset.data = originalDatasets[idx].slice(i, i + chunkSize);
+        });
+        chartInstance.update();
+
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        const canvas = await html2canvas(chartContainer, { scale: 2, useCORS: true });
+        const imgData = canvas.toDataURL('image/png');
+
+        if (i > 0) pdf.addPage();
+
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (canvas.height * (pdfWidth - 20)) / canvas.width;
+
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(11);
+        pdf.text(`OVERWATCH ROAD INSPECTOR - ${activeRoad.toUpperCase()} (STA: ${originalLabels[i]} s/d ${originalLabels[Math.min(i + chunkSize - 1, originalLabels.length - 1)]})`, 10, 10);
+        
+        pdf.addImage(imgData, 'PNG', 10, 15, pdfWidth - 20, pdfHeight);
+      }
+
+      pdf.save(`Profil_Memanjang_${activeRoad.replace(/\s+/g, '_')}_Section.pdf`);
+    } catch (err) {
+      console.error(err);
+      alert("Gagal melakukan proses multi-page PDF.");
+    } finally {
+      chartInstance.data.labels = originalLabels;
+      chartInstance.data.datasets.forEach((dataset, idx) => {
+        dataset.data = originalDatasets[idx];
+      });
+      chartContainer.style.width = originalWidth;
+      chartInstance.update();
+    }
+  }
+}
 
 // Eksekusi Muat Data
 loadExcelData();
