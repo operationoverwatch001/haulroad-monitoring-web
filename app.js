@@ -5,10 +5,11 @@ const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5Lz
 let currentNRP = "";
 let currentNamaUser = "";
 
-// Fungsi verifikasi login NRP
+// 1. Verifikasi Login Whitelist
 async function prosesLoginWebGIS() {
   const inputEl = document.getElementById('inputNrpLogin');
   const errorMsg = document.getElementById('loginErrorMsg');
+  const btnLogin = document.getElementById('btnVerifikasiNRP');
   const nrpVal = inputEl ? inputEl.value.trim() : "";
 
   if (!nrpVal) {
@@ -23,6 +24,7 @@ async function prosesLoginWebGIS() {
     errorMsg.style.color = "#38bdf8";
     errorMsg.innerText = "Memverifikasi whitelist server...";
   }
+  if (btnLogin) btnLogin.disabled = true;
 
   try {
     const targetUrl = `${WEB_APP_URL}?action=LOGIN&nrp=${encodeURIComponent(nrpVal)}`;
@@ -33,21 +35,15 @@ async function prosesLoginWebGIS() {
       currentNRP = nrpVal;
       currentNamaUser = result.nama;
 
-      // 1. Singkirkan modal whitelist
+      // Hapus modal login
       const modal = document.getElementById('whitelistModal');
       if (modal) modal.remove();
 
-      // 2. Refresh ukuran peta Leaflet supaya tidak gelap / blank
-      setTimeout(() => {
-        if (map) {
-          map.invalidateSize();
-        }
-      }, 200);
-
-      // 3. Muat dataset Excel Overwatch.xlsx
-      loadExcelData();
+      // Jalankan animasi loading splash screen
+      mulaiAnimasiIntroDanLoadData();
 
     } else {
+      if (btnLogin) btnLogin.disabled = false;
       if (errorMsg) {
         errorMsg.style.color = "#ff4d4d";
         errorMsg.innerText = result.pesan || "Akses ditolak!";
@@ -55,6 +51,7 @@ async function prosesLoginWebGIS() {
     }
   } catch (err) {
     console.error("Login Error:", err);
+    if (btnLogin) btnLogin.disabled = false;
     if (errorMsg) {
       errorMsg.style.color = "#ff4d4d";
       errorMsg.innerText = "Gagal terhubung ke database server!";
@@ -62,7 +59,49 @@ async function prosesLoginWebGIS() {
   }
 }
 
-// Fungsi kirim jejak aktivitas user (Mode beacon no-cors)
+// 2. Timeline Animasi Intro Loading & Fetch Data
+function mulaiAnimasiIntroDanLoadData() {
+  const splash = document.getElementById('intro-splash');
+  const bar = document.getElementById('loading-bar');
+  const statusText = document.getElementById('status-text');
+  const titleElement = document.querySelector('.glitch-title');
+
+  if (splash) splash.style.display = 'flex';
+
+  setTimeout(() => {
+    if (bar) bar.style.width = '45%';
+    if (statusText) statusText.innerText = 'READING AUDIT DATABASE...';
+  }, 600);
+
+  setTimeout(() => {
+    if (bar) bar.style.width = '85%';
+    if (statusText) statusText.innerText = 'SYNCHRONIZING TELEMETRY...';
+  }, 1600);
+
+  // Ambil data Excel di background
+  loadExcelData();
+
+  setTimeout(() => {
+    if (bar) bar.style.width = '100%';
+    if (statusText) statusText.innerText = `WELCOME, ${currentNamaUser.toUpperCase()}`;
+    if (titleElement) titleElement.classList.add('glitch-outro');
+  }, 2600);
+
+  // Selesai intro: buka map
+  setTimeout(() => {
+    if (splash) {
+      splash.style.opacity = '0';
+      setTimeout(() => {
+        splash.remove();
+        if (map) {
+          map.invalidateSize(); // Pastikan peta Leaflet dirender 100% mulus
+        }
+      }, 500);
+    }
+  }, 3200);
+}
+
+// 3. Catat Log ke Server
 function catatLogKeServer(kegiatan, detailAktivitas) {
   if (!currentNRP) return;
   const targetUrl = `${WEB_APP_URL}?action=LOG_AKTIVITAS&nrp=${encodeURIComponent(currentNRP)}&kegiatan=${encodeURIComponent(kegiatan)}&detail=${encodeURIComponent(detailAktivitas)}`;
@@ -84,14 +123,14 @@ let userYInterval = undefined;
 // Daftarkan plugin Datalabels global untuk Chart.js
 Chart.register(ChartDataLabels);
 
-// 1. Inisialisasi Peta Leaflet (Basemap Satelit Esri)
+// Inisialisasi Peta Leaflet (Basemap Satelit Esri)
 const map = L.map('map', { zoomControl: false }).setView([-2.169338, 115.572115], 15);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
   attribution: 'Tiles &copy; Esri'
 }).addTo(map);
 
-// 2. Load File Excel Overwatch.xlsx
+// Muat File Excel Overwatch.xlsx
 async function loadExcelData() {
   try {
     const response = await fetch('data/Overwatch.xlsx');
@@ -107,10 +146,6 @@ async function loadExcelData() {
       renderTabContent();
     }
 
-    if (map) {
-      map.invalidateSize();
-    }
-
     catatLogKeServer("BUKA APLIKASI", `User ${currentNamaUser} (${currentNRP}) berhasil masuk Dashboard WebGIS.`);
 
   } catch (error) {
@@ -123,7 +158,7 @@ async function loadExcelData() {
   }
 }
 
-// 3. Navigasi Tab
+// Navigasi Tab
 function switchTab(tabName) {
   currentTab = tabName;
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -134,21 +169,21 @@ function switchTab(tabName) {
   catatLogKeServer("PINDAH TAB", `Melihat tab fitur: ${tabName.toUpperCase()}`);
 }
 
-// 4. Ubah Pilihan Nama Jalan
+// Ubah Pilihan Nama Jalan
 function changeRoad(roadName) {
   activeRoad = roadName;
   renderTabContent();
   catatLogKeServer("GANTI JALAN", `Memilih ruas jalan: ${roadName}`);
 }
 
-// 5. Ubah Kustomisasi Interval Elevasi Sumbu Y
+// Ubah Kustomisasi Interval Elevasi Sumbu Y
 function changeYInterval(val) {
   userYInterval = val === 'auto' ? undefined : parseFloat(val);
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
   drawLongSectionChart(roadData);
 }
 
-// 6. Render Panel Bawah Sesuai Tab
+// Render Panel Bawah Sesuai Tab
 function renderTabContent() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
@@ -210,7 +245,7 @@ function renderTabContent() {
   }
 }
 
-// 7. Grafik Profil Memanjang
+// Grafik Profil Memanjang
 function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -303,7 +338,7 @@ function drawLongSectionChart(dataSubset) {
   });
 }
 
-// 8. Grafik Cross Section 3 Titik
+// Grafik Cross Section 3 Titik
 function drawCrossSectionChart(staTarget) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -397,7 +432,7 @@ function drawCrossSectionChart(staTarget) {
   });
 }
 
-// 9. Real-time Live GPS Tracking
+// Real-time Live GPS Tracking
 let userMarker = null;
 let userAccuracyCircle = null;
 let isTracking = false;
@@ -449,7 +484,7 @@ function locateUser() {
   );
 }
 
-// 10. Toggle Show/Hide Panel Bawah
+// Toggle Show/Hide Panel Bawah
 document.addEventListener("DOMContentLoaded", () => {
   const bottomPanel = document.getElementById('bottom-panel');
   const panelHeader = document.querySelector('.panel-header');
@@ -473,9 +508,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-// ==========================================
-// MODAL & EXPORT PDF LOGIC
-// ==========================================
+// Modal & Export PDF
 function openPdfModal() {
   document.getElementById('pdfModalOverlay').style.display = 'flex';
 }
