@@ -178,12 +178,14 @@ body, html {
   justify-content: center;
 }
 
-/* UKURAN LOGO */
 .header-logo-img {
-  width: 72px !important;
-  height: 72px !important;
+  width: 80px !important;       /* Ukuran logo */
+  height: 80px !important;
   object-fit: contain;
   filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6));
+  
+  /* PENGATUR GESER LOGO */
+  transform: translateX(-30px); /* Ganti angka minus ini: makin besar minusnya (misal -40px), logo makin geser ke KIRI */
 }
 
 .brand {
@@ -196,7 +198,7 @@ body, html {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 20px; /* Geser teks biar logo leluasa di sebelah kiri */
+  gap: 16px; /* Geser teks biar logo leluasa di sebelah kiri */
 }
 
 .tab-container {
