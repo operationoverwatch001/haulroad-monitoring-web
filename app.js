@@ -90,13 +90,16 @@ function mulaiAnimasiIntroDanLoadData() {
     if (titleElement) titleElement.classList.add('glitch-outro');
   }, 2600);
 
-  // Selesai intro: hilangkan splash dari DOM dan kalkulasi ulang dimensi Leaflet
+  // Selesai intro: hilangkan total elemen splash dari DOM
   setTimeout(() => {
     if (splash) {
       splash.style.transition = 'opacity 0.4s ease';
       splash.style.opacity = '0';
       setTimeout(() => {
-        splash.remove();
+        splash.style.display = 'none';
+        splash.remove(); // Dihapus bersih dari halaman
+        
+        // Paksa peta Leaflet hitung ulang ukuran kontainer
         if (map) {
           map.invalidateSize(true);
         }
@@ -105,7 +108,7 @@ function mulaiAnimasiIntroDanLoadData() {
   }, 3200);
 }
 
-// 3. Catat Log ke Server
+// 3. Catat Log ke Server (Mode beacon no-cors)
 function catatLogKeServer(kegiatan, detailAktivitas) {
   if (!currentNRP) return;
   const targetUrl = `${WEB_APP_URL}?action=LOG_AKTIVITAS&nrp=${encodeURIComponent(currentNRP)}&kegiatan=${encodeURIComponent(kegiatan)}&detail=${encodeURIComponent(detailAktivitas)}`;
