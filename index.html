@@ -186,6 +186,19 @@
 <body>
 
   <!-- ========================================== -->
+  <!-- MODAL LOGIN WHITELIST (PERMANEN DI HTML)   -->
+  <!-- ========================================== -->
+  <div id="whitelistModal" style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:99999; display:flex; justify-content:center; align-items:center;">
+    <div style="background:#1e1e1e; padding:25px; border-radius:8px; width:320px; box-shadow:0 4px 15px rgba(0,0,0,0.5); text-align:center; color:#fff; font-family:sans-serif;">
+      <h3 style="margin-bottom:10px; font-size:16px; color:#4da6ff;">OPERATION OVERWATCH</h3>
+      <p style="font-size:12px; color:#bbb; margin-bottom:20px;">Masukkan Nomor NRP Terdaftar untuk Mengakses Sistem WebGIS</p>
+      <input type="number" id="inputNrpLogin" placeholder="Contoh: 80005908" style="width:100%; padding:10px; box-sizing:border-box; background:#2d2d2d; border:1px solid #444; color:#fff; border-radius:4px; font-size:14px; text-align:center; margin-bottom:12px;" />
+      <button onclick="prosesLoginWebGIS()" style="width:100%; padding:10px; background:#0078d4; color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer; font-size:13px;">VERIFIKASI NRP</button>
+      <p id="loginErrorMsg" style="color:#ff4d4d; font-size:11px; margin-top:10px;"></p>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
   <!-- 1. INTRO SPLASH SCREEN (3.8 DETIK)         -->
   <!-- ========================================== -->
   <div id="intro-splash">
@@ -293,6 +306,6 @@
   </script>
 
   <!-- Script utama lu -->
-  <script src="app.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
