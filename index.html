@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Library Pendukung -->
+  <!-- Library Excel, Chart, Datalabels, Leaflet, & jsPDF/html2canvas -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
@@ -17,33 +17,29 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
   <style>
-    /* MODAL LOGIN WHITELIST */
+    /* MODAL LOGIN (MUNCUL PERTAMA KALI) */
     #whitelistModal {
       position: fixed;
       inset: 0;
       width: 100vw;
       height: 100vh;
-      background: rgba(4, 5, 8, 0.95);
-      z-index: 2147483647 !important; /* Nilai maksimal z-index browser */
-      display: none;
+      background: #040508;
+      z-index: 100000;
+      display: flex;
       justify-content: center;
       align-items: center;
-      backdrop-filter: blur(8px);
-      pointer-events: auto !important;
     }
 
     .login-box {
       background: #0f172a;
       border: 1px solid #1e293b;
-      padding: 30px 24px;
+      padding: 32px 24px;
       border-radius: 12px;
       width: 90%;
       max-width: 330px;
       box-shadow: 0 10px 30px rgba(0,0,0,0.8);
       text-align: center;
       color: #fff;
-      position: relative;
-      z-index: 2147483647;
     }
 
     .login-box h3 {
@@ -73,6 +69,7 @@
       text-align: center;
       margin-bottom: 12px;
       outline: none;
+      transition: border-color 0.2s;
     }
 
     .login-box input:focus {
@@ -90,6 +87,7 @@
       cursor: pointer;
       font-size: 13px;
       letter-spacing: 0.5px;
+      transition: background 0.2s;
     }
 
     .login-box button:hover {
@@ -102,11 +100,27 @@
       min-height: 14px;
       font-family: monospace;
     }
+
+    /* INTRO SPLASH SCREEN (DISEMBUNYIKAN DULU, JALAN SETELAH LOGIN SUKSES) */
+    #intro-splash {
+      display: none;
+    }
   </style>
 </head>
 <body>
 
-  <!-- 1. INTRO SPLASH SCREEN -->
+  <!-- 1. MODAL LOGIN WHITELIST (GERBANG UTAMA) -->
+  <div id="whitelistModal">
+    <div class="login-box">
+      <h3>OPERATION OVERWATCH</h3>
+      <p>Masukkan Nomor NRP Terdaftar untuk Mengakses Sistem WebGIS</p>
+      <input type="text" id="inputNrpLogin" placeholder="Contoh: 80005908" autocomplete="off" />
+      <button type="button" id="btnVerifikasiNRP" onclick="prosesLoginWebGIS()">VERIFIKASI NRP</button>
+      <p id="loginErrorMsg"></p>
+    </div>
+  </div>
+
+  <!-- 2. INTRO SPLASH SCREEN (ANIMASI LOADING JALAN SETELAH VERIFIKASI) -->
   <div id="intro-splash">
     <div class="splash-logo-container">
       <img src="data/logo_overwatch.png" alt="Operation Overwatch" class="splash-logo">
@@ -116,17 +130,6 @@
       <div id="loading-bar"></div>
     </div>
     <div class="loading-status" id="status-text">INITIALIZING SECURE LINK...</div>
-  </div>
-
-  <!-- 2. MODAL LOGIN WHITELIST -->
-  <div id="whitelistModal">
-    <div class="login-box">
-      <h3>OPERATION OVERWATCH</h3>
-      <p>Masukkan Nomor NRP Terdaftar untuk Mengakses Sistem WebGIS</p>
-      <input type="text" id="inputNrpLogin" placeholder="Contoh: 80005908" autocomplete="off" />
-      <button type="button" id="btnVerifikasiNRP" onclick="prosesLoginWebGIS()">VERIFIKASI NRP</button>
-      <p id="loginErrorMsg"></p>
-    </div>
   </div>
 
   <!-- 3. HEADER UTAMA -->
@@ -178,59 +181,20 @@
     </div>
   </div>
 
-  <!-- 7. SCRIPT TIMELINE INTRO & LOGIN -->
   <script>
-    window.addEventListener('DOMContentLoaded', () => {
-      const bar = document.getElementById('loading-bar');
-      const splash = document.getElementById('intro-splash');
-      const statusText = document.getElementById('status-text');
-      const titleElement = document.querySelector('.glitch-title');
-      const modalLogin = document.getElementById('whitelistModal');
-      const inputNrp = document.getElementById('inputNrpLogin');
-
-      setTimeout(() => {
-        if (bar) bar.style.width = '45%';
-        if (statusText) statusText.innerText = 'LOADING SPATIAL MESH...';
-      }, 700);
-
-      setTimeout(() => {
-        if (bar) bar.style.width = '85%';
-        if (statusText) statusText.innerText = 'SYNCHRONIZING TELEMETRY...';
-      }, 1800);
-
-      setTimeout(() => {
-        if (bar) bar.style.width = '100%';
-        if (statusText) statusText.innerText = 'SECURITY CHECKPOINT...';
-        if (titleElement) titleElement.classList.add('glitch-outro');
-      }, 2700);
-
-      // Setelah 3,4 detik: splash lenyap total dari DOM tree
-      setTimeout(() => {
-        if (splash) {
-          splash.style.pointerEvents = 'none';
-          splash.style.opacity = '0';
-          setTimeout(() => {
-            splash.remove(); // Dihapus dari halaman agar tidak menimpa elemen lain
-            if (modalLogin) {
-              modalLogin.style.display = 'flex';
-              if (inputNrp) inputNrp.focus();
-            }
-          }, 500);
-        }
-      }, 3400);
-
-      // Support tekan tombol Enter di keyboard
-      if (inputNrp) {
-        inputNrp.addEventListener('keypress', (e) => {
-          if (e.key === 'Enter') {
-            prosesLoginWebGIS();
-          }
+    // Dukungan tekan Enter di form input login
+    document.addEventListener('DOMContentLoaded', () => {
+      const input = document.getElementById('inputNrpLogin');
+      if (input) {
+        input.focus();
+        input.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') prosesLoginWebGIS();
         });
       }
     });
   </script>
 
-  <!-- Pastikan file script JS sesuai nama file di repo lu -->
+  <!-- Script logic WebGIS -->
   <script src="script.js"></script>
 </body>
 </html>
