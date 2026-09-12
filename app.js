@@ -145,13 +145,8 @@ const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/s
 const PMTILES_URL = "https://ortho-tiles.operationoverwatch001.workers.dev/Ortho_Update.pmtiles";
 let orthoLayer = null;
 
-function initPMTilesLayer() {
-  const pmtilesLib = window.pmtiles;
-  if (!pmtilesLib) {
-    console.warn("Library pmtiles belum terdeteksi di DOM window.");
-    return;
-  }
-
+const pmtilesLib = window.pmtiles;
+if (pmtilesLib) {
   try {
     const protocol = new pmtilesLib.Protocol();
     if (L.TileLayer.addInitHook) {
@@ -179,61 +174,57 @@ function initPMTilesLayer() {
       }
     }).catch(e => console.warn("Tidak dapat membaca header PMTiles:", e));
 
-    // 3. Tombol Kustom Toggle Basemap Satelit Luar (Esri)
-    let isBasemapActive = true;
-    const toggleControl = L.control({ position: 'topright' });
-
-    toggleControl.onAdd = function() {
-      const btn = L.DomUtil.create('button', 'basemap-toggle-btn');
-      btn.innerHTML = '🌍 Satelit: <b>ON</b>';
-      btn.title = 'Matikan / Hidupkan Satelit Luar';
-      
-      // Styling UI Tema Gelap Overwatch
-      btn.style.background = '#0f172a';
-      btn.style.color = '#38bdf8';
-      btn.style.border = '1px solid #1e293b';
-      btn.style.borderRadius = '6px';
-      btn.style.padding = '8px 12px';
-      btn.style.fontSize = '11px';
-      btn.style.fontWeight = 'bold';
-      btn.style.cursor = 'pointer';
-      btn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
-      btn.style.marginTop = '10px';
-
-      L.DomEvent.disableClickPropagation(btn);
-
-      btn.onclick = function() {
-        if (isBasemapActive) {
-          map.removeLayer(esriSatellite);
-          btn.innerHTML = '🌑 Satelit: <b>OFF</b>';
-          btn.style.color = '#94a3b8';
-          btn.style.borderColor = '#334155';
-          isBasemapActive = false;
-        } else {
-          esriSatellite.addTo(map);
-          if (orthoLayer) orthoLayer.bringToFront();
-          btn.innerHTML = '🌍 Satelit: <b>ON</b>';
-          btn.style.color = '#38bdf8';
-          btn.style.borderColor = '#1e293b';
-          isBasemapActive = true;
-        }
-      };
-      return btn;
-    };
-
-    toggleControl.addTo(map);
-
   } catch (err) {
     console.error("Gagal mounting layer PMTiles:", err);
   }
+} else {
+  console.warn("Library pmtiles belum terdeteksi di DOM window.");
 }
 
-// Eksekusi inisialisasi PMTiles saat DOM siap
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initPMTilesLayer);
-} else {
-  initPMTilesLayer();
-}
+// 3. Tombol Kustom Toggle Basemap Satelit Luar (Esri)
+let isBasemapActive = true;
+const toggleControl = L.control({ position: 'topright' });
+
+toggleControl.onAdd = function() {
+  const btn = L.DomUtil.create('button', 'basemap-toggle-btn');
+  btn.innerHTML = '🌍 Satelit: <b>ON</b>';
+  btn.title = 'Matikan / Hidupkan Satelit Luar';
+  
+  // Styling UI Tema Gelap Overwatch
+  btn.style.background = '#0f172a';
+  btn.style.color = '#38bdf8';
+  btn.style.border = '1px solid #1e293b';
+  btn.style.borderRadius = '6px';
+  btn.style.padding = '8px 12px';
+  btn.style.fontSize = '11px';
+  btn.style.fontWeight = 'bold';
+  btn.style.cursor = 'pointer';
+  btn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
+  btn.style.marginTop = '10px';
+  btn.style.zIndex = '1000';
+
+  L.DomEvent.disableClickPropagation(btn);
+
+  btn.onclick = function() {
+    if (isBasemapActive) {
+      map.removeLayer(esriSatellite);
+      btn.innerHTML = '🌑 Satelit: <b>OFF</b>';
+      btn.style.color = '#94a3b8';
+      btn.style.borderColor = '#334155';
+      isBasemapActive = false;
+    } else {
+      esriSatellite.addTo(map);
+      if (orthoLayer) orthoLayer.bringToFront();
+      btn.innerHTML = '🌍 Satelit: <b>ON</b>';
+      btn.style.color = '#38bdf8';
+      btn.style.borderColor = '#1e293b';
+      isBasemapActive = true;
+    }
+  };
+  return btn;
+};
+
+toggleControl.addTo(map);
 
 // Muat Vektor Spasial Garis Jalan (Road_Layers.geojson)
 async function loadRoadLayersGeoJSON() {
@@ -783,7 +774,7 @@ async function executeExportPDF() {
     } catch (err) {
       console.error(err);
       alert("Gagal melakukan proses multi-page PDF.");
-    } finally {
+    } zoomCleanup: {
       chartContainer.style.width = originalWidth;
       chartInstance.data.labels = originalLabels;
       chartInstance.data.datasets.forEach((dataset, idx) => {
