@@ -142,7 +142,7 @@ function renderTabContent() {
   }
 }
 
-// 8. Grafik Profil Memanjang (Skala Elevasi Dipatok Kelipatan Step)
+// 8. Grafik Profil Memanjang (Skala Elevasi Dipatok Kelipatan Step Sempurna)
 function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -155,7 +155,7 @@ function drawLongSectionChart(dataSubset) {
   const rawMin = Math.min(...allElevations);
   const rawMax = Math.max(...allElevations);
 
-  // Paksa min & max pas kelipatan step (misal step 5 jadi 85 dan 105)
+  // Paksa min & max pas kelipatan step (misal step 5 jadi pas 85 dan 105)
   const globalYMin = Math.floor(rawMin / step) * step;
   const globalYMax = Math.ceil(rawMax / step) * step;
 
