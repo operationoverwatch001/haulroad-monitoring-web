@@ -93,7 +93,7 @@
 
     /* Efek Buyar Pecah (Brutal Outro) KHUSUS untuk Teks Title */
     .glitch-title.glitch-outro {
-      animation: brutalTextScatter 0.5s cubic-bezier(0.11, 0, 0.5, 1) forwards !important;
+      animation: brutalTextScatter 0.4s cubic-bezier(0.11, 0, 0.5, 1) forwards !important;
     }
     .glitch-title.glitch-outro::before {
       animation: glitch-anim-1 0.04s infinite linear !important;
@@ -116,7 +116,7 @@
       width: 0%;
       height: 100%;
       background: linear-gradient(90deg, #b81432, #ff2b54);
-      transition: width 1.4s cubic-bezier(0.1, 0.9, 0.2, 1);
+      transition: width 1.0s cubic-bezier(0.1, 0.9, 0.2, 1);
     }
 
     .loading-status {
@@ -186,7 +186,7 @@
 <body>
 
   <!-- ========================================== -->
-  <!-- 1. INTRO SPLASH SCREEN (5 DETIK)           -->
+  <!-- 1. INTRO SPLASH SCREEN (3.8 DETIK)         -->
   <!-- ========================================== -->
   <div id="intro-splash">
     <div class="splash-logo-container">
@@ -258,7 +258,7 @@
   </div>
 
   <!-- ========================================== -->
-  <!-- 5. SCRIPT KONTROL ANIMASI INTRO (5 DETIK)  -->
+  <!-- 5. SCRIPT KONTROL ANIMASI INTRO (3.8 DETIK) -->
   <!-- ========================================== -->
   <script>
     window.addEventListener('load', () => {
@@ -268,27 +268,27 @@
       const titleElement = document.querySelector('.glitch-title');
 
       setTimeout(() => {
-        bar.style.width = '40%';
+        bar.style.width = '45%';
         statusText.innerText = 'LOADING SPATIAL MESH...';
-      }, 1000);
+      }, 700);
 
       setTimeout(() => {
-        bar.style.width = '80%';
+        bar.style.width = '85%';
         statusText.innerText = 'SYNCHRONIZING TELEMETRY...';
-      }, 2800);
+      }, 2000);
 
       setTimeout(() => {
         bar.style.width = '100%';
         statusText.innerText = 'SYSTEM READY.';
         if (titleElement) titleElement.classList.add('glitch-outro');
-      }, 4200);
+      }, 3100);
 
       setTimeout(() => {
         splash.style.opacity = '0';
         setTimeout(() => {
           splash.style.display = 'none';
-        }, 800);
-      }, 5000);
+        }, 700);
+      }, 3800); // Total pas 3.8 detik
     });
   </script>
 
