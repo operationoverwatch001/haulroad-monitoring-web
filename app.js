@@ -132,30 +132,44 @@ let roadGeoJsonLayer = null;
 // Daftarkan plugin Datalabels global untuk Chart.js
 Chart.register(ChartDataLabels);
 
-// Inisialisasi Peta Leaflet (Basemap Satelit Esri)
+// Inisialisasi Peta Leaflet
 const map = L.map('map', { zoomControl: false }).setView([-2.169338, 115.572115], 15);
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+
+// 1. Layer Satelit Global Esri
+const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
   attribution: 'Tiles &copy; Esri'
 }).addTo(map);
 
-// Inisialisasi Drone Orthophoto (PMTiles via Cloudflare R2)
-// GANTI STRING DI BAWAH INI DENGAN URL PUBLIK BUCKET R2 LU
+// 2. Drone Orthophoto (PMTiles via Cloudflare R2)
 const PMTILES_URL = "https://pub-184b841848224db8a00d1eaf96126603.r2.dev/Ortho_Update.pmtiles";
+let orthoLayer = null;
 
-try {
-  if (typeof pmtiles !== "undefined") {
-    const p = new pmtiles.PMTiles(PMTILES_URL);
-    const protocol = new pmtiles.Protocol();
+function initPMTilesLayer() {
+  const pmtilesLib = window.pmtiles;
+  if (!pmtilesLib) {
+    console.warn("Library pmtiles belum terdeteksi di DOM window.");
+    return;
+  }
+
+  try {
+    const protocol = new pmtilesLib.Protocol();
+    if (L.TileLayer.addInitHook) {
+      L.TileLayer.addInitHook(function() {
+        this.options.pmtilesProtocol = protocol;
+      });
+    }
+
+    const p = new pmtilesLib.PMTiles(PMTILES_URL);
     protocol.add(p);
 
-    const orthoLayer = pmtiles.leafletRasterLayer(p, {
+    orthoLayer = pmtilesLib.leafletRasterLayer(p, {
       maxZoom: 22,
       maxNativeZoom: 20,
       attribution: 'Drone Orthophoto'
     }).addTo(map);
 
-    // Zoom peta otomatis menyesuaikan batas orthophoto drone
+    // Auto fit zoom kamera ke batas bounding box orthophoto
     p.getHeader().then(header => {
       if (header && header.minLon && header.minLat) {
         map.fitBounds([
@@ -164,18 +178,42 @@ try {
         ]);
       }
     }).catch(e => console.warn("Tidak dapat membaca header PMTiles:", e));
-  } else {
-    console.warn("Library pmtiles belum dimuat di file HTML.");
+
+    // Kontrol On/Off Layer di Pojok Kanan Atas
+    const overlayLayers = {
+      "Satelit Esri (Luar)": esriSatellite,
+      "Drone Orthophoto": orthoLayer
+    };
+    L.control.layers(null, overlayLayers, { position: 'topright', collapsed: false }).addTo(map);
+
+  } catch (err) {
+    console.error("Gagal mounting layer PMTiles:", err);
   }
-} catch (err) {
-  console.warn("Gagal inisialisasi layer PMTiles:", err);
+}
+
+// Eksekusi inisialisasi PMTiles saat DOM siap
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initPMTilesLayer);
+} else {
+  initPMTilesLayer();
 }
 
 // Muat Vektor Spasial Garis Jalan (Road_Layers.geojson)
 async function loadRoadLayersGeoJSON() {
   try {
     const res = await fetch('data/Road_Layers.geojson');
-    if (!res.ok) throw new Error("File data/Road_Layers.geojson belum ada di direktori data/");
+    if (!res.ok) {
+      console.info("Info: data/Road_Layers.geojson belum tersedia, layer vektor dilewati.");
+      return;
+    }
+    
+    // Verifikasi respons bukan dokumen HTML (404 Cloudflare redirect)
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("json") && !contentType.includes("octet-stream")) {
+      console.info("Info: Endpoint Road_Layers.geojson mengembalikan non-JSON data.");
+      return;
+    }
+
     const geojsonData = await res.json();
 
     if (roadGeoJsonLayer) {
@@ -200,7 +238,7 @@ async function loadRoadLayersGeoJSON() {
 
         layer.bindTooltip(`<b>${road}</b><br>STA: ${sta}`, { sticky: true });
 
-        // Klik pada garis/titik di peta langsung sinkron ke tab & grafik
+        // Klik garis/titik di peta sinkron ke tab & grafik
         layer.on('click', () => {
           if (props.Nama_Jalan && props.Nama_Jalan !== activeRoad) {
             changeRoad(props.Nama_Jalan);
