@@ -138,84 +138,16 @@ body, html {
 /* ========================================== */
 /* EFEK GLITCH BUYAR PECAH (BRUTAL OUTRO)     */
 /* ========================================== */
-@keyframes brutalLogoScatter {
-  0% { 
-    transform: scale(1) translate(0, 0); 
-    filter: drop-shadow(0 0 25px rgba(184, 20, 50, 0.8)) brightness(1); 
-    clip-path: inset(0 0 0 0);
-  }
-  20% { 
-    transform: scale(1.1) translate(-10px, 5px) skew(-20deg); 
-    filter: drop-shadow(10px -5px 0px #00ffff) drop-shadow(-10px 5px 0px #ff0033);
-    clip-path: inset(10% 0 40% 0);
-  }
-  40% { 
-    transform: scale(0.9) translate(15px, -10px) skew(40deg); 
-    filter: drop-shadow(-15px 10px 0px #ffff00) brightness(2);
-    clip-path: inset(50% 0 10% 0);
-  }
-  60% { 
-    transform: scale(1.2) translate(-20px, 15px) skew(-60deg); 
-    filter: drop-shadow(20px 10px 0px #00ffcc) blur(2px);
-    clip-path: inset(20% 70% 30% 0);
-  }
-  80% { 
-    transform: scale(0.6) translate(30px, -25px) skew(80deg); 
-    filter: drop-shadow(-30px -15px 0px #ff00ff) blur(6px) invert(1);
-    clip-path: inset(0 20% 0 60%);
-    opacity: 0.5;
-  }
-  100% { 
-    transform: scale(0.2) translate(0, 50px) skew(-90deg); 
-    filter: blur(15px) brightness(5); 
-    clip-path: inset(50% 50% 50% 50%);
-    opacity: 0; 
-  }
-}
-
 @keyframes brutalTextScatter {
-  0% { 
-    transform: scale(1) translate(0, 0); 
-    filter: blur(0px); 
-    opacity: 1; 
-    clip-path: inset(0 0 0 0);
-  }
-  25% { 
-    transform: scale(1.05) translate(8px, -5px) skew(30deg); 
-    color: #ff0033;
-    clip-path: inset(30% 0 20% 0);
-    letter-spacing: 8px;
-  }
-  50% { 
-    transform: scale(0.95) translate(-12px, 8px) skew(-45deg); 
-    color: #00ffff;
-    clip-path: inset(0 40% 40% 0);
-    letter-spacing: 2px;
-    filter: blur(2px);
-  }
-  75% { 
-    transform: scale(1.1) translate(20px, -15px) skew(60deg); 
-    color: #ffff00;
-    clip-path: inset(60% 0 10% 30%);
-    letter-spacing: 20px;
-    filter: blur(5px);
-    opacity: 0.6;
-  }
-  100% { 
-    transform: scale(0.5) translate(-30px, 30px) skew(-90deg); 
-    filter: blur(12px); 
-    opacity: 0; 
-    letter-spacing: 40px;
-    clip-path: inset(50% 50% 50% 50%);
-  }
-}
-
-.splash-logo-container.glitch-outro {
-  animation: brutalLogoScatter 0.5s cubic-bezier(0.11, 0, 0.5, 1) forwards !important;
+  0% { transform: scale(1) translate(0, 0); filter: blur(0px); opacity: 1; clip-path: inset(0 0 0 0); }
+  25% { transform: scale(1.05) translate(8px, -5px) skew(30deg); color: #ff0033; clip-path: inset(30% 0 20% 0); letter-spacing: 8px; }
+  50% { transform: scale(0.95) translate(-12px, 8px) skew(-45deg); color: #00ffff; clip-path: inset(0 40% 40% 0); letter-spacing: 2px; filter: blur(2px); }
+  75% { transform: scale(1.1) translate(20px, -15px) skew(60deg); color: #ffff00; clip-path: inset(60% 0 10% 30%); letter-spacing: 20px; filter: blur(5px); opacity: 0.6; }
+  100% { transform: scale(0.5) translate(-30px, 30px) skew(-90deg); filter: blur(12px); opacity: 0; letter-spacing: 40px; clip-path: inset(50% 50% 50% 50%); }
 }
 
 .glitch-title.glitch-outro {
-  animation: brutalTextScatter 0.5s cubic-bezier(0.11, 0, 0.5, 1) forwards !important;
+  animation: brutalTextScatter 0.4s cubic-bezier(0.11, 0, 0.5, 1) forwards !important;
 }
 
 .glitch-title.glitch-outro::before {
@@ -297,7 +229,7 @@ body, html {
   cursor: pointer;
 }
 
-/* Bottom Sheet & Panel */
+/* Bottom Sheet & Panel (Jempol-Friendly Toggle Button & Swipe Area) */
 .bottom-panel {
   position: absolute;
   bottom: 0;
@@ -315,28 +247,54 @@ body, html {
 }
 
 .bottom-panel.minimized {
-  transform: translateY(calc(220px - 32px));
+  transform: translateY(calc(220px - 44px));
 }
 
 .panel-header {
-  padding: 8px 16px;
+  padding: 10px 16px;
   text-align: center;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #e2e8f0;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  background: #f8fafc;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
 }
 
+/* Tombol Kotak Panah Ramah Jempol */
 .drag-handle {
-  width: 40px;
-  height: 4px;
-  background: #b0b0b0;
-  border-radius: 2px;
+  width: 56px;
+  height: 28px;
+  background: #0f172a;
+  border-radius: 8px;
   margin: 0 auto 6px;
-  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  transition: background 0.2s, transform 0.2s;
 }
 
-.drag-handle:hover {
-  background: #ffc000;
+.drag-handle:active {
+  transform: scale(0.95);
+  background: #b81432;
+}
+
+.drag-handle::after {
+  content: "▲";
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: bold;
+  transition: transform 0.3s ease;
+}
+
+.bottom-panel.minimized .drag-handle::after {
+  transform: rotate(180deg);
 }
 
 .panel-title {
