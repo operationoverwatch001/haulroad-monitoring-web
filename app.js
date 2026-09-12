@@ -5,57 +5,48 @@ const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5Lz
 let currentNRP = "";
 let currentNamaUser = "";
 
-// Fungsi verifikasi NRP yang dipanggil dari tombol HTML nanti
+// Fungsi verifikasi NRP via GET (Anti-CORS Google Apps Script)
 async function prosesLoginWebGIS() {
-  const nrpVal = document.getElementById('inputNrpLogin').value.trim();
+  const inputEl = document.getElementById('inputNrpLogin');
   const errorMsg = document.getElementById('loginErrorMsg');
+  const nrpVal = inputEl ? inputEl.value.trim() : "";
 
   if (!nrpVal) {
-    errorMsg.innerText = "NRP tidak boleh kosong!";
+    if (errorMsg) errorMsg.innerText = "NRP tidak boleh kosong!";
     return;
   }
 
-  errorMsg.innerText = "Memverifikasi whitelist server...";
+  if (errorMsg) errorMsg.innerText = "Memverifikasi whitelist server...";
 
   try {
-    const response = await fetch(WEB_APP_URL, {
-      method: "POST",
-      body: JSON.stringify({
-        action: "LOGIN",
-        nrp: nrpVal
-      })
-    });
+    const targetUrl = `${WEB_APP_URL}?action=LOGIN&nrp=${encodeURIComponent(nrpVal)}`;
+    const response = await fetch(targetUrl);
     const result = await response.json();
 
     if (result.status === "success") {
       currentNRP = nrpVal;
       currentNamaUser = result.nama;
-      
-      // Hapus modal login dari HTML
+
+      // Hapus modal login dari DOM
       const modal = document.getElementById('whitelistModal');
       if (modal) modal.remove();
-      
+
+      // Lanjut muat data Overwatch.xlsx
       loadExcelData();
     } else {
-      errorMsg.innerText = result.pesan || "Akses ditolak!";
+      if (errorMsg) errorMsg.innerText = result.pesan || "Akses ditolak!";
     }
   } catch (err) {
-    console.error(err);
-    errorMsg.innerText = "Gagal terhubung ke database server!";
+    console.error("Login Error:", err);
+    if (errorMsg) errorMsg.innerText = "Gagal terhubung ke database server (Cek koneksi/CORS)!";
   }
 }
 
+// Fungsi log aktivitas user (Non-blocking beacon)
 function catatLogKeServer(kegiatan, detailAktivitas) {
   if (!currentNRP) return;
-  fetch(WEB_APP_URL, {
-    method: "POST",
-    body: JSON.stringify({
-      action: "LOG_AKTIVITAS",
-      nrp: currentNRP,
-      kegiatan: kegiatan,
-      detail: detailAktivitas
-    })
-  }).catch(err => console.error("Log error:", err));
+  const targetUrl = `${WEB_APP_URL}?action=LOG_AKTIVITAS&nrp=${encodeURIComponent(currentNRP)}&kegiatan=${encodeURIComponent(kegiatan)}&detail=${encodeURIComponent(detailAktivitas)}`;
+  fetch(targetUrl, { mode: "no-cors" }).catch(err => console.error("Log error:", err));
 }
 
 
@@ -68,19 +59,22 @@ let crossSectionData = [];
 let roadNames = [];
 let activeRoad = "";
 let chartInstance = null;
-let userYInterval = undefined;
+let userYInterval = undefined; // Default auto untuk step elevasi sumbu Y
 
+// Daftarkan plugin Datalabels global untuk Chart.js
 Chart.register(ChartDataLabels);
 
+// 1. Inisialisasi Peta Leaflet (Basemap Satelit Esri) - Koordinat pit tambang
 const map = L.map('map', { zoomControl: false }).setView([-2.169338, 115.572115], 15);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
   attribution: 'Tiles &copy; Esri'
 }).addTo(map);
 
+// 2. Pengatur Animasi Intro Splash Screen
 function hideIntro() {
-  const intro = document.getElementById('intro-overlay');
-  const statusText = document.getElementById('intro-status-text');
+  const intro = document.getElementById('intro-overlay') || document.getElementById('intro-splash');
+  const statusText = document.getElementById('intro-status-text') || document.getElementById('status-text');
   if (statusText) statusText.innerText = `WELCOME, ${currentNamaUser.toUpperCase()}`;
 
   setTimeout(() => {
@@ -92,8 +86,9 @@ function hideIntro() {
   }, 1200);
 }
 
+// 3. Load File Excel Overwatch.xlsx
 async function loadExcelData() {
-  const statusText = document.getElementById('intro-status-text');
+  const statusText = document.getElementById('intro-status-text') || document.getElementById('status-text');
   try {
     if (statusText) statusText.innerText = "READING AUDIT DATABASE...";
     const response = await fetch('data/Overwatch.xlsx');
@@ -117,34 +112,44 @@ async function loadExcelData() {
   } catch (error) {
     if (statusText) statusText.innerText = "ERROR LOADING DATA";
     setTimeout(hideIntro, 1000);
-    document.getElementById('panel-body').innerHTML = 
-      `<p style="color:red; font-size:12px; text-align:center;">Gagal memuat data Excel. Pastikan file Overwatch.xlsx ada di folder data/.</p>`;
+    const panelBody = document.getElementById('panel-body');
+    if (panelBody) {
+      panelBody.innerHTML = 
+        `<p style="color:red; font-size:12px; text-align:center;">Gagal memuat data Excel. Pastikan file Overwatch.xlsx ada di folder data/.</p>`;
+    }
   }
 }
 
+// 4. Navigasi Tab
 function switchTab(tabName) {
   currentTab = tabName;
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-  event.target.classList.add('active');
+  if (event && event.target) {
+    event.target.classList.add('active');
+  }
   renderTabContent();
   catatLogKeServer("PINDAH TAB", `Melihat tab fitur: ${tabName.toUpperCase()}`);
 }
 
+// 5. Ubah Pilihan Nama Jalan
 function changeRoad(roadName) {
   activeRoad = roadName;
   renderTabContent();
   catatLogKeServer("GANTI JALAN", `Memilih ruas jalan: ${roadName}`);
 }
 
+// 6. Ubah Kustomisasi Interval Elevasi Sumbu Y
 function changeYInterval(val) {
   userYInterval = val === 'auto' ? undefined : parseFloat(val);
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
   drawLongSectionChart(roadData);
 }
 
+// 7. Render Panel Bawah Sesuai Tab
 function renderTabContent() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
+  if (!panelBody || !panelTitle) return;
 
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
 
@@ -202,6 +207,7 @@ function renderTabContent() {
   }
 }
 
+// 8. Grafik Profil Memanjang
 function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -209,8 +215,8 @@ function drawLongSectionChart(dataSubset) {
 
   const roadFullData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
   const allElevations = roadFullData.map(d => parseFloat(d["Elevasi As (m)"])).filter(v => !isNaN(v));
-  
-  const step = userYInterval || 5; 
+
+  const step = userYInterval || 5;
   const rawMin = Math.min(...allElevations);
   const rawMax = Math.max(...allElevations);
 
@@ -294,6 +300,7 @@ function drawLongSectionChart(dataSubset) {
   });
 }
 
+// 9. Grafik Cross Section 3 Titik
 function drawCrossSectionChart(staTarget) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -387,6 +394,7 @@ function drawCrossSectionChart(staTarget) {
   });
 }
 
+// 10. Real-time Live GPS Tracking
 let userMarker = null;
 let userAccuracyCircle = null;
 let isTracking = false;
@@ -398,14 +406,21 @@ function locateUser() {
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     if (userMarker) map.removeLayer(userMarker);
     if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
-    userMarker = null; userAccuracyCircle = null; isTracking = false;
-    gpsBtn.style.background = '#ffffff'; gpsBtn.style.color = '#000000';
+    userMarker = null;
+    userAccuracyCircle = null;
+    isTracking = false;
+    gpsBtn.style.background = '#ffffff';
+    gpsBtn.style.color = '#000000';
     return;
   }
-  if (!navigator.geolocation) { alert("Browser HP tidak mendukung fitur GPS."); return; }
+  if (!navigator.geolocation) {
+    alert("Browser HP tidak mendukung fitur GPS.");
+    return;
+  }
 
   isTracking = true;
-  gpsBtn.style.background = '#0078d4'; gpsBtn.style.color = '#ffffff';
+  gpsBtn.style.background = '#0078d4';
+  gpsBtn.style.color = '#ffffff';
   catatLogKeServer("GPS LIVE", "Menyalakan live tracking GPS di lapangan.");
 
   watchId = navigator.geolocation.watchPosition(
@@ -431,6 +446,7 @@ function locateUser() {
   );
 }
 
+// 11. Toggle Show/Hide Panel Bawah
 document.addEventListener("DOMContentLoaded", () => {
   const bottomPanel = document.getElementById('bottom-panel');
   const panelHeader = document.querySelector('.panel-header');
@@ -454,8 +470,16 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-function openPdfModal() { document.getElementById('pdfModalOverlay').style.display = 'flex'; }
-function closePdfModal() { document.getElementById('pdfModalOverlay').style.display = 'none'; }
+// ==========================================
+// MODAL & EXPORT PDF LOGIC
+// ==========================================
+function openPdfModal() {
+  document.getElementById('pdfModalOverlay').style.display = 'flex';
+}
+
+function closePdfModal() {
+  document.getElementById('pdfModalOverlay').style.display = 'none';
+}
 
 async function executeExportPDF() {
   closePdfModal();
@@ -468,7 +492,7 @@ async function executeExportPDF() {
   }
 
   const chartCtx = document.getElementById('chartCanvas');
-  const chartContainer = chartCtx.closest('.chart-container');
+  const chartContainer = chartCtx ? chartCtx.closest('.chart-container') : null;
   if (!chartInstance || !chartContainer) {
     alert("Grafik tidak ditemukan atau belum dirender!");
     return;
@@ -480,7 +504,7 @@ async function executeExportPDF() {
   if (selectedOpt === 'single') {
     const originalWidth = chartContainer.style.width;
     const totalLabels = chartInstance.data.labels.length;
-    
+
     chartContainer.style.width = `${Math.max(totalLabels * 45, 1400)}px`;
     chartInstance.resize();
 
@@ -496,7 +520,7 @@ async function executeExportPDF() {
         pdf.setFont("helvetica", "bold");
         pdf.setFontSize(12);
         pdf.text(`OPERATION OVERWATCH - PROFIL MEMANJANG JALAN: ${activeRoad.toUpperCase()}`, 10, 10);
-        
+
         pdf.addImage(imgData, 'PNG', 10, 15, pdfWidth - 20, pdfHeight);
         pdf.save(`Profil_Memanjang_${activeRoad.replace(/\s+/g, '_')}_Full.pdf`);
       } catch (err) {
@@ -512,7 +536,7 @@ async function executeExportPDF() {
   } else {
     const originalLabels = [...chartInstance.data.labels];
     const originalDatasets = chartInstance.data.datasets.map(d => [...d.data]);
-    
+
     const chunkSize = 25;
     const pdf = new jsPDF('l', 'mm', 'a4');
 
@@ -524,7 +548,7 @@ async function executeExportPDF() {
       for (let i = 0; i < originalLabels.length; i += chunkSize) {
         const chunkLabels = originalLabels.slice(i, i + chunkSize);
         const chunkDatasets = originalDatasets.map(d => d.slice(i, i + chunkSize));
-        
+
         chartInstance.data.labels = chunkLabels;
         chartInstance.data.datasets.forEach((dataset, idx) => {
           dataset.data = chunkDatasets[idx];
@@ -544,7 +568,7 @@ async function executeExportPDF() {
         pdf.setFont("helvetica", "bold");
         pdf.setFontSize(11);
         pdf.text(`OVERWATCH ROAD INSPECTOR - ${activeRoad.toUpperCase()} (STA: ${originalLabels[i]} s/d ${originalLabels[Math.min(i + chunkSize - 1, originalLabels.length - 1)]})`, 10, 10);
-        
+
         pdf.addImage(imgData, 'PNG', 10, 15, pdfWidth - 20, pdfHeight);
       }
 
