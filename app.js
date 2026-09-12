@@ -181,50 +181,29 @@ if (pmtilesLib) {
   console.warn("Library pmtiles belum terdeteksi di DOM window.");
 }
 
-// 3. Tombol Kustom Toggle Basemap Satelit Luar (Esri)
+// 3. Fungsi Toggle Basemap Satelit Luar (Terhubung ke tombol di index.html)
 let isBasemapActive = true;
-const toggleControl = L.control({ position: 'topright' });
+function toggleBasemapSatelit() {
+  const btn = document.getElementById('btnToggleBasemap');
+  if (!btn) return;
 
-toggleControl.onAdd = function() {
-  const btn = L.DomUtil.create('button', 'basemap-toggle-btn');
-  btn.innerHTML = '🌍 Satelit: <b>ON</b>';
-  btn.title = 'Matikan / Hidupkan Satelit Luar';
-  
-  // Styling UI Tema Gelap Overwatch
-  btn.style.background = '#0f172a';
-  btn.style.color = '#38bdf8';
-  btn.style.border = '1px solid #1e293b';
-  btn.style.borderRadius = '6px';
-  btn.style.padding = '8px 12px';
-  btn.style.fontSize = '11px';
-  btn.style.fontWeight = 'bold';
-  btn.style.cursor = 'pointer';
-  btn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
-  btn.style.marginTop = '10px';
-  btn.style.zIndex = '1000';
-
-  L.DomEvent.disableClickPropagation(btn);
-
-  btn.onclick = function() {
-    if (isBasemapActive) {
-      map.removeLayer(esriSatellite);
-      btn.innerHTML = '🌑 Satelit: <b>OFF</b>';
-      btn.style.color = '#94a3b8';
-      btn.style.borderColor = '#334155';
-      isBasemapActive = false;
-    } else {
-      esriSatellite.addTo(map);
-      if (orthoLayer) orthoLayer.bringToFront();
-      btn.innerHTML = '🌍 Satelit: <b>ON</b>';
-      btn.style.color = '#38bdf8';
-      btn.style.borderColor = '#1e293b';
-      isBasemapActive = true;
-    }
-  };
-  return btn;
-};
-
-toggleControl.addTo(map);
+  if (isBasemapActive) {
+    map.removeLayer(esriSatellite);
+    btn.innerHTML = '🌑 Satelit: <b>OFF</b>';
+    btn.style.color = '#94a3b8';
+    btn.style.borderColor = '#334155';
+    isBasemapActive = false;
+    catatLogKeServer("TOGGLE MAP", "Mematikan satelit luar (hanya orthophoto drone).");
+  } else {
+    esriSatellite.addTo(map);
+    if (orthoLayer) orthoLayer.bringToFront();
+    btn.innerHTML = '🌍 Satelit: <b>ON</b>';
+    btn.style.color = '#38bdf8';
+    btn.style.borderColor = '#1e293b';
+    isBasemapActive = true;
+    catatLogKeServer("TOGGLE MAP", "Menyalakan satelit luar global.");
+  }
+}
 
 // Muat Vektor Spasial Garis Jalan (Road_Layers.geojson)
 async function loadRoadLayersGeoJSON() {
@@ -774,7 +753,7 @@ async function executeExportPDF() {
     } catch (err) {
       console.error(err);
       alert("Gagal melakukan proses multi-page PDF.");
-    } zoomCleanup: {
+    } finally {
       chartContainer.style.width = originalWidth;
       chartInstance.data.labels = originalLabels;
       chartInstance.data.datasets.forEach((dataset, idx) => {
