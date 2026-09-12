@@ -17,191 +17,111 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
   <style>
-    /* ========================================== */
-    /* INTRO SPLASH SCREEN & CYBER GLITCH STYLES  */
-    /* ========================================== */
-    #intro-splash {
+    /* MODAL LOGIN WHITELIST (Z-INDEX TERTINGGI, DI ATAS SEGALA LAPISAN) */
+    #whitelistModal {
       position: fixed;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      background: #040508;
+      background: rgba(4, 5, 8, 0.95);
+      z-index: 1000000 !important;
       display: flex;
-      flex-direction: column;
       justify-content: center;
       align-items: center;
-      z-index: 99999;
-      opacity: 1;
-      transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+      backdrop-filter: blur(8px);
     }
 
-    .splash-logo-container {
-      position: relative;
-      width: 150px;
-      height: 150px;
-      animation: logoPulse 2s infinite ease-in-out;
-    }
-
-    .splash-logo {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      filter: drop-shadow(0 0 25px rgba(184, 20, 50, 0.8));
-    }
-
-    .glitch-title {
-      position: relative;
-      color: #ffffff;
-      font-family: monospace, sans-serif;
-      font-weight: 900;
-      letter-spacing: 4px;
-      margin-top: 24px;
-      font-size: 1.15rem;
-      text-align: center;
-      text-transform: uppercase;
-    }
-
-    .glitch-title span {
-      color: #b81432;
-    }
-
-    .glitch-title::before,
-    .glitch-title::after {
-      content: attr(data-text);
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: #040508;
-    }
-
-    .glitch-title::before {
-      left: 2px;
-      text-shadow: -2px 0 #ff0033;
-      clip: rect(24px, 550px, 90px, 0);
-      animation: glitch-anim-1 2s infinite linear alternate-reverse;
-    }
-
-    .glitch-title::after {
-      left: -2px;
-      text-shadow: -2px 0 #00ffff;
-      clip: rect(85px, 550px, 140px, 0);
-      animation: glitch-anim-2 2.5s infinite linear alternate-reverse;
-    }
-
-    /* Efek Buyar Pecah (Brutal Outro) KHUSUS untuk Teks Title */
-    .glitch-title.glitch-outro {
-      animation: brutalTextScatter 0.4s cubic-bezier(0.11, 0, 0.5, 1) forwards !important;
-    }
-    .glitch-title.glitch-outro::before {
-      animation: glitch-anim-1 0.04s infinite linear !important;
-    }
-    .glitch-title.glitch-outro::after {
-      animation: glitch-anim-2 0.04s infinite linear !important;
-    }
-
-    .loading-track {
-      width: 200px;
-      height: 4px;
-      background: #121824;
-      margin-top: 20px;
-      border-radius: 2px;
-      overflow: hidden;
+    .login-box {
+      background: #0f172a;
       border: 1px solid #1e293b;
+      padding: 30px 25px;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 340px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+      text-align: center;
+      color: #fff;
     }
 
-    #loading-bar {
-      width: 0%;
-      height: 100%;
-      background: linear-gradient(90deg, #b81432, #ff2b54);
-      transition: width 1.0s cubic-bezier(0.1, 0.9, 0.2, 1);
-    }
-
-    .loading-status {
-      color: #64748b;
+    .login-box h3 {
+      margin-bottom: 8px;
+      font-size: 15px;
+      color: #38bdf8;
+      letter-spacing: 1.5px;
       font-family: monospace;
-      font-size: 0.7rem;
-      margin-top: 12px;
-      letter-spacing: 3px;
     }
 
-    @keyframes logoPulse {
-      0% { transform: scale(0.96); opacity: 0.85; }
-      50% { transform: scale(1.04); opacity: 1; filter: drop-shadow(0 0 35px rgba(184, 20, 50, 0.95)); }
-      100% { transform: scale(0.96); opacity: 0.85; }
+    .login-box p {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-bottom: 18px;
+      line-height: 1.4;
     }
 
-    @keyframes brutalTextScatter {
-      0% { transform: scale(1) translate(0, 0); filter: blur(0px); opacity: 1; clip-path: inset(0 0 0 0); }
-      25% { transform: scale(1.05) translate(8px, -5px) skew(30deg); color: #ff0033; clip-path: inset(30% 0 20% 0); letter-spacing: 8px; }
-      50% { transform: scale(0.95) translate(-12px, 8px) skew(-45deg); color: #00ffff; clip-path: inset(0 40% 40% 0); letter-spacing: 2px; filter: blur(2px); }
-      75% { transform: scale(1.1) translate(20px, -15px) skew(60deg); color: #ffff00; clip-path: inset(60% 0 10% 30%); letter-spacing: 20px; filter: blur(5px); opacity: 0.6; }
-      100% { transform: scale(0.5) translate(-30px, 30px) skew(-90deg); filter: blur(12px); opacity: 0; letter-spacing: 40px; clip-path: inset(50% 50% 50% 50%); }
+    .login-box input {
+      width: 100%;
+      padding: 12px;
+      box-sizing: border-box;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #fff;
+      border-radius: 6px;
+      font-size: 14px;
+      text-align: center;
+      margin-bottom: 12px;
+      outline: none;
+      transition: border-color 0.2s;
     }
 
-    @keyframes glitch-anim-1 {
-      0% { clip: rect(15px, 9999px, 40px, 0); }
-      20% { clip: rect(60px, 9999px, 85px, 0); }
-      40% { clip: rect(10px, 9999px, 55px, 0); }
-      60% { clip: rect(75px, 9999px, 95px, 0); }
-      80% { clip: rect(30px, 9999px, 65px, 0); }
-      100% { clip: rect(50px, 9999px, 80px, 0); }
+    .login-box input:focus {
+      border-color: #38bdf8;
     }
 
-    @keyframes glitch-anim-2 {
-      0% { clip: rect(50px, 9999px, 80px, 0); }
-      20% { clip: rect(20px, 9999px, 60px, 0); }
-      40% { clip: rect(70px, 9999px, 90px, 0); }
-      60% { clip: rect(5px, 9999px, 35px, 0); }
-      80% { clip: rect(90px, 9999px, 110px, 0); }
-      100% { clip: rect(40px, 9999px, 70px, 0); }
+    .login-box button {
+      width: 100%;
+      padding: 12px;
+      background: #b81432;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 13px;
+      letter-spacing: 0.5px;
+      transition: background 0.2s;
     }
 
-    /* ========================================== */
-    /* HEADER KUNCI: DEEP NAVY SOLID              */
-    /* ========================================== */
-    .app-header {
-      background-color: #0f172a !important;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+    .login-box button:hover {
+      background: #dc2626;
     }
 
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .header-logo-img {
-      height: 38px;
-      width: 38px;
-      object-fit: contain;
-      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+    #loginErrorMsg {
+      font-size: 11px;
+      margin-top: 10px;
+      min-height: 14px;
     }
   </style>
 </head>
 <body>
 
   <!-- ========================================== -->
-  <!-- MODAL LOGIN WHITELIST (PERMANEN DI HTML)   -->
+  <!-- MODAL LOGIN WHITELIST                      -->
   <!-- ========================================== -->
-  <div id="whitelistModal" style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:99999; display:flex; justify-content:center; align-items:center;">
-    <div style="background:#1e1e1e; padding:25px; border-radius:8px; width:320px; box-shadow:0 4px 15px rgba(0,0,0,0.5); text-align:center; color:#fff; font-family:sans-serif;">
-      <h3 style="margin-bottom:10px; font-size:16px; color:#4da6ff;">OPERATION OVERWATCH</h3>
-      <p style="font-size:12px; color:#bbb; margin-bottom:20px;">Masukkan Nomor NRP Terdaftar untuk Mengakses Sistem WebGIS</p>
-      <input type="number" id="inputNrpLogin" placeholder="Contoh: 80005908" style="width:100%; padding:10px; box-sizing:border-box; background:#2d2d2d; border:1px solid #444; color:#fff; border-radius:4px; font-size:14px; text-align:center; margin-bottom:12px;" />
-      <button onclick="prosesLoginWebGIS()" style="width:100%; padding:10px; background:#0078d4; color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer; font-size:13px;">VERIFIKASI NRP</button>
-      <p id="loginErrorMsg" style="color:#ff4d4d; font-size:11px; margin-top:10px;"></p>
+  <div id="whitelistModal">
+    <div class="login-box">
+      <h3>OPERATION OVERWATCH</h3>
+      <p>Masukkan Nomor NRP Terdaftar untuk Mengakses Sistem WebGIS</p>
+      <input type="number" id="inputNrpLogin" placeholder="Contoh: 80005908" />
+      <button type="button" onclick="prosesLoginWebGIS()">VERIFIKASI NRP</button>
+      <p id="loginErrorMsg"></p>
     </div>
   </div>
 
   <!-- ========================================== -->
-  <!-- 1. INTRO SPLASH SCREEN (3.8 DETIK)         -->
+  <!-- 1. INTRO SPLASH SCREEN                     -->
   <!-- ========================================== -->
-  <div id="intro-splash">
+  <div id="intro-splash" style="display: none;">
     <div class="splash-logo-container">
       <img src="data/logo_overwatch.png" alt="Operation Overwatch" class="splash-logo">
     </div>
@@ -270,42 +190,7 @@
     </div>
   </div>
 
-  <!-- ========================================== -->
-  <!-- 5. SCRIPT KONTROL ANIMASI INTRO (3.8 DETIK) -->
-  <!-- ========================================== -->
-  <script>
-    window.addEventListener('load', () => {
-      const bar = document.getElementById('loading-bar');
-      const splash = document.getElementById('intro-splash');
-      const statusText = document.getElementById('status-text');
-      const titleElement = document.querySelector('.glitch-title');
-
-      setTimeout(() => {
-        bar.style.width = '45%';
-        statusText.innerText = 'LOADING SPATIAL MESH...';
-      }, 700);
-
-      setTimeout(() => {
-        bar.style.width = '85%';
-        statusText.innerText = 'SYNCHRONIZING TELEMETRY...';
-      }, 2000);
-
-      setTimeout(() => {
-        bar.style.width = '100%';
-        statusText.innerText = 'SYSTEM READY.';
-        if (titleElement) titleElement.classList.add('glitch-outro');
-      }, 3100);
-
-      setTimeout(() => {
-        splash.style.opacity = '0';
-        setTimeout(() => {
-          splash.style.display = 'none';
-        }, 700);
-      }, 3800);
-    });
-  </script>
-
-  <!-- Script utama lu -->
+  <!-- Pastikan mengarah ke file JS lu (app.js / script.js) -->
   <script src="script.js"></script>
 </body>
 </html>
