@@ -151,11 +151,10 @@ function drawLongSectionChart(dataSubset) {
   const roadFullData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
   const allElevations = roadFullData.map(d => parseFloat(d["Elevasi As (m)"])).filter(v => !isNaN(v));
   
-  const step = userYInterval || 5; // Default kelipatan 5 jika auto
+  const step = userYInterval || 5; 
   const rawMin = Math.min(...allElevations);
   const rawMax = Math.max(...allElevations);
 
-  // Paksa min & max pas kelipatan step (misal step 5 jadi pas 85 dan 105)
   const globalYMin = Math.floor(rawMin / step) * step;
   const globalYMax = Math.ceil(rawMax / step) * step;
 
@@ -244,7 +243,7 @@ function drawLongSectionChart(dataSubset) {
   });
 }
 
-// 9. Grafik Cross Section 3 Titik (As Ditengah, Vertikal ±2m, Step 0.5m)
+// 9. Grafik Cross Section 3 Titik
 function drawCrossSectionChart(staTarget) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -448,17 +447,44 @@ function locateUser() {
   );
 }
 
-// 11. Toggle Show/Hide Panel Bawah (Minimize / Maximize)
+// 11. Toggle Show/Hide Panel Bawah (Tap & Swipe Support)
 document.addEventListener("DOMContentLoaded", () => {
   const bottomPanel = document.getElementById('bottom-panel');
-  const dragHandle = document.querySelector('.drag-handle');
+  const panelHeader = document.querySelector('.panel-header');
 
-  if (bottomPanel && dragHandle) {
-    dragHandle.style.cursor = 'pointer';
-    dragHandle.title = 'Klik untuk Minimize/Maximize Panel';
-    
-    dragHandle.addEventListener('click', () => {
+  if (bottomPanel && panelHeader) {
+    let startY = 0;
+    let currentY = 0;
+    let isDragging = false;
+
+    // Tap biasa
+    panelHeader.addEventListener('click', () => {
       bottomPanel.classList.toggle('minimized');
+    });
+
+    // Sentuh / Swipe
+    panelHeader.addEventListener('touchstart', (e) => {
+      startY = e.touches[0].clientY;
+      isDragging = true;
+    }, { passive: true });
+
+    panelHeader.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      currentY = e.touches[0].clientY;
+    }, { passive: true });
+
+    panelHeader.addEventListener('touchend', () => {
+      if (!isDragging) return;
+      isDragging = false;
+      
+      const diffY = currentY - startY;
+      const threshold = 30; // Jarak minimal swipe
+
+      if (diffY > threshold) {
+        bottomPanel.classList.add('minimized'); // Swipe ke bawah (Hide)
+      } else if (diffY < -threshold) {
+        bottomPanel.classList.remove('minimized'); // Swipe ke atas (Show)
+      }
     });
   }
 });
