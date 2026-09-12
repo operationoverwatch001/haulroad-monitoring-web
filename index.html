@@ -101,7 +101,7 @@
       font-family: monospace;
     }
 
-    /* INTRO SPLASH SCREEN (DISEMBUNYIKAN DULU, JALAN SETELAH LOGIN SUKSES) */
+    /* INTRO SPLASH DISEMBUNYIKAN AWAL */
     #intro-splash {
       display: none;
     }
@@ -109,7 +109,7 @@
 </head>
 <body>
 
-  <!-- 1. MODAL LOGIN WHITELIST (GERBANG UTAMA) -->
+  <!-- 1. MODAL LOGIN WHITELIST -->
   <div id="whitelistModal">
     <div class="login-box">
       <h3>OPERATION OVERWATCH</h3>
@@ -120,7 +120,7 @@
     </div>
   </div>
 
-  <!-- 2. INTRO SPLASH SCREEN (ANIMASI LOADING JALAN SETELAH VERIFIKASI) -->
+  <!-- 2. INTRO SPLASH SCREEN -->
   <div id="intro-splash">
     <div class="splash-logo-container">
       <img src="data/logo_overwatch.png" alt="Operation Overwatch" class="splash-logo">
@@ -182,7 +182,6 @@
   </div>
 
   <script>
-    // Dukungan tekan Enter di form input login
     document.addEventListener('DOMContentLoaded', () => {
       const input = document.getElementById('inputNrpLogin');
       if (input) {
