@@ -1,30 +1,11 @@
 // ==========================================
-// KONFIGURASI BACKEND GOOGLE SHEETS (WHITELIST & LOG)
+// KONFIGURASI BACKEND GOOGLE SHEETS (LOG & WHITELIST)
 // ==========================================
-const https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec = "MASUKKAN_URL_DEPLOYMENT_APPS_SCRIPT_LU_DISINI";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec";
 let currentNRP = "";
 let currentNamaUser = "";
 
-// 0. CEK OTORISASI WHITELIST SAAT PERTAMA KALI HALAMAN DIBUKA
-document.addEventListener("DOMContentLoaded", () => {
-  buatModalLogin();
-});
-
-function buatModalLogin() {
-  const modalHtml = `
-    <div id="whitelistModal" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:99999; display:flex; justify-content:center; align-items:center;">
-      <div style="background:#1e1e1e; padding:25px; border-radius:8px; width:320px; box-shadow:0 4px 15px rgba(0,0,0,0.5); text-align:center; color:#fff; font-family:sans-serif;">
-        <h3 style="margin-bottom:10px; font-size:16px; color:#4da6ff;">OPERATION OVERWATCH</h3>
-        <p style="font-size:12px; color:#bbb; margin-bottom:20px;">Masukkan Nomor NRP Terdaftar untuk Mengakses Sistem WebGIS</p>
-        <input type="number" id="inputNrpLogin" placeholder="Contoh: 80005908" style="width:100%; padding:10px; box-sizing:border-box; background:#2d2d2d; border:1px solid #444; color:#fff; border-radius:4px; font-size:14px; text-align:center; margin-bottom:12px;" />
-        <button onclick="prosesLoginWebGIS()" style="width:100%; padding:10px; background:#0078d4; color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer; font-size:13px;">VERIFIKASI NRP</button>
-        <p id="loginErrorMsg" style="color:#ff4d4d; font-size:11px; margin-top:10px;"></p>
-      </div>
-    </div>
-  `;
-  document.body.insertAdjacentHTML('beforeend', modalHtml);
-}
-
+// Fungsi verifikasi NRP yang dipanggil dari tombol HTML nanti
 async function prosesLoginWebGIS() {
   const nrpVal = document.getElementById('inputNrpLogin').value.trim();
   const errorMsg = document.getElementById('loginErrorMsg');
@@ -37,7 +18,7 @@ async function prosesLoginWebGIS() {
   errorMsg.innerText = "Memverifikasi whitelist server...";
 
   try {
-    const response = await fetch(https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec, {
+    const response = await fetch(WEB_APP_URL, {
       method: "POST",
       body: JSON.stringify({
         action: "LOGIN",
@@ -50,7 +31,10 @@ async function prosesLoginWebGIS() {
       currentNRP = nrpVal;
       currentNamaUser = result.nama;
       
-      document.getElementById('whitelistModal').remove();
+      // Hapus modal login dari HTML
+      const modal = document.getElementById('whitelistModal');
+      if (modal) modal.remove();
+      
       loadExcelData();
     } else {
       errorMsg.innerText = result.pesan || "Akses ditolak!";
@@ -63,7 +47,7 @@ async function prosesLoginWebGIS() {
 
 function catatLogKeServer(kegiatan, detailAktivitas) {
   if (!currentNRP) return;
-  fetch(https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec, {
+  fetch(WEB_APP_URL, {
     method: "POST",
     body: JSON.stringify({
       action: "LOG_AKTIVITAS",
