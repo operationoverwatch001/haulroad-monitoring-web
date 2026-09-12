@@ -5,7 +5,7 @@ const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5Lz
 let currentNRP = "";
 let currentNamaUser = "";
 
-// Fungsi verifikasi NRP via GET (Anti-CORS Google Apps Script)
+// Fungsi verifikasi login NRP
 async function prosesLoginWebGIS() {
   const inputEl = document.getElementById('inputNrpLogin');
   const errorMsg = document.getElementById('loginErrorMsg');
@@ -16,7 +16,10 @@ async function prosesLoginWebGIS() {
     return;
   }
 
-  if (errorMsg) errorMsg.innerText = "Memverifikasi whitelist server...";
+  if (errorMsg) {
+    errorMsg.style.color = "#4da6ff";
+    errorMsg.innerText = "Memverifikasi whitelist server...";
+  }
 
   try {
     const targetUrl = `${WEB_APP_URL}?action=LOGIN&nrp=${encodeURIComponent(nrpVal)}`;
@@ -27,22 +30,41 @@ async function prosesLoginWebGIS() {
       currentNRP = nrpVal;
       currentNamaUser = result.nama;
 
-      // Hapus modal login dari DOM
+      // 1. Singkirkan modal whitelist
       const modal = document.getElementById('whitelistModal');
       if (modal) modal.remove();
 
-      // Lanjut muat data Overwatch.xlsx
+      // 2. Paksa tutup splash intro
+      const splash = document.getElementById('intro-splash');
+      if (splash) {
+        splash.style.opacity = '0';
+        setTimeout(() => { splash.style.display = 'none'; }, 300);
+      }
+
+      // 3. Refresh ukuran peta Leaflet biar gak stuck hitam/abu-abu
+      setTimeout(() => {
+        if (map) map.invalidateSize();
+      }, 300);
+
+      // 4. Muat dataset peta dan grafik
       loadExcelData();
+
     } else {
-      if (errorMsg) errorMsg.innerText = result.pesan || "Akses ditolak!";
+      if (errorMsg) {
+        errorMsg.style.color = "#ff4d4d";
+        errorMsg.innerText = result.pesan || "Akses ditolak!";
+      }
     }
   } catch (err) {
     console.error("Login Error:", err);
-    if (errorMsg) errorMsg.innerText = "Gagal terhubung ke database server (Cek koneksi/CORS)!";
+    if (errorMsg) {
+      errorMsg.style.color = "#ff4d4d";
+      errorMsg.innerText = "Gagal terhubung ke database server!";
+    }
   }
 }
 
-// Fungsi log aktivitas user (Non-blocking beacon)
+// Fungsi kirim jejak aktivitas user
 function catatLogKeServer(kegiatan, detailAktivitas) {
   if (!currentNRP) return;
   const targetUrl = `${WEB_APP_URL}?action=LOG_AKTIVITAS&nrp=${encodeURIComponent(currentNRP)}&kegiatan=${encodeURIComponent(kegiatan)}&detail=${encodeURIComponent(detailAktivitas)}`;
@@ -59,12 +81,12 @@ let crossSectionData = [];
 let roadNames = [];
 let activeRoad = "";
 let chartInstance = null;
-let userYInterval = undefined; // Default auto untuk step elevasi sumbu Y
+let userYInterval = undefined;
 
 // Daftarkan plugin Datalabels global untuk Chart.js
 Chart.register(ChartDataLabels);
 
-// 1. Inisialisasi Peta Leaflet (Basemap Satelit Esri) - Koordinat pit tambang
+// 1. Inisialisasi Peta Leaflet (Basemap Satelit Esri)
 const map = L.map('map', { zoomControl: false }).setView([-2.169338, 115.572115], 15);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
@@ -83,6 +105,7 @@ function hideIntro() {
 
   setTimeout(() => {
     if (intro) intro.style.display = 'none';
+    if (map) map.invalidateSize();
   }, 1200);
 }
 
