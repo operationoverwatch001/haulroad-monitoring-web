@@ -4,6 +4,7 @@ let crossSectionData = [];
 let roadNames = [];
 let activeRoad = "";
 let chartInstance = null;
+let userYInterval = undefined; // Default auto untuk step elevasi sumbu Y
 
 // Daftarkan plugin Datalabels global untuk Chart.js
 Chart.register(ChartDataLabels);
@@ -73,7 +74,14 @@ function changeRoad(roadName) {
   renderTabContent();
 }
 
-// 6. Render Panel Bawah Sesuai Tab
+// 6. Ubah Kustomisasi Interval Elevasi Sumbu Y
+function changeYInterval(val) {
+  userYInterval = val === 'auto' ? undefined : parseFloat(val);
+  const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
+  drawLongSectionChart(roadData);
+}
+
+// 7. Render Panel Bawah Sesuai Tab
 function renderTabContent() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
@@ -91,8 +99,15 @@ function renderTabContent() {
     panelBody.innerHTML = `
       <div style="font-size:11px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
         <span style="color:#555;">Kuning: <b>Warning (>8%)</b> | Merah: <b>Overgrade (>10%)</b></span>
-        <div style="display:flex; gap:6px; align-items:center;">
-          <button onclick="openPdfModal()" style="background:#1f4e79; color:#fff; border:none; padding:2px 8px; border-radius:3px; font-size:10px; cursor:pointer; font-weight:bold;">📥 Export PDF</button>
+        <div style="display:flex; gap:4px; align-items:center;">
+          <select id="yIntervalSelect" onchange="changeYInterval(this.value)" style="font-size:10px; padding:2px; border-radius:3px;">
+            <option value="auto" ${userYInterval === undefined ? 'selected' : ''}>Interval: Auto</option>
+            <option value="1" ${userYInterval === 1 ? 'selected' : ''}>Step: 1m</option>
+            <option value="2" ${userYInterval === 2 ? 'selected' : ''}>Step: 2m</option>
+            <option value="5" ${userYInterval === 5 ? 'selected' : ''}>Step: 5m</option>
+            <option value="10" ${userYInterval === 10 ? 'selected' : ''}>Step: 10m</option>
+          </select>
+          <button onclick="openPdfModal()" style="background:#1f4e79; color:#fff; border:none; padding:2px 6px; border-radius:3px; font-size:10px; cursor:pointer; font-weight:bold;">📥 PDF</button>
           <span style="font-size:11px; color:#1f4e79;"><b>${roadData.length} STA</b></span>
         </div>
       </div>
@@ -127,11 +142,17 @@ function renderTabContent() {
   }
 }
 
-// 7. Grafik Profil Memanjang (Grade Longitudinal Positif di Atas Garis)
-function drawLongSectionChart(dataSubset) {
+// 8. Grafik Profil Memanjang (Skala Elevasi Dikunci Global)
+function drawLongSectionChart(dataSubset, customYMin = null, customYMax = null) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
   if (chartInstance) chartInstance.destroy();
+
+  const roadFullData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
+  const allElevations = roadFullData.map(d => parseFloat(d["Elevasi As (m)"])).filter(v => !isNaN(v));
+  
+  const globalYMin = customYMin !== null ? customYMin : Math.floor(Math.min(...allElevations) / 1) * 1;
+  const globalYMax = customYMax !== null ? customYMax : Math.ceil(Math.max(...allElevations) / 1) * 1;
 
   const pointColors = dataSubset.map(d => {
     const status = d["Status Grade"];
@@ -205,15 +226,20 @@ function drawLongSectionChart(dataSubset) {
           grid: { display: false }
         },
         y: {
-          title: { display: true, text: 'Elevasi (m RL)', font: { size: 10 } },
-          ticks: { font: { size: 9 } }
+          min: globalYMin,
+          max: globalYMax,
+          ticks: { 
+            stepSize: userYInterval,
+            font: { size: 9 } 
+          },
+          title: { display: true, text: 'Elevasi (m RL)', font: { size: 10 } }
         }
       }
     }
   });
 }
 
-// 8. Grafik Cross Section 3 Titik (As Ditengah, Vertikal ±2m, Step 0.5m)
+// 9. Grafik Cross Section 3 Titik (As Ditengah, Vertikal ±2m, Step 0.5m)
 function drawCrossSectionChart(staTarget) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -344,7 +370,7 @@ function drawCrossSectionChart(staTarget) {
   });
 }
 
-// 9. Real-time Live GPS Tracking
+// 10. Real-time Live GPS Tracking
 let userMarker = null;
 let userAccuracyCircle = null;
 let isTracking = false;
@@ -417,7 +443,7 @@ function locateUser() {
   );
 }
 
-// 10. Toggle Show/Hide Panel Bawah (Minimize / Maximize)
+// 11. Toggle Show/Hide Panel Bawah (Minimize / Maximize)
 document.addEventListener("DOMContentLoaded", () => {
   const bottomPanel = document.getElementById('bottom-panel');
   const dragHandle = document.querySelector('.drag-handle');
@@ -462,12 +488,17 @@ async function executeExportPDF() {
 
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
 
+  // Hitung batas min & max global agar konsisten di PDF
+  const allElevations = roadData.map(d => parseFloat(d["Elevasi As (m)"])).filter(v => !isNaN(v));
+  const globalYMin = Math.floor(Math.min(...allElevations) / 1) * 1;
+  const globalYMax = Math.ceil(Math.max(...allElevations) / 1) * 1;
+
   if (selectedOpt === 'single') {
     const originalWidth = chartContainer.style.width;
     const totalLabels = chartInstance.data.labels.length;
     
     chartContainer.style.width = `${Math.max(totalLabels * 45, 1400)}px`;
-    chartInstance.resize();
+    drawLongSectionChart(roadData, globalYMin, globalYMax);
 
     setTimeout(async () => {
       try {
@@ -489,7 +520,7 @@ async function executeExportPDF() {
         alert("Gagal mengexport PDF.");
       } finally {
         chartContainer.style.width = originalWidth;
-        chartInstance.resize();
+        drawLongSectionChart(roadData);
       }
     }, 400);
 
@@ -502,13 +533,24 @@ async function executeExportPDF() {
 
     const originalWidth = chartContainer.style.width;
     chartContainer.style.width = `1100px`;
-    chartInstance.resize();
 
     try {
       for (let i = 0; i < originalLabels.length; i += chunkSize) {
-        chartInstance.data.labels = originalLabels.slice(i, i + chunkSize);
+        const chunkLabels = originalLabels.slice(i, i + chunkSize);
+        const chunkDatasets = originalDatasets.map(d => d.slice(i, i + chunkSize));
+        
+        // Render chart dengan subset data tapi sumbu Y dikunci global
+        chartInstance.data.labels = chunkLabels;
         chartInstance.data.datasets.forEach((dataset, idx) => {
-          dataset.data = originalDatasets[idx].slice(i, i + chunkSize);
+          dataset.data = chunkDatasets[idx];
+        });
+        
+        // Panggil render ulang dengan skala Y global terkunci
+        drawLongSectionChart({ map: () => {} }, globalYMin, globalYMax); 
+        // Set ulang datanya karena helper di atas mereset
+        chartInstance.data.labels = chunkLabels;
+        chartInstance.data.datasets.forEach((dataset, idx) => {
+          dataset.data = chunkDatasets[idx];
         });
         chartInstance.update();
 
@@ -534,12 +576,8 @@ async function executeExportPDF() {
       console.error(err);
       alert("Gagal melakukan proses multi-page PDF.");
     } finally {
-      chartInstance.data.labels = originalLabels;
-      chartInstance.data.datasets.forEach((dataset, idx) => {
-        dataset.data = originalDatasets[idx];
-      });
       chartContainer.style.width = originalWidth;
-      chartInstance.update();
+      drawLongSectionChart(roadData);
     }
   }
 }
