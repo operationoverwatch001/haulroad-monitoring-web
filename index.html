@@ -24,9 +24,9 @@
       left: 0;
       width: 100vw;
       height: 100vh;
-      background: rgba(4, 5, 8, 0.92);
-      z-index: 100000;
-      display: none; /* Muncul hanya setelah intro selesai */
+      background: rgba(4, 5, 8, 0.94);
+      z-index: 1000000;
+      display: none; /* Muncul otomatis setelah animasi intro splash selesai */
       justify-content: center;
       align-items: center;
       backdrop-filter: blur(8px);
@@ -35,10 +35,10 @@
     .login-box {
       background: #0f172a;
       border: 1px solid #1e293b;
-      padding: 30px 25px;
+      padding: 30px 24px;
       border-radius: 12px;
       width: 90%;
-      max-width: 340px;
+      max-width: 330px;
       box-shadow: 0 10px 30px rgba(0,0,0,0.8);
       text-align: center;
       color: #fff;
@@ -100,13 +100,14 @@
       font-size: 11px;
       margin-top: 10px;
       min-height: 14px;
+      font-family: monospace;
     }
   </style>
 </head>
 <body>
 
   <!-- ========================================== -->
-  <!-- 1. INTRO SPLASH SCREEN (TAMPIL PERTAMA)    -->
+  <!-- 1. INTRO SPLASH SCREEN (JALAN DI AWAL)     -->
   <!-- ========================================== -->
   <div id="intro-splash">
     <div class="splash-logo-container">
@@ -191,7 +192,7 @@
   </div>
 
   <!-- ========================================== -->
-  <!-- 7. SCRIPT ANIMASI INTRO -> MUNCULKAN LOGIN -->
+  <!-- 7. KONTROL TIMELINE ANIMASI INTRO          -->
   <!-- ========================================== -->
   <script>
     window.addEventListener('load', () => {
@@ -217,7 +218,7 @@
         if (titleElement) titleElement.classList.add('glitch-outro');
       }, 3100);
 
-      // Selesai animasi (3,8 detik): hilangkan splash dan buka modal login
+      // Setelah 3,8 detik: splash ditutup, munculkan modal login
       setTimeout(() => {
         if (splash) {
           splash.style.opacity = '0';
@@ -230,7 +231,7 @@
     });
   </script>
 
-  <!-- Script utama JavaScript -->
+  <!-- Script logic WebGIS -->
   <script src="script.js"></script>
 </body>
 </html>
