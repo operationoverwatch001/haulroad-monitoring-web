@@ -10,6 +10,7 @@ body, html {
   height: 100%;
   overflow: hidden;
   background: #1e1e1e;
+  position: relative;
 }
 
 /* ========================================== */
@@ -22,13 +23,13 @@ body, html {
   width: 100vw;
   height: 100vh;
   background: #040508;
-  display: flex;
+  display: none;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   z-index: 99999;
   opacity: 1;
-  transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
 }
 
 .splash-logo-container {
@@ -207,10 +208,14 @@ body, html {
   border-color: #ffc000;
 }
 
-/* Map */
+/* Map (Wajib Absolute & Mengisi Penuh) */
 #map {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
 }
 
 /* GPS Button */
@@ -229,7 +234,7 @@ body, html {
   cursor: pointer;
 }
 
-/* Bottom Sheet & Panel (Jempol-Friendly Toggle Button & Swipe Area) */
+/* Bottom Sheet & Panel */
 .bottom-panel {
   position: absolute;
   bottom: 0;
