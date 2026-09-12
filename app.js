@@ -1,26 +1,103 @@
+// ==========================================
+// KONFIGURASI BACKEND GOOGLE SHEETS (WHITELIST & LOG)
+// ==========================================
+const https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec = "MASUKKAN_URL_DEPLOYMENT_APPS_SCRIPT_LU_DISINI";
+let currentNRP = "";
+let currentNamaUser = "";
+
+// 0. CEK OTORISASI WHITELIST SAAT PERTAMA KALI HALAMAN DIBUKA
+document.addEventListener("DOMContentLoaded", () => {
+  buatModalLogin();
+});
+
+function buatModalLogin() {
+  const modalHtml = `
+    <div id="whitelistModal" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:99999; display:flex; justify-content:center; align-items:center;">
+      <div style="background:#1e1e1e; padding:25px; border-radius:8px; width:320px; box-shadow:0 4px 15px rgba(0,0,0,0.5); text-align:center; color:#fff; font-family:sans-serif;">
+        <h3 style="margin-bottom:10px; font-size:16px; color:#4da6ff;">OPERATION OVERWATCH</h3>
+        <p style="font-size:12px; color:#bbb; margin-bottom:20px;">Masukkan Nomor NRP Terdaftar untuk Mengakses Sistem WebGIS</p>
+        <input type="number" id="inputNrpLogin" placeholder="Contoh: 80005908" style="width:100%; padding:10px; box-sizing:border-box; background:#2d2d2d; border:1px solid #444; color:#fff; border-radius:4px; font-size:14px; text-align:center; margin-bottom:12px;" />
+        <button onclick="prosesLoginWebGIS()" style="width:100%; padding:10px; background:#0078d4; color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer; font-size:13px;">VERIFIKASI NRP</button>
+        <p id="loginErrorMsg" style="color:#ff4d4d; font-size:11px; margin-top:10px;"></p>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+async function prosesLoginWebGIS() {
+  const nrpVal = document.getElementById('inputNrpLogin').value.trim();
+  const errorMsg = document.getElementById('loginErrorMsg');
+
+  if (!nrpVal) {
+    errorMsg.innerText = "NRP tidak boleh kosong!";
+    return;
+  }
+
+  errorMsg.innerText = "Memverifikasi whitelist server...";
+
+  try {
+    const response = await fetch(https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec, {
+      method: "POST",
+      body: JSON.stringify({
+        action: "LOGIN",
+        nrp: nrpVal
+      })
+    });
+    const result = await response.json();
+
+    if (result.status === "success") {
+      currentNRP = nrpVal;
+      currentNamaUser = result.nama;
+      
+      document.getElementById('whitelistModal').remove();
+      loadExcelData();
+    } else {
+      errorMsg.innerText = result.pesan || "Akses ditolak!";
+    }
+  } catch (err) {
+    console.error(err);
+    errorMsg.innerText = "Gagal terhubung ke database server!";
+  }
+}
+
+function catatLogKeServer(kegiatan, detailAktivitas) {
+  if (!currentNRP) return;
+  fetch(https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec, {
+    method: "POST",
+    body: JSON.stringify({
+      action: "LOG_AKTIVITAS",
+      nrp: currentNRP,
+      kegiatan: kegiatan,
+      detail: detailAktivitas
+    })
+  }).catch(err => console.error("Log error:", err));
+}
+
+
+// ==========================================
+// KODE UTAMA WEBGIS (ELEVASI, TAB, PETA, DLL)
+// ==========================================
 let currentTab = 'grade';
 let monitoringData = [];
 let crossSectionData = [];
 let roadNames = [];
 let activeRoad = "";
 let chartInstance = null;
-let userYInterval = undefined; // Default auto untuk step elevasi sumbu Y
+let userYInterval = undefined;
 
-// Daftarkan plugin Datalabels global untuk Chart.js
 Chart.register(ChartDataLabels);
 
-// 1. Inisialisasi Peta Leaflet (Basemap Satelit Esri) - Koordinat dipindah ke pit tambang
 const map = L.map('map', { zoomControl: false }).setView([-2.169338, 115.572115], 15);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
   attribution: 'Tiles &copy; Esri'
 }).addTo(map);
 
-// 2. Pengatur Animasi Intro Splash Screen
 function hideIntro() {
   const intro = document.getElementById('intro-overlay');
   const statusText = document.getElementById('intro-status-text');
-  if (statusText) statusText.innerText = "TELEMETRY CONNECTED";
+  if (statusText) statusText.innerText = `WELCOME, ${currentNamaUser.toUpperCase()}`;
 
   setTimeout(() => {
     if (intro) intro.classList.add('fade-out');
@@ -31,7 +108,6 @@ function hideIntro() {
   }, 1200);
 }
 
-// 3. Load File Excel Overwatch.xlsx
 async function loadExcelData() {
   const statusText = document.getElementById('intro-status-text');
   try {
@@ -52,6 +128,8 @@ async function loadExcelData() {
     if (statusText) statusText.innerText = "SYNCHRONIZING MAP MATRIX...";
     setTimeout(hideIntro, 800);
 
+    catatLogKeServer("BUKA APLIKASI", `User ${currentNamaUser} (${currentNRP}) berhasil masuk Dashboard WebGIS.`);
+
   } catch (error) {
     if (statusText) statusText.innerText = "ERROR LOADING DATA";
     setTimeout(hideIntro, 1000);
@@ -60,28 +138,26 @@ async function loadExcelData() {
   }
 }
 
-// 4. Navigasi Tab
 function switchTab(tabName) {
   currentTab = tabName;
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
   event.target.classList.add('active');
   renderTabContent();
+  catatLogKeServer("PINDAH TAB", `Melihat tab fitur: ${tabName.toUpperCase()}`);
 }
 
-// 5. Ubah Pilihan Nama Jalan
 function changeRoad(roadName) {
   activeRoad = roadName;
   renderTabContent();
+  catatLogKeServer("GANTI JALAN", `Memilih ruas jalan: ${roadName}`);
 }
 
-// 6. Ubah Kustomisasi Interval Elevasi Sumbu Y
 function changeYInterval(val) {
   userYInterval = val === 'auto' ? undefined : parseFloat(val);
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
   drawLongSectionChart(roadData);
 }
 
-// 7. Render Panel Bawah Sesuai Tab
 function renderTabContent() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
@@ -132,7 +208,7 @@ function renderTabContent() {
     panelBody.innerHTML = `
       <div style="font-size:11px; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
         <span>Pilih STA:</span>
-        <select id="select-sta-cs" onchange="drawCrossSectionChart(this.value)" style="font-size:11px; padding:2px 6px;">
+        <select id="select-sta-cs" onchange="drawCrossSectionChart(this.value); catatLogKeServer('VIEW_STA', 'Melihat Cross Section ${activeRoad} STA ' + this.value);" style="font-size:11px; padding:2px 6px;">
           ${roadData.map(d => `<option value="${d['STA']}">${d['STA']}</option>`).join('')}
         </select>
       </div>
@@ -142,7 +218,6 @@ function renderTabContent() {
   }
 }
 
-// 8. Grafik Profil Memanjang (Skala Elevasi Dipatok Kelipatan Step Sempurna)
 function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -189,9 +264,7 @@ function drawLongSectionChart(dataSubset) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: {
-        padding: { top: 25 }
-      },
+      layout: { padding: { top: 25 } },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -225,17 +298,11 @@ function drawLongSectionChart(dataSubset) {
         }
       },
       scales: {
-        x: {
-          ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 },
-          grid: { display: false }
-        },
+        x: { ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 }, grid: { display: false } },
         y: {
           min: globalYMin,
           max: globalYMax,
-          ticks: { 
-            stepSize: userYInterval,
-            font: { size: 9 } 
-          },
+          ticks: { stepSize: userYInterval, font: { size: 9 } },
           title: { display: true, text: 'Elevasi (m RL)', font: { size: 10 } }
         }
       }
@@ -243,7 +310,6 @@ function drawLongSectionChart(dataSubset) {
   });
 }
 
-// 9. Grafik Cross Section 3 Titik
 function drawCrossSectionChart(staTarget) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -301,16 +367,10 @@ function drawCrossSectionChart(staTarget) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: {
-        padding: { top: 25, bottom: 5, left: 10, right: 10 }
-      },
+      layout: { padding: { top: 25, bottom: 5, left: 10, right: 10 } },
       plugins: {
         legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: (c) => ` ${scatterData[c.dataIndex].label} | RL: ${c.parsed.y.toFixed(2)}m`
-          }
-        },
+        tooltip: { callbacks: { label: (c) => ` ${scatterData[c.dataIndex].label} | RL: ${c.parsed.y.toFixed(2)}m` } },
         datalabels: {
           align: 'top',
           anchor: 'end',
@@ -318,14 +378,8 @@ function drawCrossSectionChart(staTarget) {
           font: { size: 10, weight: 'bold' },
           color: function(context) {
             const idx = context.dataIndex;
-            if (idx === 0) {
-              const val = parseFloat(cfL);
-              return (val < 2.0 || val > 4.0) ? '#c00000' : '#1f4e79';
-            }
-            if (idx === 2) {
-              const val = parseFloat(cfR);
-              return (val < 2.0 || val > 4.0) ? '#c00000' : '#1f4e79';
-            }
+            if (idx === 0) { const val = parseFloat(cfL); return (val < 2.0 || val > 4.0) ? '#c00000' : '#1f4e79'; }
+            if (idx === 2) { const val = parseFloat(cfR); return (val < 2.0 || val > 4.0) ? '#c00000' : '#1f4e79'; }
             return '#1f4e79';
           },
           formatter: function(value, context) {
@@ -339,42 +393,16 @@ function drawCrossSectionChart(staTarget) {
       },
       scales: {
         x: {
-          type: 'linear',
-          position: 'bottom',
-          min: -maxSpan,
-          max: maxSpan,
-          grid: {
-            color: (ctx) => (ctx.tick.value === 0 ? '#1f4e79' : '#e0e0e0'),
-            lineWidth: (ctx) => (ctx.tick.value === 0 ? 2 : 1)
-          },
-          ticks: {
-            font: { size: 9 },
-            callback: (val) => {
-              if (val === 0) return 'As Jalan (0m)';
-              return val < 0 ? `Kiri ${Math.abs(val)}m` : `Kanan +${val}m`;
-            }
-          }
+          type: 'linear', position: 'bottom', min: -maxSpan, max: maxSpan,
+          grid: { color: (ctx) => (ctx.tick.value === 0 ? '#1f4e79' : '#e0e0e0'), lineWidth: (ctx) => (ctx.tick.value === 0 ? 2 : 1) },
+          ticks: { font: { size: 9 }, callback: (val) => (val === 0 ? 'As Jalan (0m)' : val < 0 ? `Kiri ${Math.abs(val)}m` : `Kanan +${val}m`) }
         },
-        y: {
-          min: yMin,
-          max: yMax,
-          ticks: {
-            stepSize: 0.5,
-            font: { size: 9 },
-            callback: (val) => `${val.toFixed(2)}`
-          },
-          title: {
-            display: true,
-            text: 'Elevasi (m RL)',
-            font: { size: 10 }
-          }
-        }
+        y: { min: yMin, max: yMax, ticks: { stepSize: 0.5, font: { size: 9 }, callback: (val) => `${val.toFixed(2)}` }, title: { display: true, text: 'Elevasi (m RL)', font: { size: 10 } } }
       }
     }
   });
 }
 
-// 10. Real-time Live GPS Tracking
 let userMarker = null;
 let userAccuracyCircle = null;
 let isTracking = false;
@@ -382,27 +410,19 @@ let watchId = null;
 
 function locateUser() {
   const gpsBtn = document.querySelector('.gps-btn');
-
   if (isTracking) {
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     if (userMarker) map.removeLayer(userMarker);
     if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
-    userMarker = null;
-    userAccuracyCircle = null;
-    isTracking = false;
-    gpsBtn.style.background = '#ffffff';
-    gpsBtn.style.color = '#000000';
+    userMarker = null; userAccuracyCircle = null; isTracking = false;
+    gpsBtn.style.background = '#ffffff'; gpsBtn.style.color = '#000000';
     return;
   }
-
-  if (!navigator.geolocation) {
-    alert("Browser HP tidak mendukung fitur GPS.");
-    return;
-  }
+  if (!navigator.geolocation) { alert("Browser HP tidak mendukung fitur GPS."); return; }
 
   isTracking = true;
-  gpsBtn.style.background = '#0078d4';
-  gpsBtn.style.color = '#ffffff';
+  gpsBtn.style.background = '#0078d4'; gpsBtn.style.color = '#ffffff';
+  catatLogKeServer("GPS LIVE", "Menyalakan live tracking GPS di lapangan.");
 
   watchId = navigator.geolocation.watchPosition(
     (pos) => {
@@ -412,22 +432,8 @@ function locateUser() {
       const latlng = [lat, lng];
 
       if (!userMarker) {
-        userAccuracyCircle = L.circle(latlng, {
-          radius: accuracy,
-          color: '#0078d4',
-          fillColor: '#2b88d8',
-          fillOpacity: 0.15,
-          weight: 1
-        }).addTo(map);
-
-        userMarker = L.circleMarker(latlng, {
-          radius: 9,
-          color: '#ffffff',
-          fillColor: '#0078d4',
-          fillOpacity: 1,
-          weight: 3
-        }).addTo(map);
-
+        userAccuracyCircle = L.circle(latlng, { radius: accuracy, color: '#0078d4', fillColor: '#2b88d8', fillOpacity: 0.15, weight: 1 }).addTo(map);
+        userMarker = L.circleMarker(latlng, { radius: 9, color: '#ffffff', fillColor: '#0078d4', fillOpacity: 1, weight: 3 }).addTo(map);
         map.setView(latlng, 17);
       } else {
         userMarker.setLatLng(latlng);
@@ -436,73 +442,36 @@ function locateUser() {
         map.panTo(latlng);
       }
     },
-    (err) => {
-      console.warn(`GPS Error: ${err.message}`);
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 1000,
-      timeout: 10000
-    }
+    (err) => { console.warn(`GPS Error: ${err.message}`); },
+    { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
   );
 }
 
-// 11. Toggle Show/Hide Panel Bawah (Tap & Swipe Support + Fix Dropdown Conflict)
 document.addEventListener("DOMContentLoaded", () => {
   const bottomPanel = document.getElementById('bottom-panel');
   const panelHeader = document.querySelector('.panel-header');
-
   if (bottomPanel && panelHeader) {
-    let startY = 0;
-    let currentY = 0;
-    let isDragging = false;
-
-    // Tap biasa (Di-filter biar kalau klik select/button, panel gak ikut nutup)
+    let startY = 0, currentY = 0, isDragging = false;
     panelHeader.addEventListener('click', (e) => {
-      if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION' || e.target.tagName === 'BUTTON') {
-        return;
-      }
+      if (['SELECT', 'OPTION', 'BUTTON'].includes(e.target.tagName)) return;
       bottomPanel.classList.toggle('minimized');
     });
-
-    // Sentuh / Swipe
     panelHeader.addEventListener('touchstart', (e) => {
-      if (e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return;
-      startY = e.touches[0].clientY;
-      isDragging = true;
+      if (['SELECT', 'BUTTON'].includes(e.target.tagName)) return;
+      startY = e.touches[0].clientY; isDragging = true;
     }, { passive: true });
-
-    panelHeader.addEventListener('touchmove', (e) => {
-      if (!isDragging) return;
-      currentY = e.touches[0].clientY;
-    }, { passive: true });
-
+    panelHeader.addEventListener('touchmove', (e) => { if (!isDragging) return; currentY = e.touches[0].clientY; }, { passive: true });
     panelHeader.addEventListener('touchend', () => {
-      if (!isDragging) return;
-      isDragging = false;
-      
+      if (!isDragging) return; isDragging = false;
       const diffY = currentY - startY;
-      const threshold = 30; // Jarak minimal swipe
-
-      if (diffY > threshold) {
-        bottomPanel.classList.add('minimized'); // Swipe ke bawah (Hide)
-      } else if (diffY < -threshold) {
-        bottomPanel.classList.remove('minimized'); // Swipe ke atas (Show)
-      }
+      if (diffY > 30) bottomPanel.classList.add('minimized');
+      else if (diffY < -30) bottomPanel.classList.remove('minimized');
     });
   }
 });
 
-// ==========================================
-// MODAL & EXPORT PDF LOGIC
-// ==========================================
-function openPdfModal() {
-  document.getElementById('pdfModalOverlay').style.display = 'flex';
-}
-
-function closePdfModal() {
-  document.getElementById('pdfModalOverlay').style.display = 'none';
-}
+function openPdfModal() { document.getElementById('pdfModalOverlay').style.display = 'flex'; }
+function closePdfModal() { document.getElementById('pdfModalOverlay').style.display = 'none'; }
 
 async function executeExportPDF() {
   closePdfModal();
@@ -522,6 +491,7 @@ async function executeExportPDF() {
   }
 
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
+  catatLogKeServer("EXPORT PDF", `Mengekspor laporan PDF profil jalan ${activeRoad} (${selectedOpt}).`);
 
   if (selectedOpt === 'single') {
     const originalWidth = chartContainer.style.width;
@@ -609,6 +579,3 @@ async function executeExportPDF() {
     }
   }
 }
-
-// Eksekusi Muat Data
-loadExcelData();
