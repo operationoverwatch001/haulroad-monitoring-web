@@ -32,7 +32,7 @@
       position: relative;
     }
 
-    /* PETA LEAFLET */
+    /* PETA LEAFLET (HARUS MENGISI LAYER BELAKANG PENUH) */
     #map {
       position: absolute;
       top: 0;
@@ -45,20 +45,19 @@
       background: #040508;
     }
 
-    /* TOMBOL TOGEL BASEMAP SATELIT (MELAYANG DI POJOK KANAN ATAS) */
+    /* TOMBOL TOGGLE BASEMAP SATELIT (MELAYANG DI ATAS PETA) */
     #btnToggleBasemap {
       position: fixed;
-      top: 55px; /* Pas di bawah navbar header */
+      top: 60px;
       right: 15px;
-      z-index: 9999;
-      background: rgba(15, 23, 42, 0.9);
+      z-index: 10000;
+      background: rgba(15, 23, 42, 0.92);
       color: #38bdf8;
       border: 1px solid #1e293b;
       border-radius: 6px;
-      padding: 7px 12px;
+      padding: 8px 14px;
       font-size: 11px;
       font-weight: bold;
-      font-family: inherit;
       cursor: pointer;
       box-shadow: 0 4px 14px rgba(0,0,0,0.6);
       backdrop-filter: blur(4px);
@@ -69,7 +68,7 @@
       border-color: #38bdf8;
     }
 
-    /* MODAL LOGIN */
+    /* MODAL LOGIN (MUNCUL PERTAMA) */
     #whitelistModal {
       position: fixed;
       inset: 0;
@@ -172,7 +171,7 @@
 </head>
 <body>
 
-  <!-- 1. MODAL LOGIN -->
+  <!-- 1. MODAL LOGIN (MUNCUL PERTAMA) -->
   <div id="whitelistModal">
     <div class="login-box">
       <h3>OPERATION OVERWATCH</h3>
@@ -211,11 +210,7 @@
   <!-- 4. PETA, GPS, & TOMBOL TOGGLE SATELIT -->
   <div id="map"></div>
   <button class="gps-btn" onclick="locateUser()" title="Posisi Saya">📍</button>
-  
-  <!-- TOMBOL TOGGLE DI SINI -->
-  <button id="btnToggleBasemap" onclick="toggleBasemapSatelit()" title="Matikan / Hidupkan Citra Satelit Luar">
-    🌍 Satelit: <b>ON</b>
-  </button>
+  <button id="btnToggleBasemap" onclick="toggleBasemapSatelit()" title="Matikan / Hidupkan Satelit Luar">🌍 Satelit: <b>ON</b></button>
 
   <!-- 5. PANEL BAWAH -->
   <div id="bottom-panel" class="bottom-panel">
