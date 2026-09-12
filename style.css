@@ -160,7 +160,7 @@ body, html {
 }
 
 /* ========================================== */
-/* HEADER & TABS (DEEP NAVY)                  */
+/* HEADER & TABS (DEEP NAVY - CLEAN & CENTER) */
 /* ========================================== */
 .app-header {
   position: absolute;
@@ -176,43 +176,31 @@ body, html {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 72px;
 }
 
-/* LOGO OVERWATCH (POSISI INDEPENDEN DI KIRI JUDUL) */
-.header-logo-img {
-  position: absolute;
-  top: 6px;                    /* Posisi turun ke bawah */
-  left: calc(50% - 210px);     /* Posisi horizontal di sebelah kiri teks */
-  width: 60px !important;
-  height: 60px !important;
-  object-fit: contain;
-  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.7));
-}
-
-/* TEKS OVERWATCH ROAD INSPECTOR (TEPAT DI TENGAH LAYAR) */
 .brand {
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 1px;
+  margin-bottom: 8px;
   text-align: center;
-  margin-bottom: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+}
+
+.brand span {
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
   text-shadow: 0 1px 4px rgba(0,0,0,0.8);
 }
 
 .tab-container {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   justify-content: center;
   width: 100%;
+  max-width: 400px;
 }
 
 .tab-btn {
-  flex: 0 1 110px;
+  flex: 1;
   padding: 6px 0;
   background: rgba(255,255,255,0.15);
   border: 1px solid rgba(255,255,255,0.2);
@@ -221,6 +209,7 @@ body, html {
   font-weight: 600;
   border-radius: 6px;
   cursor: pointer;
+  transition: background 0.2s;
 }
 
 .tab-btn.active {
