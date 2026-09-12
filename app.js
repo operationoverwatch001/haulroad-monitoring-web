@@ -142,8 +142,8 @@ function renderTabContent() {
   }
 }
 
-// 8. Grafik Profil Memanjang (Skala Elevasi Dikunci Global)
-function drawLongSectionChart(dataSubset, customYMin = null, customYMax = null) {
+// 8. Grafik Profil Memanjang (Skala Elevasi Dipatok Kelipatan Step)
+function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
   if (chartInstance) chartInstance.destroy();
@@ -151,8 +151,13 @@ function drawLongSectionChart(dataSubset, customYMin = null, customYMax = null) 
   const roadFullData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
   const allElevations = roadFullData.map(d => parseFloat(d["Elevasi As (m)"])).filter(v => !isNaN(v));
   
-  const globalYMin = customYMin !== null ? customYMin : Math.floor(Math.min(...allElevations) / 1) * 1;
-  const globalYMax = customYMax !== null ? customYMax : Math.ceil(Math.max(...allElevations) / 1) * 1;
+  const step = userYInterval || 5; // Default kelipatan 5 jika auto
+  const rawMin = Math.min(...allElevations);
+  const rawMax = Math.max(...allElevations);
+
+  // Paksa min & max pas kelipatan step (misal step 5 jadi 85 dan 105)
+  const globalYMin = Math.floor(rawMin / step) * step;
+  const globalYMax = Math.ceil(rawMax / step) * step;
 
   const pointColors = dataSubset.map(d => {
     const status = d["Status Grade"];
@@ -488,17 +493,12 @@ async function executeExportPDF() {
 
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
 
-  // Hitung batas min & max global agar konsisten di PDF
-  const allElevations = roadData.map(d => parseFloat(d["Elevasi As (m)"])).filter(v => !isNaN(v));
-  const globalYMin = Math.floor(Math.min(...allElevations) / 1) * 1;
-  const globalYMax = Math.ceil(Math.max(...allElevations) / 1) * 1;
-
   if (selectedOpt === 'single') {
     const originalWidth = chartContainer.style.width;
     const totalLabels = chartInstance.data.labels.length;
     
     chartContainer.style.width = `${Math.max(totalLabels * 45, 1400)}px`;
-    drawLongSectionChart(roadData, globalYMin, globalYMax);
+    chartInstance.resize();
 
     setTimeout(async () => {
       try {
@@ -520,6 +520,7 @@ async function executeExportPDF() {
         alert("Gagal mengexport PDF.");
       } finally {
         chartContainer.style.width = originalWidth;
+        chartInstance.resize();
         drawLongSectionChart(roadData);
       }
     }, 400);
@@ -533,21 +534,13 @@ async function executeExportPDF() {
 
     const originalWidth = chartContainer.style.width;
     chartContainer.style.width = `1100px`;
+    chartInstance.resize();
 
     try {
       for (let i = 0; i < originalLabels.length; i += chunkSize) {
         const chunkLabels = originalLabels.slice(i, i + chunkSize);
         const chunkDatasets = originalDatasets.map(d => d.slice(i, i + chunkSize));
         
-        // Render chart dengan subset data tapi sumbu Y dikunci global
-        chartInstance.data.labels = chunkLabels;
-        chartInstance.data.datasets.forEach((dataset, idx) => {
-          dataset.data = chunkDatasets[idx];
-        });
-        
-        // Panggil render ulang dengan skala Y global terkunci
-        drawLongSectionChart({ map: () => {} }, globalYMin, globalYMax); 
-        // Set ulang datanya karena helper di atas mereset
         chartInstance.data.labels = chunkLabels;
         chartInstance.data.datasets.forEach((dataset, idx) => {
           dataset.data = chunkDatasets[idx];
@@ -577,6 +570,11 @@ async function executeExportPDF() {
       alert("Gagal melakukan proses multi-page PDF.");
     } finally {
       chartContainer.style.width = originalWidth;
+      chartInstance.data.labels = originalLabels;
+      chartInstance.data.datasets.forEach((dataset, idx) => {
+        dataset.data = originalDatasets[idx];
+      });
+      chartInstance.update();
       drawLongSectionChart(roadData);
     }
   }
