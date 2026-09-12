@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Library Excel, Chart, Datalabels, Leaflet, & jsPDF/html2canvas -->
+  <!-- Library Excel, Chart, Leaflet, jsPDF -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
@@ -17,14 +17,38 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
   <style>
-    /* MODAL LOGIN (MUNCUL PERTAMA KALI) */
+    /* RESET & DASAR */
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #040508;
+      position: relative;
+    }
+
+    /* PETA LEAFLET (HARUS MENGISI LAYER BELAKANG PENUH) */
+    #map {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      background: #111;
+    }
+
+    /* MODAL LOGIN (MUNCUL PERTAMA) */
     #whitelistModal {
       position: fixed;
       inset: 0;
       width: 100vw;
       height: 100vh;
       background: #040508;
-      z-index: 100000;
+      z-index: 999999;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -69,11 +93,6 @@
       text-align: center;
       margin-bottom: 12px;
       outline: none;
-      transition: border-color 0.2s;
-    }
-
-    .login-box input:focus {
-      border-color: #38bdf8;
     }
 
     .login-box button {
@@ -87,11 +106,6 @@
       cursor: pointer;
       font-size: 13px;
       letter-spacing: 0.5px;
-      transition: background 0.2s;
-    }
-
-    .login-box button:hover {
-      background: #dc2626;
     }
 
     #loginErrorMsg {
@@ -101,15 +115,36 @@
       font-family: monospace;
     }
 
-    /* INTRO SPLASH DISEMBUNYIKAN AWAL */
+    /* INTRO SPLASH */
     #intro-splash {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #040508;
+      z-index: 999998;
       display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .splash-logo-container {
+      width: 120px;
+      height: 120px;
+      margin-bottom: 10px;
+    }
+
+    .splash-logo {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
     }
   </style>
 </head>
 <body>
 
-  <!-- 1. MODAL LOGIN WHITELIST -->
+  <!-- 1. MODAL LOGIN (MUNCUL PERTAMA) -->
   <div id="whitelistModal">
     <div class="login-box">
       <h3>OPERATION OVERWATCH</h3>
