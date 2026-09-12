@@ -81,8 +81,9 @@ function mulaiAnimasiIntroDanLoadData() {
     if (statusText) statusText.innerText = 'SYNCHRONIZING TELEMETRY...';
   }, 1600);
 
-  // Ambil dataset Excel di background
+  // Ambil dataset Excel & Vektor Spasial di background
   loadExcelData();
+  loadRoadLayersGeoJSON();
 
   setTimeout(() => {
     if (bar) bar.style.width = '100%';
@@ -117,7 +118,7 @@ function catatLogKeServer(kegiatan, detailAktivitas) {
 
 
 // ==========================================
-// KODE UTAMA WEBGIS (ELEVASI, TAB, PETA, DLL)
+// KODE UTAMA WEBGIS (PETA, PMTILES, GEOJSON)
 // ==========================================
 let currentTab = 'grade';
 let monitoringData = [];
@@ -126,6 +127,7 @@ let roadNames = [];
 let activeRoad = "";
 let chartInstance = null;
 let userYInterval = undefined;
+let roadGeoJsonLayer = null;
 
 // Daftarkan plugin Datalabels global untuk Chart.js
 Chart.register(ChartDataLabels);
@@ -136,6 +138,89 @@ L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/
   maxZoom: 19,
   attribution: 'Tiles &copy; Esri'
 }).addTo(map);
+
+// Inisialisasi Drone Orthophoto (PMTiles via Cloudflare R2)
+// GANTI STRING DI BAWAH INI DENGAN URL PUBLIK BUCKET R2 LU
+const PMTILES_URL = "https://pub-184b841848224db8a00d1eaf96126603.r2.dev/Ortho_Update.pmtiles";
+
+try {
+  if (typeof pmtiles !== "undefined") {
+    const p = new pmtiles.PMTiles(PMTILES_URL);
+    const protocol = new pmtiles.Protocol();
+    protocol.add(p);
+
+    const orthoLayer = pmtiles.leafletRasterLayer(p, {
+      maxZoom: 22,
+      maxNativeZoom: 20,
+      attribution: 'Drone Orthophoto'
+    }).addTo(map);
+
+    // Zoom peta otomatis menyesuaikan batas orthophoto drone
+    p.getHeader().then(header => {
+      if (header && header.minLon && header.minLat) {
+        map.fitBounds([
+          [header.minLat, header.minLon],
+          [header.maxLat, header.maxLon]
+        ]);
+      }
+    }).catch(e => console.warn("Tidak dapat membaca header PMTiles:", e));
+  } else {
+    console.warn("Library pmtiles belum dimuat di file HTML.");
+  }
+} catch (err) {
+  console.warn("Gagal inisialisasi layer PMTiles:", err);
+}
+
+// Muat Vektor Spasial Garis Jalan (Road_Layers.geojson)
+async function loadRoadLayersGeoJSON() {
+  try {
+    const res = await fetch('data/Road_Layers.geojson');
+    if (!res.ok) throw new Error("File data/Road_Layers.geojson belum ada di direktori data/");
+    const geojsonData = await res.json();
+
+    if (roadGeoJsonLayer) {
+      map.removeLayer(roadGeoJsonLayer);
+    }
+
+    roadGeoJsonLayer = L.geoJSON(geojsonData, {
+      style: function(feature) {
+        const props = feature.properties || {};
+        const status = props.Status || props["Status Grade"] || "";
+        if (status === "Overgrade" || status === "Nonstandard") {
+          return { color: "#c00000", weight: 4, opacity: 0.9 };
+        } else if (status === "Warning") {
+          return { color: "#ffc000", weight: 3.5, opacity: 0.9 };
+        }
+        return { color: "#00e5ff", weight: 3, opacity: 0.8 };
+      },
+      onEachFeature: function(feature, layer) {
+        const props = feature.properties || {};
+        const sta = props.STA || "-";
+        const road = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
+
+        layer.bindTooltip(`<b>${road}</b><br>STA: ${sta}`, { sticky: true });
+
+        // Klik pada garis/titik di peta langsung sinkron ke tab & grafik
+        layer.on('click', () => {
+          if (props.Nama_Jalan && props.Nama_Jalan !== activeRoad) {
+            changeRoad(props.Nama_Jalan);
+          }
+          if (currentTab === 'crossfall' && props.STA) {
+            const staSelect = document.getElementById('select-sta-cs');
+            if (staSelect) staSelect.value = props.STA;
+            drawCrossSectionChart(props.STA);
+          }
+        });
+      }
+    }).addTo(map);
+
+    if (roadGeoJsonLayer.getLayers().length > 0) {
+      map.fitBounds(roadGeoJsonLayer.getBounds(), { padding: [30, 30] });
+    }
+  } catch (err) {
+    console.warn("Info GeoJSON Road Layers:", err.message);
+  }
+}
 
 // Muat File Excel Overwatch.xlsx
 async function loadExcelData() {
