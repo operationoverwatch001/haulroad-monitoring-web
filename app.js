@@ -142,7 +142,7 @@ const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/s
 }).addTo(map);
 
 // 2. Drone Orthophoto (PMTiles via Cloudflare R2)
-const PMTILES_URL = "https://pub-184b841848224db8a00d1eaf96126603.r2.dev/Ortho_Update.pmtiles";
+const PMTILES_URL = "https://ortho-tiles.operationoverwatch001.workers.dev/Ortho_Update.pmtiles";
 let orthoLayer = null;
 
 function initPMTilesLayer() {
