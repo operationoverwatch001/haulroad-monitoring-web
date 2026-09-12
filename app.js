@@ -447,7 +447,7 @@ function locateUser() {
   );
 }
 
-// 11. Toggle Show/Hide Panel Bawah (Tap & Swipe Support)
+// 11. Toggle Show/Hide Panel Bawah (Tap & Swipe Support + Fix Dropdown Conflict)
 document.addEventListener("DOMContentLoaded", () => {
   const bottomPanel = document.getElementById('bottom-panel');
   const panelHeader = document.querySelector('.panel-header');
@@ -457,13 +457,17 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentY = 0;
     let isDragging = false;
 
-    // Tap biasa
-    panelHeader.addEventListener('click', () => {
+    // Tap biasa (Di-filter biar kalau klik select/button, panel gak ikut nutup)
+    panelHeader.addEventListener('click', (e) => {
+      if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION' || e.target.tagName === 'BUTTON') {
+        return;
+      }
       bottomPanel.classList.toggle('minimized');
     });
 
     // Sentuh / Swipe
     panelHeader.addEventListener('touchstart', (e) => {
+      if (e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return;
       startY = e.touches[0].clientY;
       isDragging = true;
     }, { passive: true });
