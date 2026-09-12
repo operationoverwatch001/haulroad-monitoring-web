@@ -39,7 +39,7 @@ async function prosesLoginWebGIS() {
       const modal = document.getElementById('whitelistModal');
       if (modal) modal.remove();
 
-      // Jalankan animasi loading splash screen
+      // Jalankan animasi loading splash screen & sinkronisasi data
       mulaiAnimasiIntroDanLoadData();
 
     } else {
@@ -66,7 +66,10 @@ function mulaiAnimasiIntroDanLoadData() {
   const statusText = document.getElementById('status-text');
   const titleElement = document.querySelector('.glitch-title');
 
-  if (splash) splash.style.display = 'flex';
+  if (splash) {
+    splash.style.display = 'flex';
+    splash.style.opacity = '1';
+  }
 
   setTimeout(() => {
     if (bar) bar.style.width = '45%';
@@ -78,7 +81,7 @@ function mulaiAnimasiIntroDanLoadData() {
     if (statusText) statusText.innerText = 'SYNCHRONIZING TELEMETRY...';
   }, 1600);
 
-  // Ambil data Excel di background
+  // Ambil dataset Excel di background
   loadExcelData();
 
   setTimeout(() => {
@@ -87,16 +90,17 @@ function mulaiAnimasiIntroDanLoadData() {
     if (titleElement) titleElement.classList.add('glitch-outro');
   }, 2600);
 
-  // Selesai intro: buka map
+  // Selesai intro: hilangkan splash dari DOM dan kalkulasi ulang dimensi Leaflet
   setTimeout(() => {
     if (splash) {
+      splash.style.transition = 'opacity 0.4s ease';
       splash.style.opacity = '0';
       setTimeout(() => {
         splash.remove();
         if (map) {
-          map.invalidateSize(); // Pastikan peta Leaflet dirender 100% mulus
+          map.invalidateSize(true);
         }
-      }, 500);
+      }, 400);
     }
   }, 3200);
 }
@@ -144,6 +148,10 @@ async function loadExcelData() {
       roadNames = [...new Set(monitoringData.map(d => (d["Nama Jalan"] || "").trim()))].filter(n => n.length > 0);
       activeRoad = roadNames[0] || "Jl Bontang";
       renderTabContent();
+    }
+
+    if (map) {
+      map.invalidateSize(true);
     }
 
     catatLogKeServer("BUKA APLIKASI", `User ${currentNamaUser} (${currentNRP}) berhasil masuk Dashboard WebGIS.`);
