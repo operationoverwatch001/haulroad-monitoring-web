@@ -125,7 +125,7 @@ let selectedEndFeature = null;
 
 Chart.register(ChartDataLabels);
 
-// Inisialisasi Peta Leaflet dengan renderer Canvas agar performa mobile ringan
+// Inisialisasi Peta Leaflet dengan Canvas Renderer agar ringan di HP
 const map = L.map('map', { 
   zoomControl: false,
   preferCanvas: true 
@@ -228,27 +228,28 @@ function parseMeterSTA(val) {
   return parseFloat(str) || 0;
 }
 
-// Helper: Penentuan Gaya Warna & Ketebalan Garis Jalan di Peta
+// Helper: Penentuan Gaya Warna & Ketebalan Garis/Poligon di Peta
 function getRoadFeatureStyle(feature) {
   const props = feature.properties || {};
   const rawStation = props.Station_m !== undefined ? props.Station_m : (props.Station || props.station || props.STA || props.sta || props.ID || 0);
   const meterVal = parseMeterSTA(rawStation);
   const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
 
-  // Skala ketebalan dinamis berbasis zoom agar tidak menggumpal di mobile
+  // Skala ketebalan dinamis berbasis zoom agar tidak menggumpal di layar HP
   const currentZoom = map ? map.getZoom() : 15;
   let baseWeight = 3;
   if (currentZoom >= 18) {
-    baseWeight = 5;
+    baseWeight = 6;
   } else if (currentZoom >= 16) {
-    baseWeight = 3.5;
+    baseWeight = 4;
   } else if (currentZoom >= 14) {
-    baseWeight = 2;
+    baseWeight = 2.5;
   } else {
-    baseWeight = 1;
+    baseWeight = 1.2;
   }
 
-  // Highlight Range Seleksi: Kunci nama ruas jalan
+  // Highlight Range Seleksi: Wajib cocok nama jalannya
+  let isSelected = false;
   if (selectedStartFeature) {
     const startProps = selectedStartFeature.properties || {};
     const startRoad = (startProps.Nama_Jalan || startProps["Nama Jalan"] || activeRoad).trim();
@@ -263,12 +264,22 @@ function getRoadFeatureStyle(feature) {
         const maxM = Math.max(startM, endM);
 
         if (meterVal >= minM && meterVal <= maxM) {
-          return { color: "#00f0ff", weight: baseWeight + 3, opacity: 1 };
+          isSelected = true;
         }
       } else if (meterVal === startM) {
-        return { color: "#00f0ff", weight: baseWeight + 3, opacity: 1 };
+        isSelected = true;
       }
     }
+  }
+
+  if (isSelected) {
+    return {
+      color: "#00f0ff",
+      fillColor: "#00f0ff",
+      fillOpacity: 0.8,
+      weight: baseWeight + 3,
+      opacity: 1
+    };
   }
 
   // 1. PEWARNAAN TAB LEBAR
@@ -277,17 +288,20 @@ function getRoadFeatureStyle(feature) {
     const lebarStandar = parseFloat(props.Standar_m !== undefined ? props.Standar_m : 30.8);
     const rawStatus = (props.Status || "").toString().trim().toUpperCase();
 
+    let color = "#22c55e"; // Hijau standar
     if (!isNaN(lebarAktual) && lebarAktual > 0) {
-      if (lebarAktual < lebarStandar) {
-        return { color: "#e11d48", weight: baseWeight + 1.5, opacity: 0.95 }; // Sempit -> Merah
-      }
-      return { color: "#22c55e", weight: baseWeight, opacity: 0.85 }; // Standar -> Hijau
+      if (lebarAktual < lebarStandar) color = "#e11d48"; // Sempit -> Merah
+    } else if (rawStatus === "NON COMPLIANT" || rawStatus === "NONSTANDARD" || rawStatus === "SEMPIT") {
+      color = "#e11d48";
     }
 
-    if (rawStatus === "NON COMPLIANT" || rawStatus === "NONSTANDARD" || rawStatus === "SEMPIT") {
-      return { color: "#e11d48", weight: baseWeight + 1.5, opacity: 0.95 };
-    }
-    return { color: "#22c55e", weight: baseWeight, opacity: 0.85 };
+    return {
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.65,
+      weight: color === "#e11d48" ? baseWeight + 1.5 : baseWeight,
+      opacity: 0.9
+    };
   }
 
   // 2. PEWARNAAN TAB GRADE
@@ -295,6 +309,7 @@ function getRoadFeatureStyle(feature) {
     const staFormatted = formatKeSTA(rawStation);
     let statusGrade = (props["Status Grade"] || props.Status || "").toString().toUpperCase();
 
+    // Cross-check ke sheet Excel Overwatch.xlsx
     if (monitoringData && monitoringData.length > 0 && staFormatted !== "-") {
       const matchedRow = monitoringData.find(d => {
         const matchRoad = roadVal ? (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.toLowerCase() : true;
@@ -306,16 +321,34 @@ function getRoadFeatureStyle(feature) {
       }
     }
 
+    let gradeColor = "#22c55e"; // Normal (<8%) -> Hijau
+    let weightBonus = 0;
+
     if (statusGrade.includes("OVERGRADE") || statusGrade === "NON COMPLIANT") {
-      return { color: "#e11d48", weight: baseWeight + 1.5, opacity: 0.95 };
+      gradeColor = "#e11d48"; // Overgrade (>10%) -> Merah
+      weightBonus = 1.5;
+    } else if (statusGrade.includes("WARNING")) {
+      gradeColor = "#eab308"; // Warning (>8%) -> Kuning
+      weightBonus = 1;
     }
-    if (statusGrade.includes("WARNING")) {
-      return { color: "#eab308", weight: baseWeight + 1, opacity: 0.95 };
-    }
-    return { color: "#22c55e", weight: baseWeight, opacity: 0.85 };
+
+    return {
+      color: gradeColor,
+      fillColor: gradeColor,
+      fillOpacity: 0.7,
+      weight: baseWeight + weightBonus,
+      opacity: 0.95
+    };
   }
 
-  return { color: "#00e5ff", weight: baseWeight, opacity: 0.85 };
+  // Tab Crossfall / Default
+  return {
+    color: "#00e5ff",
+    fillColor: "#00e5ff",
+    fillOpacity: 0.5,
+    weight: baseWeight,
+    opacity: 0.85
+  };
 }
 
 // Reset Seleksi Segmen Jalan
@@ -332,26 +365,34 @@ function handleFeatureClick(feature) {
   const props = feature.properties || {};
   const clickedRoad = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
 
+  // Jika klik jalan berbeda, reset seleksi dan switch jalan aktif
   if (clickedRoad && clickedRoad !== activeRoad) {
     selectedStartFeature = null;
     selectedEndFeature = null;
     changeRoad(clickedRoad);
   }
 
-  if (currentTab === 'lebar') {
+  if (currentTab === 'lebar' || currentTab === 'grade') {
     if (!selectedStartFeature || (selectedStartFeature && selectedEndFeature)) {
+      // Klik ke-1: Titik awal
       selectedStartFeature = feature;
       selectedEndFeature = null;
     } else {
+      // Klik ke-2: Titik akhir
       selectedEndFeature = feature;
     }
 
     if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
-    renderLebarSummary();
+
+    if (currentTab === 'lebar') {
+      renderLebarSummary();
+    } else if (currentTab === 'grade') {
+      renderGradeSummary();
+    }
 
     const staAwal = formatKeSTA(selectedStartFeature.properties.Station_m !== undefined ? selectedStartFeature.properties.Station_m : selectedStartFeature.properties.STA);
     const staAkhir = selectedEndFeature ? formatKeSTA(selectedEndFeature.properties.Station_m !== undefined ? selectedEndFeature.properties.Station_m : selectedEndFeature.properties.STA) : "-";
-    catatLogKeServer("PILIH SEGMEN", `Inspeksi Lebar: ${activeRoad} (${staAwal} s/d ${staAkhir})`);
+    catatLogKeServer("PILIH SEGMEN", `Inspeksi ${currentTab.toUpperCase()}: ${activeRoad} (${staAwal} s/d ${staAkhir})`);
   } else if (currentTab === 'crossfall') {
     const sta = formatKeSTA(props.Station_m !== undefined ? props.Station_m : props.STA);
     const staSelect = document.getElementById('select-sta-cs');
@@ -419,7 +460,7 @@ async function loadExcelData() {
 
     if (monitoringData.length > 0) {
       roadNames = [...new Set(monitoringData.map(d => (d["Nama Jalan"] || "").trim()))].filter(n => n.length > 0);
-      activeRoad = roadNames[0] || "Jl Sumba";
+      activeRoad = roadNames[0] || "Jl Pontianak";
       renderTabContent();
     }
 
@@ -467,7 +508,97 @@ function changeRoad(roadName) {
 // Ubah Kustomisasi Interval Elevasi Sumbu Y
 function changeYInterval(val) {
   userYInterval = val === 'auto' ? undefined : parseFloat(val);
-  const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
+  const roadData = getFilteredRoadData();
+  drawLongSectionChart(roadData);
+}
+
+// Helper Filter Data Excel Ruas Aktif
+function getFilteredRoadData() {
+  let roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
+
+  // Jika ada seleksi pada tab Grade, potong dataset sesuai rentang STA yang dipilih
+  if (currentTab === 'grade' && selectedStartFeature) {
+    const pStart = selectedStartFeature.properties || {};
+    const mStart = parseMeterSTA(pStart.Station_m !== undefined ? pStart.Station_m : pStart.STA);
+
+    if (selectedEndFeature) {
+      const pEnd = selectedEndFeature.properties || {};
+      const mEnd = parseMeterSTA(pEnd.Station_m !== undefined ? pEnd.Station_m : pEnd.STA);
+      const minM = Math.min(mStart, mEnd);
+      const maxM = Math.max(mStart, mEnd);
+
+      roadData = roadData.filter(d => {
+        const dm = parseMeterSTA(d["STA"]);
+        return dm >= minM && dm <= maxM;
+      });
+    } else {
+      roadData = roadData.filter(d => parseMeterSTA(d["STA"]) === mStart);
+    }
+  }
+  return roadData;
+}
+
+// Render Header Tab Grade dengan Ringkasan Segmen Terpilih
+function renderGradeSummary() {
+  const panelBody = document.getElementById('panel-body');
+  const panelTitle = document.getElementById('panel-title');
+  if (!panelBody || !panelTitle) return;
+
+  const roadSelectHtml = `
+    <select onchange="changeRoad(this.value)" style="font-size:11px; font-weight:bold; padding:2px 4px; border-radius:4px;">
+      ${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}
+    </select>
+  `;
+
+  let filterNote = "";
+  if (selectedStartFeature) {
+    const pStart = selectedStartFeature.properties || {};
+    const mStart = parseMeterSTA(pStart.Station_m !== undefined ? pStart.Station_m : pStart.STA);
+    const staStart = formatKeSTA(mStart);
+
+    if (selectedEndFeature) {
+      const pEnd = selectedEndFeature.properties || {};
+      const mEnd = parseMeterSTA(pEnd.Station_m !== undefined ? pEnd.Station_m : pEnd.STA);
+      const minM = Math.min(mStart, mEnd);
+      const maxM = Math.max(mStart, mEnd);
+      const totalLen = maxM - minM;
+      filterNote = `
+        <div style="background:#0f172a; color:#fff; padding:4px 10px; border-radius:4px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:11px;">Segmen Aktif: <b style="color:#00f0ff;">STA ${formatKeSTA(minM)} s/d ${formatKeSTA(maxM)}</b> (${totalLen} m)</span>
+          <button onclick="resetSegmentSelection()" style="background:#334155; color:#fff; border:none; padding:2px 6px; border-radius:3px; font-size:10px; cursor:pointer;">✕ Reset Peta</button>
+        </div>
+      `;
+    } else {
+      filterNote = `
+        <div style="background:#0f172a; color:#fff; padding:4px 10px; border-radius:4px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:11px;">Titik Awal: <b style="color:#00f0ff;">STA ${staStart}</b> (Klik 1 titik lagi untuk rentang)</span>
+          <button onclick="resetSegmentSelection()" style="background:#334155; color:#fff; border:none; padding:2px 6px; border-radius:3px; font-size:10px; cursor:pointer;">✕ Reset</button>
+        </div>
+      `;
+    }
+  }
+
+  const roadData = getFilteredRoadData();
+
+  panelTitle.innerHTML = `Profil Memanjang: ${roadSelectHtml}`;
+  panelBody.innerHTML = `
+    ${filterNote}
+    <div style="font-size:11px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
+      <span style="color:#555;">Kuning: <b>Warning (>8%)</b> | Merah: <b>Overgrade (>10%)</b></span>
+      <div style="display:flex; gap:4px; align-items:center;">
+        <select id="yIntervalSelect" onchange="changeYInterval(this.value)" style="font-size:10px; padding:2px; border-radius:3px;">
+          <option value="auto" ${userYInterval === undefined ? 'selected' : ''}>Interval: Auto</option>
+          <option value="1" ${userYInterval === 1 ? 'selected' : ''}>Step: 1m</option>
+          <option value="2" ${userYInterval === 2 ? 'selected' : ''}>Step: 2m</option>
+          <option value="5" ${userYInterval === 5 ? 'selected' : ''}>Step: 5m</option>
+          <option value="10" ${userYInterval === 10 ? 'selected' : ''}>Step: 10m</option>
+        </select>
+        <button onclick="openPdfModal()" style="background:#1f4e79; color:#fff; border:none; padding:2px 6px; border-radius:3px; font-size:10px; cursor:pointer; font-weight:bold;">📥 PDF</button>
+        <span style="font-size:11px; color:#1f4e79;"><b>${roadData.length} STA</b></span>
+      </div>
+    </div>
+    <div class="chart-container" style="height:140px;"><canvas id="chartCanvas"></canvas></div>
+  `;
   drawLongSectionChart(roadData);
 }
 
@@ -479,12 +610,12 @@ function renderLebarSummary() {
 
   const roadSelectHtml = `
     <select onchange="changeRoad(this.value)" style="font-size:11px; font-weight:bold; padding:2px 4px; border-radius:4px;">
-      ${roadNames.map(r => `<option value="${r}" ${r === activeRoad ? 'selected' : ''}>${r}</option>`).join('')}
+      ${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}
     </select>
   `;
   panelTitle.innerHTML = `Audit Lebar Jalan: ${roadSelectHtml}`;
 
-  // JIKA ADA SELEKSI DARI PETA
+  // KONDISI JIKA ADA SELEKSI DARI PETA
   if (selectedStartFeature) {
     const pStart = selectedStartFeature.properties || {};
     const mStart = parseMeterSTA(pStart.Station_m !== undefined ? pStart.Station_m : pStart.STA);
@@ -660,25 +791,7 @@ function renderTabContent() {
   `;
 
   if (currentTab === 'grade') {
-    panelTitle.innerHTML = `Profil Memanjang: ${roadSelectHtml}`;
-    panelBody.innerHTML = `
-      <div style="font-size:11px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
-        <span style="color:#555;">Kuning: <b>Warning (>8%)</b> | Merah: <b>Overgrade (>10%)</b></span>
-        <div style="display:flex; gap:4px; align-items:center;">
-          <select id="yIntervalSelect" onchange="changeYInterval(this.value)" style="font-size:10px; padding:2px; border-radius:3px;">
-            <option value="auto" ${userYInterval === undefined ? 'selected' : ''}>Interval: Auto</option>
-            <option value="1" ${userYInterval === 1 ? 'selected' : ''}>Step: 1m</option>
-            <option value="2" ${userYInterval === 2 ? 'selected' : ''}>Step: 2m</option>
-            <option value="5" ${userYInterval === 5 ? 'selected' : ''}>Step: 5m</option>
-            <option value="10" ${userYInterval === 10 ? 'selected' : ''}>Step: 10m</option>
-          </select>
-          <button onclick="openPdfModal()" style="background:#1f4e79; color:#fff; border:none; padding:2px 6px; border-radius:3px; font-size:10px; cursor:pointer; font-weight:bold;">📥 PDF</button>
-          <span style="font-size:11px; color:#1f4e79;"><b>${roadData.length} STA</b></span>
-        </div>
-      </div>
-      <div class="chart-container" style="height:150px;"><canvas id="chartCanvas"></canvas></div>
-    `;
-    drawLongSectionChart(roadData);
+    renderGradeSummary();
 
   } else if (currentTab === 'lebar') {
     renderLebarSummary();
@@ -698,14 +811,14 @@ function renderTabContent() {
   }
 }
 
-// Grafik Profil Memanjang
+// Grafik Profil Memanjang (Dinamis Sesuai Filter Rentang STA)
 function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
   if (chartInstance) chartInstance.destroy();
 
-  const roadFullData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
-  const allElevations = roadFullData.map(d => parseFloat(d["Elevasi As (m)"])).filter(v => !isNaN(v));
+  const allElevations = dataSubset.map(d => parseFloat(d["Elevasi As (m)"])).filter(v => !isNaN(v));
+  if (allElevations.length === 0) return;
 
   const step = userYInterval || 5;
   const rawMin = Math.min(...allElevations);
@@ -723,7 +836,7 @@ function drawLongSectionChart(dataSubset) {
 
   const pointSizes = dataSubset.map(d => {
     const status = (d["Status Grade"] || "").toUpperCase();
-    return (status.includes("WARNING") || status.includes("OVERGRADE") || status.includes("NON COMPLIANT")) ? 6 : 3;
+    return (status.includes("WARNING") || status.includes("OVERGRADE") || status.includes("NON COMPLIANT")) ? 6 : 3.5;
   });
 
   chartInstance = new Chart(ctx, {
@@ -989,7 +1102,7 @@ async function executeExportPDF() {
     return;
   }
 
-  const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
+  const roadData = getFilteredRoadData();
   catatLogKeServer("EXPORT PDF", `Mengekspor laporan PDF profil jalan ${activeRoad} (${selectedOpt}).`);
 
   if (selectedOpt === 'single') {
