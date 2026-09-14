@@ -68,80 +68,6 @@
       border-color: #38bdf8;
     }
 
-    /* MODAL LOGIN (MUNCUL PERTAMA) */
-    #whitelistModal {
-      position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100vh;
-      background: #040508;
-      z-index: 999999;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-
-    .login-box {
-      background: #0f172a;
-      border: 1px solid #1e293b;
-      padding: 32px 24px;
-      border-radius: 12px;
-      width: 90%;
-      max-width: 330px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
-      text-align: center;
-      color: #fff;
-    }
-
-    .login-box h3 {
-      margin-bottom: 8px;
-      font-size: 15px;
-      color: #38bdf8;
-      letter-spacing: 1.5px;
-      font-family: monospace;
-    }
-
-    .login-box p {
-      font-size: 11px;
-      color: #94a3b8;
-      margin-bottom: 18px;
-      line-height: 1.4;
-    }
-
-    .login-box input {
-      width: 100%;
-      padding: 12px;
-      box-sizing: border-box;
-      background: #1e293b;
-      border: 1px solid #334155;
-      color: #fff;
-      border-radius: 6px;
-      font-size: 14px;
-      text-align: center;
-      margin-bottom: 12px;
-      outline: none;
-    }
-
-    .login-box button {
-      width: 100%;
-      padding: 12px;
-      background: #b81432;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      font-weight: bold;
-      cursor: pointer;
-      font-size: 13px;
-      letter-spacing: 0.5px;
-    }
-
-    #loginErrorMsg {
-      font-size: 11px;
-      margin-top: 10px;
-      min-height: 14px;
-      font-family: monospace;
-    }
-
     /* INTRO SPLASH */
     #intro-splash {
       position: fixed;
@@ -171,18 +97,7 @@
 </head>
 <body>
 
-  <!-- 1. MODAL LOGIN (MUNCUL PERTAMA) -->
-  <div id="whitelistModal">
-    <div class="login-box">
-      <h3>OPERATION OVERWATCH</h3>
-      <p>Masukkan Nomor NRP Terdaftar untuk Mengakses Sistem WebGIS</p>
-      <input type="text" id="inputNrpLogin" placeholder="Contoh: 80005908" autocomplete="off" />
-      <button type="button" id="btnVerifikasiNRP" onclick="prosesLoginWebGIS()">VERIFIKASI NRP</button>
-      <p id="loginErrorMsg"></p>
-    </div>
-  </div>
-
-  <!-- 2. INTRO SPLASH SCREEN -->
+  <!-- 1. INTRO SPLASH SCREEN -->
   <div id="intro-splash">
     <div class="splash-logo-container">
       <img src="data/logo_overwatch.png" alt="Operation Overwatch" class="splash-logo">
@@ -194,7 +109,7 @@
     <div class="loading-status" id="status-text">INITIALIZING SECURE LINK...</div>
   </div>
 
-  <!-- 3. HEADER UTAMA -->
+  <!-- 2. HEADER UTAMA -->
   <header class="app-header">
     <div class="brand">
       <img src="data/logo_overwatch.png" alt="Logo" class="header-logo-img">
@@ -207,12 +122,12 @@
     </nav>
   </header>
 
-  <!-- 4. PETA, GPS, & TOMBOL TOGGLE SATELIT -->
+  <!-- 3. PETA, GPS, & TOMBOL TOGGLE SATELIT -->
   <div id="map"></div>
   <button class="gps-btn" onclick="locateUser()" title="Posisi Saya">📍</button>
   <button id="btnToggleBasemap" onclick="toggleBasemapSatelit()" title="Matikan / Hidupkan Satelit Luar">🌍 Satelit: <b>ON</b></button>
 
-  <!-- 5. PANEL BAWAH -->
+  <!-- 4. PANEL BAWAH -->
   <div id="bottom-panel" class="bottom-panel">
     <div class="panel-header">
       <div class="drag-handle"></div>
@@ -221,7 +136,7 @@
     <div class="panel-body" id="panel-body"></div>
   </div>
 
-  <!-- 6. MODAL EXPORT PDF -->
+  <!-- 5. MODAL EXPORT PDF -->
   <div id="pdfModalOverlay" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:99999; justify-content:center; align-items:center;">
     <div style="background:#0f172a; color:#fff; padding:20px; border-radius:8px; width:90%; max-width:350px; border:1px solid #1e293b; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
       <h3 style="margin-top:0; font-size:14px; color:#ff2b54; letter-spacing:1px; font-family:monospace;">EXPORT GRAFIK KE PDF</h3>
@@ -243,18 +158,6 @@
       </div>
     </div>
   </div>
-
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const input = document.getElementById('inputNrpLogin');
-      if (input) {
-        input.focus();
-        input.addEventListener('keypress', (e) => {
-          if (e.key === 'Enter') prosesLoginWebGIS();
-        });
-      }
-    });
-  </script>
 
   <!-- Script logic WebGIS -->
   <script src="app.js"></script>
