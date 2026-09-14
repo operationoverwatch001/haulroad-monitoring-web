@@ -181,7 +181,6 @@ body, html {
   justify-content: center;
 }
 
-/* MATIKAN TOTAL ELEMEN LOGO HEADER LEWAT CSS */
 .header-logo-img {
   display: none !important;
   width: 0 !important;
@@ -339,4 +338,61 @@ body, html {
   position: relative;
   width: 100%;
   height: 140px;
+}
+
+/* ========================================================== */
+/* LABEL KAPSUL PERSIS REFERENSI (WARNING & OVERGRADE ONLY)   */
+/* ========================================================== */
+
+/* Hilangkan box tooltip default bawaan Leaflet */
+.leaflet-tooltip.grade-badge-overgrade,
+.leaflet-tooltip.grade-badge-warning {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Matikan segitiga panah bawaan Leaflet tooltip */
+.leaflet-tooltip.grade-badge-overgrade::before,
+.leaflet-tooltip.grade-badge-warning::before {
+  display: none !important;
+}
+
+/* 1. Kapsul Overgrade (>10%): Putih Solid, Border Tipis Merah */
+.badge-overgrade-text {
+  display: inline-block;
+  background: #ffffff !important;
+  color: #111827 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-weight: 800 !important;
+  font-size: 9.5px !important;
+  line-height: 1.1 !important;
+  padding: 1.5px 4.5px !important;
+  border-radius: 4px !important;
+  border: 1px solid rgba(225, 29, 72, 0.7) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45) !important;
+  white-space: nowrap !important;
+  letter-spacing: -0.2px !important;
+  transform: translateY(-8px);
+}
+
+/* 2. Kapsul Warning (>8% s/d 10%): Putih Solid, Border Tipis Oranye */
+.badge-warning-text {
+  display: inline-block;
+  background: #ffffff !important;
+  color: #111827 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-weight: 800 !important;
+  font-size: 9.5px !important;
+  line-height: 1.1 !important;
+  padding: 1.5px 4.5px !important;
+  border-radius: 4px !important;
+  border: 1px solid rgba(234, 179, 8, 0.8) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45) !important;
+  white-space: nowrap !important;
+  letter-spacing: -0.2px !important;
+  transform: translateY(-8px);
 }
