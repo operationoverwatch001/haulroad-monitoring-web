@@ -120,7 +120,7 @@ let userYInterval = undefined;
 
 let rawWidthFeatures = [];
 let roadWidthLayer = null;    // Layer irisan melintang (Road_Layers.geojson)
-let roadGradeLayer = null;    // Layer poligon blok as jalan asli (Road_Grade_Polygons.geojson)
+let roadGradeLayer = null;    // Layer as jalan grade (Road_Grade_Polygons.geojson)
 
 // State Seleksi Range STA di Peta
 let selectedStartMeter = null;
@@ -129,7 +129,7 @@ let selectedRoadTarget = "";
 
 Chart.register(ChartDataLabels);
 
-// Inisialisasi Peta Leaflet dengan Canvas Renderer agar ringan di HP
+// Inisialisasi Peta Leaflet dengan Canvas Renderer agar performa mobile ringan
 const map = L.map('map', { 
   zoomControl: false,
   preferCanvas: true 
@@ -205,7 +205,7 @@ function toggleBasemapSatelit() {
 // Listener penyesuaian gaya garis saat zoom
 map.on('zoomend', () => {
   if (roadWidthLayer) roadWidthLayer.setStyle(getWidthSliceStyle);
-  if (roadGradeLayer) roadGradeLayer.setStyle(getGradePolygonStyle);
+  if (roadGradeLayer) roadGradeLayer.setStyle(getGradeLineStyle);
 });
 
 // Helper: Konversi meteran ke format STA (280 -> 0+280)
@@ -244,27 +244,32 @@ function isMeterSelected(meterVal, roadName) {
   return meterVal === selectedStartMeter;
 }
 
-// Style Poligon Blok Grade Asli (Sesuai Foto 3)
-function getGradePolygonStyle(feature) {
+// Style Garis As Jalan Grade (OW_13_Grade.shp / Road_Grade_Polygons.geojson)
+function getGradeLineStyle(feature) {
   const props = feature.properties || {};
-  const meterVal = parseMeterSTA(props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || props.sta || 0));
+  // Baca STA dari kolom DBF asli (STA_Akhir atau STA_Awal)
+  const staVal = props.STA_Akhir || props.STA_Awal || props.STA || props.Station_m || 0;
+  const meterVal = parseMeterSTA(staVal);
   const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
 
-  // Seleksi aktif: Highlight Biru Neon Solid
+  const currentZoom = map ? map.getZoom() : 15;
+  let baseWeight = currentZoom >= 18 ? 8 : (currentZoom >= 16 ? 6 : (currentZoom >= 14 ? 4 : 2.5));
+
+  // Seleksi aktif: Highlight Cyan Solid
   if (isMeterSelected(meterVal, roadVal)) {
     return {
       color: "#00f0ff",
-      weight: 3.5,
-      fillColor: "#00f0ff",
-      fillOpacity: 0.95
+      weight: baseWeight + 4,
+      opacity: 1
     };
   }
 
-  // Cross-check status grade ke Excel Overwatch.xlsx
-  const staFormatted = formatKeSTA(meterVal);
-  let statusGrade = (props["Status Grade"] || props.Status || "").toString().toUpperCase();
+  // Baca Status Grade langsung dari DBF (Status_Gra) atau Excel
+  let statusGrade = (props.Status_Gra || props["Status Grade"] || props.Status || "").toString().toUpperCase();
 
-  if (monitoringData && monitoringData.length > 0 && staFormatted !== "-") {
+  // Cross-check ke sheet Excel jika status di file spasial belum lengkap
+  if (monitoringData && monitoringData.length > 0) {
+    const staFormatted = formatKeSTA(meterVal);
     const matchedRow = monitoringData.find(d => {
       const matchRoad = roadVal ? (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.toLowerCase() : true;
       const dSta = (d["STA"] || "").toString().trim();
@@ -275,18 +280,19 @@ function getGradePolygonStyle(feature) {
     }
   }
 
-  let fillColor = "#22c55e"; // Normal (<8%) -> Hijau
-  if (statusGrade.includes("OVERGRADE") || statusGrade === "NON COMPLIANT") {
-    fillColor = "#e11d48"; // Overgrade (>10%) -> Merah
+  let color = "#22c55e"; // Aman / Normal -> Hijau
+  if (statusGrade.includes("OVERGRADE") || statusGrade.includes("NON COMPLIANT")) {
+    color = "#e11d48";   // Overgrade (>10%) -> Merah
   } else if (statusGrade.includes("WARNING")) {
-    fillColor = "#eab308"; // Warning (>8%) -> Kuning
+    color = "#eab308";   // Warning (>8%) -> Kuning
   }
 
   return {
-    color: "#000000",       // Outline hitam pemisah tiap petak segmen (persis Foto 3)
-    weight: 1.2,
-    fillColor: fillColor,   // Warna blok terisi solid
-    fillOpacity: 0.88
+    color: color,
+    weight: color === "#e11d48" ? baseWeight + 2 : baseWeight,
+    opacity: 0.95,
+    lineCap: "round",
+    lineJoin: "round"
   };
 }
 
@@ -331,12 +337,12 @@ function resetSegmentSelection() {
   renderTabContent();
 }
 
-// Switch visibility layer peta sesuai tab yang aktif
+// Switch visibility layer peta sesuai tab aktif
 function refreshVisibleLayers() {
   if (currentTab === 'grade') {
     if (roadWidthLayer && map.hasLayer(roadWidthLayer)) map.removeLayer(roadWidthLayer);
     if (roadGradeLayer && !map.hasLayer(roadGradeLayer)) roadGradeLayer.addTo(map);
-    if (roadGradeLayer) roadGradeLayer.setStyle(getGradePolygonStyle);
+    if (roadGradeLayer) roadGradeLayer.setStyle(getGradeLineStyle);
   } else {
     if (roadGradeLayer && map.hasLayer(roadGradeLayer)) map.removeLayer(roadGradeLayer);
     if (roadWidthLayer && !map.hasLayer(roadWidthLayer)) roadWidthLayer.addTo(map);
@@ -348,7 +354,8 @@ function refreshVisibleLayers() {
 function handleFeatureClick(feature) {
   const props = feature.properties || {};
   const clickedRoad = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
-  const meterVal = parseMeterSTA(props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || 0));
+  const rawSta = props.STA_Akhir || props.STA_Awal || props.Station_m || props.STA || 0;
+  const meterVal = parseMeterSTA(rawSta);
 
   if (clickedRoad && clickedRoad.toLowerCase() !== activeRoad.toLowerCase()) {
     selectedStartMeter = null;
@@ -393,25 +400,31 @@ map.on('click', () => {
   }
 });
 
-// Muat Kedua File GeoJSON (Irisan Lebar & Poligon As Grade)
+// Muat Kedua File GeoJSON
 async function loadAllVectorLayers() {
-  // 1. Muat Layer Poligon Grade Asli (Road_Grade_Polygons.geojson)
+  // 1. Muat Layer As Jalan Grade (Road_Grade_Polygons.geojson dari OW_13_Grade.shp)
   try {
     const resGrade = await fetch('data/Road_Grade_Polygons.geojson');
     if (resGrade.ok) {
       const geojsonGrade = await resGrade.json();
       if (roadGradeLayer) map.removeLayer(roadGradeLayer);
-      
+
       roadGradeLayer = L.geoJSON(geojsonGrade, {
-        style: getGradePolygonStyle,
+        style: getGradeLineStyle,
         onEachFeature: function(feature, layer) {
           const props = feature.properties || {};
-          const sta = formatKeSTA(props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || 0));
+          const sta = props.STA_Akhir || formatKeSTA(props.Station_m || props.STA_Awal || 0);
           const road = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
-          const gVal = props.Grade_Long || props["Grade Longitudinal (%)"] || "";
-          const gText = gVal ? `<br>Grade: <b>${parseFloat(gVal).toFixed(2)}%</b>` : "";
+          const statusGrade = props.Status_Gra || props["Status Grade"] || "Aman";
+          const gVal = props.Grade_Pct !== undefined ? parseFloat(props.Grade_Pct).toFixed(2) + "%" : (props.Label_Grad || "");
 
-          layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b>${gText}`, { sticky: true });
+          // Tooltip informatif
+          layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b><br>Grade: <b>${gVal}</b> (${statusGrade})`, { sticky: true });
+
+          // Label permanen khusus segmen overgrade (sesuai Foto 2 Excel)
+          if (props.Label_Grad || (statusGrade.toUpperCase().includes("OVERGRADE") && gVal)) {
+            layer.bindTooltip(`<b>${gVal}</b>`, { permanent: true, direction: "center", className: "overgrade-label" });
+          }
 
           layer.on('click', (e) => {
             L.DomEvent.stopPropagation(e);
@@ -421,7 +434,7 @@ async function loadAllVectorLayers() {
       });
     }
   } catch (err) {
-    console.warn("Info Layer Grade Polygons:", err.message);
+    console.warn("Info Layer Grade:", err.message);
   }
 
   // 2. Muat Layer Irisan Lebar Jalan (Road_Layers.geojson)
@@ -475,7 +488,7 @@ async function loadExcelData() {
 
     if (monitoringData.length > 0) {
       roadNames = [...new Set(monitoringData.map(d => (d["Nama Jalan"] || "").trim()))].filter(n => n.length > 0);
-      activeRoad = roadNames[0] || "Jl Lampung";
+      activeRoad = roadNames[0] || "Jl Bontang";
       renderTabContent();
     }
 
