@@ -119,8 +119,9 @@ let chartInstance = null;
 let userYInterval = undefined;
 
 let rawWidthFeatures = [];
-let roadWidthLayer = null;    // Layer irisan melintang (Road_Layers.geojson)
-let roadGradeLayer = null;    // Layer poligon blok kotak grade (Road_Grade_Polygons.geojson)
+let roadWidthLayer = null;      // Layer irisan melintang lebar
+let roadGradeLayer = null;      // Layer blok poligon kotak grade
+let gradeLabelsLayer = L.layerGroup(); // Layer teks STA & label grade terpisah agar tidak tertimpa
 
 // State Seleksi Range STA di Peta
 let selectedStartMeter = null;
@@ -129,7 +130,7 @@ let selectedRoadTarget = "";
 
 Chart.register(ChartDataLabels);
 
-// Inisialisasi Peta Leaflet dengan Canvas Renderer agar performa mobile ringan
+// Inisialisasi Peta Leaflet dengan Canvas Renderer agar enteng di HP
 const map = L.map('map', { 
   zoomControl: false,
   preferCanvas: true 
@@ -244,7 +245,7 @@ function isMeterSelected(meterVal, roadName) {
   return meterVal === selectedStartMeter;
 }
 
-// Style Poligon Blok Kotak Grade (Sesuai Foto 2: Berwarna Solid + Border Hitam)
+// Style Poligon Blok Kotak Grade (Foto 2: Solid Fill + Border Garis Hitam)
 function getGradePolygonBlockStyle(feature) {
   const props = feature.properties || {};
   const staVal = props.STA_Akhir || props.STA_Awal || props.STA || props.Station_m || 0;
@@ -337,9 +338,11 @@ function refreshVisibleLayers() {
   if (currentTab === 'grade') {
     if (roadWidthLayer && map.hasLayer(roadWidthLayer)) map.removeLayer(roadWidthLayer);
     if (roadGradeLayer && !map.hasLayer(roadGradeLayer)) roadGradeLayer.addTo(map);
+    if (gradeLabelsLayer && !map.hasLayer(gradeLabelsLayer)) gradeLabelsLayer.addTo(map);
     if (roadGradeLayer) roadGradeLayer.setStyle(getGradePolygonBlockStyle);
   } else {
     if (roadGradeLayer && map.hasLayer(roadGradeLayer)) map.removeLayer(roadGradeLayer);
+    if (gradeLabelsLayer && map.hasLayer(gradeLabelsLayer)) map.removeLayer(gradeLabelsLayer);
     if (roadWidthLayer && !map.hasLayer(roadWidthLayer)) roadWidthLayer.addTo(map);
     if (roadWidthLayer) roadWidthLayer.setStyle(getWidthSliceStyle);
   }
@@ -403,6 +406,7 @@ async function loadAllVectorLayers() {
     if (resGrade.ok) {
       const geojsonGrade = await resGrade.json();
       if (roadGradeLayer) map.removeLayer(roadGradeLayer);
+      gradeLabelsLayer.clearLayers();
 
       roadGradeLayer = L.geoJSON(geojsonGrade, {
         style: getGradePolygonBlockStyle,
@@ -422,30 +426,44 @@ async function loadAllVectorLayers() {
             gVal = props.Label_Grad.toString().trim();
           }
 
-          // Tooltip umum saat hover
+          // Tooltip interaktif saat mouse hover
           layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b><br>Grade: <b>${gVal || "-"}</b>`, { sticky: true });
 
-          // 1. LABEL NOMOR STA DI TENGAH BLOK POLIGON (Persis Foto 2)
-          layer.bindTooltip(`${sta}`, {
-            permanent: true,
-            direction: "center",
-            className: "sta-block-label"
-          });
+          // Hitung titik tengah poligon untuk menempatkan label permanen
+          const center = layer.getBounds().getCenter();
 
-          // 2. LABEL KAPSUL PERSENTASE KEMIRINGAN (Hanya Overgrade & Warning)
+          // 1. LABEL NOMOR STA PERMANEN DI TENGAH BLOK KOTAK (PERSIS FOTO 2)
+          const staMarker = L.marker(center, {
+            icon: L.divIcon({
+              className: 'sta-block-label',
+              html: `<span class="sta-center-text">${sta}</span>`,
+              iconSize: [40, 12],
+              iconAnchor: [20, 6]
+            }),
+            interactive: false
+          });
+          gradeLabelsLayer.addLayer(staMarker);
+
+          // 2. LABEL KAPSUL GRADE PERMANEN (HANYA OVERGRADE & WARNING PERSIS FOTO 2)
           if (gVal) {
+            let badgeClass = "";
             if (statusGrade.includes("OVERGRADE") || statusGrade.includes("NON COMPLIANT")) {
-              layer.bindTooltip(`<span class="badge-overgrade-text">${gVal}</span>`, {
-                permanent: true,
-                direction: "top",
-                className: "grade-badge-overgrade"
-              });
+              badgeClass = "badge-overgrade-text";
             } else if (statusGrade.includes("WARNING")) {
-              layer.bindTooltip(`<span class="badge-warning-text">${gVal}</span>`, {
-                permanent: true,
-                direction: "top",
-                className: "grade-badge-warning"
+              badgeClass = "badge-warning-text";
+            }
+
+            if (badgeClass) {
+              const gradeMarker = L.marker(center, {
+                icon: L.divIcon({
+                  className: 'sta-block-label',
+                  html: `<span class="${badgeClass}">${gVal}</span>`,
+                  iconSize: [44, 14],
+                  iconAnchor: [22, 18] // Melayang sedikit di atas outline jalan
+                }),
+                interactive: false
               });
+              gradeLabelsLayer.addLayer(gradeMarker);
             }
           }
 
