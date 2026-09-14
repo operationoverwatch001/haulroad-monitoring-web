@@ -415,15 +415,37 @@ async function loadAllVectorLayers() {
           const props = feature.properties || {};
           const sta = props.STA_Akhir || formatKeSTA(props.Station_m || props.STA_Awal || 0);
           const road = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
-          const statusGrade = props.Status_Gra || props["Status Grade"] || "Aman";
-          const gVal = props.Grade_Pct !== undefined ? parseFloat(props.Grade_Pct).toFixed(2) + "%" : (props.Label_Grad || "");
+          const statusGrade = (props.Status_Gra || props["Status Grade"] || "Aman").toString().toUpperCase();
+          
+          // Format angka persentase kemiringan jalan
+          let gVal = "";
+          if (props.Grade_Pct !== undefined && props.Grade_Pct !== null && props.Grade_Pct !== "") {
+            const parsedG = parseFloat(props.Grade_Pct);
+            if (!isNaN(parsedG)) {
+              gVal = parsedG.toFixed(2) + "%";
+            }
+          } else if (props.Label_Grad) {
+            gVal = props.Label_Grad.toString().trim();
+          }
 
-          // Tooltip informatif
-          layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b><br>Grade: <b>${gVal}</b> (${statusGrade})`, { sticky: true });
+          // Tooltip informatif saat kursor mendekat / hover
+          layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b><br>Grade: <b>${gVal || "-"}</b>`, { sticky: true });
 
-          // Label permanen khusus segmen overgrade (sesuai Foto 2 Excel)
-          if (props.Label_Grad || (statusGrade.toUpperCase().includes("OVERGRADE") && gVal)) {
-            layer.bindTooltip(`<b>${gVal}</b>`, { permanent: true, direction: "center", className: "overgrade-label" });
+          // LABEL KAPSUL PERMANEN PERSIS REFERENSI (HANYA OVERGRADE & WARNING)
+          if (gVal) {
+            if (statusGrade.includes("OVERGRADE") || statusGrade.includes("NON COMPLIANT")) {
+              layer.bindTooltip(`<span class="badge-overgrade-text">${gVal}</span>`, {
+                permanent: true,
+                direction: "top",
+                className: "grade-badge-overgrade"
+              });
+            } else if (statusGrade.includes("WARNING")) {
+              layer.bindTooltip(`<span class="badge-warning-text">${gVal}</span>`, {
+                permanent: true,
+                direction: "top",
+                className: "grade-badge-warning"
+              });
+            }
           }
 
           layer.on('click', (e) => {
