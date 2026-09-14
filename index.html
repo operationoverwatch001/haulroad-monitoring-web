@@ -20,8 +20,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
-  <!-- SUPABASE JS CLIENT LIBRARY -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <!-- Tailwind CSS khusus buat styling modal login minimalis -->
   <script src="https://cdn.tailwindcss.com"></script>
 
@@ -102,32 +100,20 @@
 </head>
 <body>
 
-  <!-- MODAL LOGIN SUPABASE OTP (MUNCUL SEBELUM MASUK PETA) -->
+  <!-- MODAL LOGIN PASSWORD MANUAL -->
   <div id="auth-overlay" class="fixed inset-0 bg-slate-950/95 z-[999999] flex items-center justify-center p-4">
       <div class="bg-slate-900 border border-slate-700 p-8 rounded-xl shadow-2xl w-full max-w-md text-white">
           <h2 class="text-2xl font-bold mb-2 text-center text-cyan-400">WebGIS Overwatch</h2>
-          <p class="text-xs text-slate-400 text-center mb-6">Autentikasi Internal Tambang (Supabase OTP)</p>
+          <p class="text-xs text-slate-400 text-center mb-6">Autentikasi Internal Tambang (Protected Mode)</p>
 
-          <!-- Form Masukkan Email -->
-          <div id="email-section">
-              <label class="block text-sm font-medium mb-2">Email Perusahaan / Whitelist</label>
-              <input type="email" id="email-input" placeholder="nama@saptaindra.co.id" 
+          <!-- Form Password -->
+          <div id="password-section">
+              <label class="block text-sm font-medium mb-2">Password Akses</label>
+              <input type="password" id="password-input" placeholder="Masukkan password..." 
                   class="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg mb-4 text-white focus:outline-none focus:border-cyan-500">
-              <button onclick="requestOtp()" id="send-btn" 
+              <button onclick="verifyPassword()" id="login-btn" 
                   class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-medium py-2 rounded-lg transition duration-200 shadow-lg cursor-pointer">
-                  Kirim Kode OTP
-              </button>
-          </div>
-
-          <!-- Form Masukkan OTP (Awalnya Sembunyi) -->
-          <div id="otp-section" class="hidden">
-              <label class="block text-sm font-medium mb-2">Masukkan 6-Digit Kode OTP</label>
-              <p class="text-xs text-slate-400 mb-3">Cek inbox email lu untuk mengambil kode verifikasi.</p>
-              <input type="text" id="otp-input" placeholder="123456" maxlength="6"
-                  class="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg mb-4 text-white text-center tracking-widest text-xl focus:outline-none focus:border-cyan-500">
-              <button onclick="verifyOtp()" id="verify-btn" 
-                  class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 rounded-lg transition duration-200 shadow-lg cursor-pointer">
-                  Verifikasi & Masuk
+                  Masuk Aplikasi
               </button>
           </div>
 
@@ -197,19 +183,13 @@
     </div>
   </div>
 
-  <!-- SCRIPT INISIALISASI & AUTENTIKASI SUPABASE (FIX KOLOM "Email") -->
+  <!-- SCRIPT AUTENTIKASI PASSWORD MANUAL -->
   <script>
       (function() {
-          const SUPABASE_URL = 'https://bjgojyazemlrwnqpxoqp.supabase.co';
-          const SUPABASE_ANON_KEY = 'sb_publishable_mUqC6rBWoHL-5IjW44uhfA_TL7YB1Zg';
-          const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-          // Cek Sesi Login Saat Web Dibuka
-          window.addEventListener('DOMContentLoaded', async () => {
-              const { data: { session } } = await _supabase.auth.getSession();
-              if (session) {
+          window.addEventListener('DOMContentLoaded', () => {
+              const isLogedIn = sessionStorage.getItem('overwatch_auth');
+              if (isLogedIn === 'true') {
                   document.getElementById('auth-overlay').style.display = 'none';
-                  if (typeof currentNRP !== 'undefined') currentNRP = session.user.email;
                   if (typeof mulaiAnimasiIntroDanLoadData === 'function') {
                       mulaiAnimasiIntroDanLoadData();
                   }
@@ -218,98 +198,45 @@
               }
           });
 
-          // Fungsi Kirim OTP & Cek Whitelist Database Supabase
-          window.requestOtp = async function() {
-              const email = document.getElementById('email-input').value.trim().toLowerCase();
+          window.verifyPassword = function() {
+              const pwdInput = document.getElementById('password-input').value.trim();
               const statusMsg = document.getElementById('auth-status');
 
-              if (!email) {
-                  statusMsg.innerText = 'Masukkan email dulu, bre!';
+              if (!pwdInput) {
+                  statusMsg.innerText = 'Password belum diisi, bre!';
                   return;
               }
 
-              statusMsg.innerText = 'Memeriksa hak akses...';
-
-              // 1. Cek Domain Kantor
-              let isAllowed = email.endsWith('@saptaindra.co.id');
-
-              // 2. Cek Tabel Whitelist Supabase (Menggunakan kolom "Email" huruf besar)
-              if (!isAllowed) {
-                  const { data, error } = await _supabase
-                      .from('Whitelist')
-                      .select('Email')
-                      .eq('Email', email);
-
-                  if (error) {
-                      console.error("Supabase Error:", error);
-                      statusMsg.innerText = 'Error DB: ' + error.message;
-                      return;
-                  }
-
-                  if (data && data.length > 0) {
-                      isAllowed = true;
-                  }
-              }
-
-              if (!isAllowed) {
-                  statusMsg.innerText = 'Akses ditolak! Email tidak terdaftar di sistem.';
-                  return;
-              }
-
-              statusMsg.innerText = 'Mengirim kode OTP...';
-
-              const { error } = await _supabase.auth.signInWithOtp({
-                  email: email,
-                  options: { shouldCreateUser: true }
-              });
-
-              if (error) {
-                  statusMsg.innerText = 'Gagal mengirim OTP: ' + error.message;
-              } else {
-                  statusMsg.innerText = 'Kode OTP terkirim! Cek inbox email lu.';
-                  document.getElementById('email-section').classList.add('hidden');
-                  document.getElementById('otp-section').classList.remove('hidden');
-              }
-          };
-
-          // Fungsi Verifikasi Kode OTP
-          window.verifyOtp = async function() {
-              const email = document.getElementById('email-input').value.trim().toLowerCase();
-              const token = document.getElementById('otp-input').value.trim();
-              const statusMsg = document.getElementById('auth-status');
-
-              if (!token || token.length < 6) {
-                  statusMsg.innerText = 'Masukkan 6 digit kode OTP secara lengkap!';
-                  return;
-              }
-
-              statusMsg.innerText = 'Memverifikasi kode...';
-
-              const { data, error } = await _supabase.auth.verifyOtp({
-                  email: email,
-                  token: token,
-                  type: 'email'
-              });
-
-              if (error) {
-                  statusMsg.innerText = 'Kode salah atau kedaluwarsa: ' + error.message;
-              } else {
-                  statusMsg.innerText = 'Login Berhasil! Memuat peta...';
+              if (pwdInput === 'admo123') {
+                  statusMsg.innerText = 'Login Berhasil! Memuat sistem...';
+                  sessionStorage.setItem('overwatch_auth', 'true');
                   setTimeout(() => {
                       document.getElementById('auth-overlay').style.display = 'none';
-                      if (typeof currentNRP !== 'undefined') currentNRP = email;
                       if (typeof mulaiAnimasiIntroDanLoadData === 'function') {
                           mulaiAnimasiIntroDanLoadData();
                       } else {
                           location.reload();
                       }
-                  }, 800);
+                  }, 600);
+              } else {
+                  statusMsg.innerText = 'Password salah! Coba ingat-ingat lagi.';
               }
           };
+
+          document.addEventListener('DOMContentLoaded', () => {
+              const pwdField = document.getElementById('password-input');
+              if (pwdField) {
+                  pwdField.addEventListener('keypress', function(e) {
+                      if (e.key === 'Enter') {
+                          verifyPassword();
+                      }
+                  });
+              }
+          });
       })();
   </script>
 
-  <!-- Script logic utama WebGIS (app.js lu yang lama) -->
+  <!-- Script logic utama WebGIS -->
   <script src="app.js"></script>
 </body>
 </html>
