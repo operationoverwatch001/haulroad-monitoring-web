@@ -111,21 +111,25 @@ function catatLogKeServer(kegiatan, detailAktivitas) {
 // KODE UTAMA WEBGIS (PETA, PMTILES, GEOJSON)
 // ==========================================
 let currentTab = 'grade';
+let rawGeoJsonFeatures = [];
 let monitoringData = [];
 let crossSectionData = [];
 let roadNames = [];
 let activeRoad = "";
 let chartInstance = null;
 let userYInterval = undefined;
-let roadGeoJsonLayer = null;
+
+let roadGeoJsonLayer = null; // Layer slice garis (saat tab Lebar/Crossfall)
+let gradePolygonLayer = null; // Layer blok poligon pita kotak (saat tab Grade)
 
 // State Seleksi Range STA di Peta
-let selectedStartFeature = null;
-let selectedEndFeature = null;
+let selectedStartMeter = null;
+let selectedEndMeter = null;
+let selectedRoadTarget = "";
 
 Chart.register(ChartDataLabels);
 
-// Inisialisasi Peta Leaflet dengan Canvas Renderer agar ringan di HP
+// Inisialisasi Peta Leaflet dengan Canvas Renderer agar performa mobile ringan
 const map = L.map('map', { 
   zoomControl: false,
   preferCanvas: true 
@@ -198,14 +202,13 @@ function toggleBasemapSatelit() {
   }
 }
 
-// Listener penyesuaian ketebalan garis saat zoom in / zoom out
+// Listener penyesuaian gaya garis saat zoom
 map.on('zoomend', () => {
-  if (roadGeoJsonLayer) {
-    roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
-  }
+  if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
+  if (gradePolygonLayer) gradePolygonLayer.setStyle(getGradePolygonStyle);
 });
 
-// Helper: Konversi angka meteran atau string ke format standar STA (280 -> 0+280)
+// Helper: Konversi meteran ke format STA (280 -> 0+280)
 function formatKeSTA(val) {
   if (val === undefined || val === null || val === "") return "-";
   const str = val.toString().trim();
@@ -217,7 +220,7 @@ function formatKeSTA(val) {
   return `${km}+${m}`;
 }
 
-// Helper: Parsing nilai numerik meteran dari STA (misal: "0+280" -> 280, 280 -> 280)
+// Helper: Parsing nilai numerik meteran dari STA ("0+280" -> 280)
 function parseMeterSTA(val) {
   if (val === undefined || val === null || val === "") return 0;
   const str = val.toString().trim();
@@ -228,161 +231,220 @@ function parseMeterSTA(val) {
   return parseFloat(str) || 0;
 }
 
-// Helper: Penentuan Gaya Warna & Ketebalan Garis/Poligon di Peta
+// Helper: Cek apakah STA dalam jangkauan seleksi user
+function isMeterSelected(meterVal, roadName) {
+  if (selectedStartMeter === null || !selectedRoadTarget) return false;
+  if (roadName.toLowerCase() !== selectedRoadTarget.toLowerCase()) return false;
+
+  if (selectedEndMeter !== null) {
+    const minM = Math.min(selectedStartMeter, selectedEndMeter);
+    const maxM = Math.max(selectedStartMeter, selectedEndMeter);
+    return meterVal >= minM && meterVal <= maxM;
+  }
+  return meterVal === selectedStartMeter;
+}
+
+// ==========================================================
+// LOGIKA PEMBENTUKAN POLIGON KOTAK PITA GRADE (DARI SLICE)
+// ==========================================================
+function buildGradeBlocksFromSlices(features) {
+  const roadGroups = {};
+  
+  // Kelompokkan per nama jalan
+  features.forEach(f => {
+    const props = f.properties || {};
+    const road = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
+    if (!roadGroups[road]) roadGroups[road] = [];
+    roadGroups[road].push(f);
+  });
+
+  const blockPolygons = [];
+
+  Object.keys(roadGroups).forEach(road => {
+    const slices = roadGroups[road];
+    // Urutkan berdasarkan urutan meteran STA
+    slices.sort((a, b) => {
+      const mA = parseMeterSTA(a.properties.Station_m !== undefined ? a.properties.Station_m : a.properties.STA);
+      const mB = parseMeterSTA(b.properties.Station_m !== undefined ? b.properties.Station_m : b.properties.STA);
+      return mA - mB;
+    });
+
+    for (let i = 0; i < slices.length - 1; i++) {
+      const f1 = slices[i];
+      const f2 = slices[i + 1];
+
+      const c1 = f1.geometry ? (f1.geometry.type === "MultiLineString" ? f1.geometry.coordinates[0] : f1.geometry.coordinates) : null;
+      const c2 = f2.geometry ? (f2.geometry.type === "MultiLineString" ? f2.geometry.coordinates[0] : f2.geometry.coordinates) : null;
+
+      if (!c1 || !c2 || c1.length < 2 || c2.length < 2) continue;
+
+      const m1 = parseMeterSTA(f1.properties.Station_m !== undefined ? f1.properties.Station_m : f1.properties.STA);
+      const m2 = parseMeterSTA(f2.properties.Station_m !== undefined ? f2.properties.Station_m : f2.properties.STA);
+
+      // Abaikan jika jarak antar irisan melompat jauh (> 45m)
+      if (Math.abs(m2 - m1) > 45) continue;
+
+      // Ambil titik ujung kiri dan kanan tiap slice
+      const p1_start = c1[0];
+      const p1_end = c1[c1.length - 1];
+      const p2_start = c2[0];
+      const p2_end = c2[c2.length - 1];
+
+      // Bentuk 4 titik poligon segmen kotak
+      const ring = [
+        p1_start,
+        p1_end,
+        p2_end,
+        p2_start,
+        p1_start
+      ];
+
+      blockPolygons.push({
+        type: "Feature",
+        geometry: {
+          type: "Polygon",
+          coordinates: [ring]
+        },
+        properties: {
+          ...f1.properties,
+          Station_m: m1,
+          Station_m_End: m2,
+          STA: formatKeSTA(m1),
+          Nama_Jalan: road
+        }
+      });
+    }
+  });
+
+  return { type: "FeatureCollection", features: blockPolygons };
+}
+
+// Style Poligon Blok Pita Grade (Sesuai Foto 2)
+function getGradePolygonStyle(feature) {
+  const props = feature.properties || {};
+  const meterVal = parseMeterSTA(props.Station_m !== undefined ? props.Station_m : props.STA);
+  const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
+
+  // Cek apakah blok poligon ini terpilih seleksi
+  const isSelected = isMeterSelected(meterVal, roadVal);
+  if (isSelected) {
+    return {
+      color: "#00f0ff",
+      weight: 3.5,
+      fillColor: "#00f0ff",
+      fillOpacity: 0.95
+    };
+  }
+
+  // Cross-check status grade ke Excel
+  const staFormatted = formatKeSTA(meterVal);
+  let statusGrade = (props["Status Grade"] || props.Status || "").toString().toUpperCase();
+
+  if (monitoringData && monitoringData.length > 0 && staFormatted !== "-") {
+    const matchedRow = monitoringData.find(d => {
+      const matchRoad = roadVal ? (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.toLowerCase() : true;
+      const dSta = (d["STA"] || "").toString().trim();
+      return matchRoad && (dSta === staFormatted || dSta === meterVal.toString());
+    });
+    if (matchedRow && matchedRow["Status Grade"]) {
+      statusGrade = matchedRow["Status Grade"].toString().toUpperCase();
+    }
+  }
+
+  let fillColor = "#22c55e"; // Normal -> Hijau
+  if (statusGrade.includes("OVERGRADE") || statusGrade === "NON COMPLIANT") {
+    fillColor = "#e11d48"; // Overgrade (>10%) -> Merah
+  } else if (statusGrade.includes("WARNING")) {
+    fillColor = "#eab308"; // Warning (>8%) -> Kuning
+  }
+
+  return {
+    color: "#000000",       // Border garis hitam tegas pemisah tiap STA (sesuai foto 2)
+    weight: 1.2,
+    fillColor: fillColor,   // Warna blok terisi solid
+    fillOpacity: 0.85
+  };
+}
+
+// Style Garis Slice (Saat Tab Lebar / Crossfall Aktif)
 function getRoadFeatureStyle(feature) {
   const props = feature.properties || {};
   const rawStation = props.Station_m !== undefined ? props.Station_m : (props.Station || props.station || props.STA || props.sta || props.ID || 0);
   const meterVal = parseMeterSTA(rawStation);
   const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
 
-  // Skala ketebalan dinamis berbasis zoom agar tidak menggumpal di layar HP
   const currentZoom = map ? map.getZoom() : 15;
-  let baseWeight = 3;
-  if (currentZoom >= 18) {
-    baseWeight = 6;
-  } else if (currentZoom >= 16) {
-    baseWeight = 4;
-  } else if (currentZoom >= 14) {
-    baseWeight = 2.5;
-  } else {
-    baseWeight = 1.2;
+  let baseWeight = currentZoom >= 18 ? 6 : (currentZoom >= 16 ? 4 : (currentZoom >= 14 ? 2.5 : 1.2));
+
+  if (isMeterSelected(meterVal, roadVal)) {
+    return { color: "#00f0ff", weight: baseWeight + 3, opacity: 1 };
   }
 
-  // Highlight Range Seleksi: Wajib cocok nama jalannya
-  let isSelected = false;
-  if (selectedStartFeature) {
-    const startProps = selectedStartFeature.properties || {};
-    const startRoad = (startProps.Nama_Jalan || startProps["Nama Jalan"] || activeRoad).trim();
-
-    if (roadVal.toLowerCase() === startRoad.toLowerCase()) {
-      const startM = parseMeterSTA(startProps.Station_m !== undefined ? startProps.Station_m : startProps.STA);
-      
-      if (selectedEndFeature) {
-        const endProps = selectedEndFeature.properties || {};
-        const endM = parseMeterSTA(endProps.Station_m !== undefined ? endProps.Station_m : endProps.STA);
-        const minM = Math.min(startM, endM);
-        const maxM = Math.max(startM, endM);
-
-        if (meterVal >= minM && meterVal <= maxM) {
-          isSelected = true;
-        }
-      } else if (meterVal === startM) {
-        isSelected = true;
-      }
-    }
-  }
-
-  if (isSelected) {
-    return {
-      color: "#00f0ff",
-      fillColor: "#00f0ff",
-      fillOpacity: 0.8,
-      weight: baseWeight + 3,
-      opacity: 1
-    };
-  }
-
-  // 1. PEWARNAAN TAB LEBAR
   if (currentTab === 'lebar') {
     const lebarAktual = parseFloat(props.Lebar_m !== undefined ? props.Lebar_m : (props.Shape_Leng || 0));
     const lebarStandar = parseFloat(props.Standar_m !== undefined ? props.Standar_m : 30.8);
     const rawStatus = (props.Status || "").toString().trim().toUpperCase();
 
-    let color = "#22c55e"; // Hijau standar
+    let color = "#22c55e";
     if (!isNaN(lebarAktual) && lebarAktual > 0) {
-      if (lebarAktual < lebarStandar) color = "#e11d48"; // Sempit -> Merah
+      if (lebarAktual < lebarStandar) color = "#e11d48";
     } else if (rawStatus === "NON COMPLIANT" || rawStatus === "NONSTANDARD" || rawStatus === "SEMPIT") {
       color = "#e11d48";
     }
 
-    return {
-      color: color,
-      fillColor: color,
-      fillOpacity: 0.65,
-      weight: color === "#e11d48" ? baseWeight + 1.5 : baseWeight,
-      opacity: 0.9
-    };
+    return { color: color, weight: color === "#e11d48" ? baseWeight + 1.5 : baseWeight, opacity: 0.9 };
   }
 
-  // 2. PEWARNAAN TAB GRADE
-  if (currentTab === 'grade') {
-    const staFormatted = formatKeSTA(rawStation);
-    let statusGrade = (props["Status Grade"] || props.Status || "").toString().toUpperCase();
-
-    // Cross-check ke sheet Excel Overwatch.xlsx
-    if (monitoringData && monitoringData.length > 0 && staFormatted !== "-") {
-      const matchedRow = monitoringData.find(d => {
-        const matchRoad = roadVal ? (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.toLowerCase() : true;
-        const dSta = (d["STA"] || "").toString().trim();
-        return matchRoad && (dSta === staFormatted || dSta === rawStation.toString());
-      });
-      if (matchedRow && matchedRow["Status Grade"]) {
-        statusGrade = matchedRow["Status Grade"].toString().toUpperCase();
-      }
-    }
-
-    let gradeColor = "#22c55e"; // Normal (<8%) -> Hijau
-    let weightBonus = 0;
-
-    if (statusGrade.includes("OVERGRADE") || statusGrade === "NON COMPLIANT") {
-      gradeColor = "#e11d48"; // Overgrade (>10%) -> Merah
-      weightBonus = 1.5;
-    } else if (statusGrade.includes("WARNING")) {
-      gradeColor = "#eab308"; // Warning (>8%) -> Kuning
-      weightBonus = 1;
-    }
-
-    return {
-      color: gradeColor,
-      fillColor: gradeColor,
-      fillOpacity: 0.7,
-      weight: baseWeight + weightBonus,
-      opacity: 0.95
-    };
-  }
-
-  // Tab Crossfall / Default
-  return {
-    color: "#00e5ff",
-    fillColor: "#00e5ff",
-    fillOpacity: 0.5,
-    weight: baseWeight,
-    opacity: 0.85
-  };
+  return { color: "#00e5ff", weight: baseWeight, opacity: 0.85 };
 }
 
 // Reset Seleksi Segmen Jalan
 function resetSegmentSelection() {
-  if (!selectedStartFeature && !selectedEndFeature) return;
-  selectedStartFeature = null;
-  selectedEndFeature = null;
-  if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
+  if (selectedStartMeter === null && selectedEndMeter === null) return;
+  selectedStartMeter = null;
+  selectedEndMeter = null;
+  selectedRoadTarget = "";
+  refreshMapLayersAppearance();
   renderTabContent();
 }
 
-// Handler Klik Segmen Jalan
+// Refresh visual layer sesuai tab aktif
+function refreshMapLayersAppearance() {
+  if (currentTab === 'grade') {
+    if (roadGeoJsonLayer) map.removeLayer(roadGeoJsonLayer);
+    if (gradePolygonLayer && !map.hasLayer(gradePolygonLayer)) gradePolygonLayer.addTo(map);
+    if (gradePolygonLayer) gradePolygonLayer.setStyle(getGradePolygonStyle);
+  } else {
+    if (gradePolygonLayer) map.removeLayer(gradePolygonLayer);
+    if (roadGeoJsonLayer && !map.hasLayer(roadGeoJsonLayer)) roadGeoJsonLayer.addTo(map);
+    if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
+  }
+}
+
+// Handler Klik Segmen Jalan / Blok Poligon
 function handleFeatureClick(feature) {
   const props = feature.properties || {};
   const clickedRoad = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
+  const meterVal = parseMeterSTA(props.Station_m !== undefined ? props.Station_m : props.STA);
 
-  // Jika klik jalan berbeda, reset seleksi dan switch jalan aktif
-  if (clickedRoad && clickedRoad !== activeRoad) {
-    selectedStartFeature = null;
-    selectedEndFeature = null;
+  if (clickedRoad && clickedRoad.toLowerCase() !== activeRoad.toLowerCase()) {
+    selectedStartMeter = null;
+    selectedEndMeter = null;
+    selectedRoadTarget = clickedRoad;
     changeRoad(clickedRoad);
+  } else {
+    selectedRoadTarget = activeRoad;
   }
 
   if (currentTab === 'lebar' || currentTab === 'grade') {
-    if (!selectedStartFeature || (selectedStartFeature && selectedEndFeature)) {
-      // Klik ke-1: Titik awal
-      selectedStartFeature = feature;
-      selectedEndFeature = null;
+    if (selectedStartMeter === null || (selectedStartMeter !== null && selectedEndMeter !== null)) {
+      selectedStartMeter = meterVal;
+      selectedEndMeter = null;
     } else {
-      // Klik ke-2: Titik akhir
-      selectedEndFeature = feature;
+      selectedEndMeter = meterVal;
     }
 
-    if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
+    refreshMapLayersAppearance();
 
     if (currentTab === 'lebar') {
       renderLebarSummary();
@@ -390,11 +452,11 @@ function handleFeatureClick(feature) {
       renderGradeSummary();
     }
 
-    const staAwal = formatKeSTA(selectedStartFeature.properties.Station_m !== undefined ? selectedStartFeature.properties.Station_m : selectedStartFeature.properties.STA);
-    const staAkhir = selectedEndFeature ? formatKeSTA(selectedEndFeature.properties.Station_m !== undefined ? selectedEndFeature.properties.Station_m : selectedEndFeature.properties.STA) : "-";
+    const staAwal = formatKeSTA(selectedStartMeter);
+    const staAkhir = selectedEndMeter !== null ? formatKeSTA(selectedEndMeter) : "-";
     catatLogKeServer("PILIH SEGMEN", `Inspeksi ${currentTab.toUpperCase()}: ${activeRoad} (${staAwal} s/d ${staAkhir})`);
   } else if (currentTab === 'crossfall') {
-    const sta = formatKeSTA(props.Station_m !== undefined ? props.Station_m : props.STA);
+    const sta = formatKeSTA(meterVal);
     const staSelect = document.getElementById('select-sta-cs');
     if (staSelect) staSelect.value = sta;
     drawCrossSectionChart(sta);
@@ -403,12 +465,12 @@ function handleFeatureClick(feature) {
 
 // Event Peta: Klik di area bebas untuk membatalkan seleksi segmen
 map.on('click', () => {
-  if (selectedStartFeature || selectedEndFeature) {
+  if (selectedStartMeter !== null || selectedEndMeter !== null) {
     resetSegmentSelection();
   }
 });
 
-// Muat Vektor Spasial Garis Jalan (Road_Layers.geojson)
+// Muat Vektor Spasial Garis Jalan (Road_Layers.geojson) & Generate Poligon Blok
 async function loadRoadLayersGeoJSON() {
   try {
     const res = await fetch('data/Road_Layers.geojson');
@@ -418,29 +480,52 @@ async function loadRoadLayersGeoJSON() {
     if (!contentType.includes("json") && !contentType.includes("octet-stream")) return;
 
     const geojsonData = await res.json();
+    rawGeoJsonFeatures = geojsonData.features || [];
 
+    // 1. Layer Slice Garis Asli (untuk Lebar & Crossfall)
     if (roadGeoJsonLayer) map.removeLayer(roadGeoJsonLayer);
-
     roadGeoJsonLayer = L.geoJSON(geojsonData, {
       style: getRoadFeatureStyle,
       onEachFeature: function(feature, layer) {
         const props = feature.properties || {};
-        const rawStation = props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || props.sta || "-");
-        const sta = formatKeSTA(rawStation);
+        const sta = formatKeSTA(props.Station_m !== undefined ? props.Station_m : props.STA);
         const road = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
         const lebarAktual = props.Lebar_m ? `<br>Lebar: <b>${parseFloat(props.Lebar_m).toFixed(1)} m</b>` : "";
         const payloadInfo = props.Kelas_Jala ? `<br>Kelas: <b>${props.Kelas_Jala}</b>` : "";
 
         layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b>${lebarAktual}${payloadInfo}`, { sticky: true });
+        layer.on('click', (e) => {
+          L.DomEvent.stopPropagation(e);
+          handleFeatureClick(feature);
+        });
+      }
+    });
+
+    // 2. Layer Poligon Pita Kotak (Otomatis dibentuk untuk tab Grade mirip Foto 2)
+    const gradePolygonFC = buildGradeBlocksFromSlices(rawGeoJsonFeatures);
+    if (gradePolygonLayer) map.removeLayer(gradePolygonLayer);
+    gradePolygonLayer = L.geoJSON(gradePolygonFC, {
+      style: getGradePolygonStyle,
+      onEachFeature: function(feature, layer) {
+        const props = feature.properties || {};
+        const sta = formatKeSTA(props.Station_m);
+        const road = props.Nama_Jalan;
+
+        // Label Tooltip persis foto 2
+        layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b>`, { sticky: true });
 
         layer.on('click', (e) => {
           L.DomEvent.stopPropagation(e);
           handleFeatureClick(feature);
         });
       }
-    }).addTo(map);
+    });
 
-    if (roadGeoJsonLayer.getLayers().length > 0) {
+    refreshMapLayersAppearance();
+
+    if (gradePolygonLayer.getLayers().length > 0) {
+      map.fitBounds(gradePolygonLayer.getBounds(), { padding: [30, 30] });
+    } else if (roadGeoJsonLayer.getLayers().length > 0) {
       map.fitBounds(roadGeoJsonLayer.getBounds(), { padding: [30, 30] });
     }
   } catch (err) {
@@ -464,7 +549,7 @@ async function loadExcelData() {
       renderTabContent();
     }
 
-    if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
+    refreshMapLayersAppearance();
     if (map) map.invalidateSize(true);
 
     catatLogKeServer("BUKA APLIKASI", `User ${currentNamaUser} (${currentNRP}) berhasil masuk Dashboard WebGIS.`);
@@ -488,8 +573,7 @@ function switchTab(tabName) {
     window.event.target.classList.add('active');
   }
 
-  if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
-
+  refreshMapLayersAppearance();
   renderTabContent();
   catatLogKeServer("PINDAH TAB", `Melihat tab fitur: ${tabName.toUpperCase()}`);
 }
@@ -499,8 +583,7 @@ function changeRoad(roadName) {
   activeRoad = roadName.trim();
   resetSegmentSelection();
 
-  if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
-
+  refreshMapLayersAppearance();
   renderTabContent();
   catatLogKeServer("GANTI JALAN", `Memilih ruas jalan: ${roadName}`);
 }
@@ -516,23 +599,16 @@ function changeYInterval(val) {
 function getFilteredRoadData() {
   let roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
 
-  // Jika ada seleksi pada tab Grade, potong dataset sesuai rentang STA yang dipilih
-  if (currentTab === 'grade' && selectedStartFeature) {
-    const pStart = selectedStartFeature.properties || {};
-    const mStart = parseMeterSTA(pStart.Station_m !== undefined ? pStart.Station_m : pStart.STA);
-
-    if (selectedEndFeature) {
-      const pEnd = selectedEndFeature.properties || {};
-      const mEnd = parseMeterSTA(pEnd.Station_m !== undefined ? pEnd.Station_m : pEnd.STA);
-      const minM = Math.min(mStart, mEnd);
-      const maxM = Math.max(mStart, mEnd);
-
+  if (currentTab === 'grade' && selectedStartMeter !== null) {
+    if (selectedEndMeter !== null) {
+      const minM = Math.min(selectedStartMeter, selectedEndMeter);
+      const maxM = Math.max(selectedStartMeter, selectedEndMeter);
       roadData = roadData.filter(d => {
         const dm = parseMeterSTA(d["STA"]);
         return dm >= minM && dm <= maxM;
       });
     } else {
-      roadData = roadData.filter(d => parseMeterSTA(d["STA"]) === mStart);
+      roadData = roadData.filter(d => parseMeterSTA(d["STA"]) === selectedStartMeter);
     }
   }
   return roadData;
@@ -551,16 +627,12 @@ function renderGradeSummary() {
   `;
 
   let filterNote = "";
-  if (selectedStartFeature) {
-    const pStart = selectedStartFeature.properties || {};
-    const mStart = parseMeterSTA(pStart.Station_m !== undefined ? pStart.Station_m : pStart.STA);
-    const staStart = formatKeSTA(mStart);
+  if (selectedStartMeter !== null) {
+    const staStart = formatKeSTA(selectedStartMeter);
 
-    if (selectedEndFeature) {
-      const pEnd = selectedEndFeature.properties || {};
-      const mEnd = parseMeterSTA(pEnd.Station_m !== undefined ? pEnd.Station_m : pEnd.STA);
-      const minM = Math.min(mStart, mEnd);
-      const maxM = Math.max(mStart, mEnd);
+    if (selectedEndMeter !== null) {
+      const minM = Math.min(selectedStartMeter, selectedEndMeter);
+      const maxM = Math.max(selectedStartMeter, selectedEndMeter);
       const totalLen = maxM - minM;
       filterNote = `
         <div style="background:#0f172a; color:#fff; padding:4px 10px; border-radius:4px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
@@ -615,14 +687,19 @@ function renderLebarSummary() {
   `;
   panelTitle.innerHTML = `Audit Lebar Jalan: ${roadSelectHtml}`;
 
-  // KONDISI JIKA ADA SELEKSI DARI PETA
-  if (selectedStartFeature) {
-    const pStart = selectedStartFeature.properties || {};
-    const mStart = parseMeterSTA(pStart.Station_m !== undefined ? pStart.Station_m : pStart.STA);
-    const staStartFormatted = formatKeSTA(mStart);
+  if (selectedStartMeter !== null) {
+    const staStartFormatted = formatKeSTA(selectedStartMeter);
 
-    // KASUS A: KLIK 1 KALI (Single STA Terpilih)
-    if (!selectedEndFeature) {
+    // Single STA
+    if (selectedEndMeter === null) {
+      const matchFeature = rawGeoJsonFeatures.find(f => {
+        const fp = f.properties || {};
+        const r = (fp.Nama_Jalan || fp["Nama Jalan"] || activeRoad).trim();
+        const m = parseMeterSTA(fp.Station_m !== undefined ? fp.Station_m : fp.STA);
+        return r.toLowerCase() === activeRoad.toLowerCase() && m === selectedStartMeter;
+      });
+
+      const pStart = matchFeature ? matchFeature.properties : {};
       const lebarAktual = parseFloat(pStart.Lebar_m || 0).toFixed(2);
       const lebarStandar = parseFloat(pStart.Standar_m || 30.8).toFixed(2);
       const isSempit = parseFloat(lebarAktual) < parseFloat(lebarStandar);
@@ -661,54 +738,45 @@ function renderLebarSummary() {
       return;
     }
 
-    // KASUS B: KLIK 2 KALI (Rentang Segmen Terpilih)
-    const pEnd = selectedEndFeature.properties || {};
-    const mEnd = parseMeterSTA(pEnd.Station_m !== undefined ? pEnd.Station_m : pEnd.STA);
-
-    const minM = Math.min(mStart, mEnd);
-    const maxM = Math.max(mStart, mEnd);
+    // Range STA
+    const minM = Math.min(selectedStartMeter, selectedEndMeter);
+    const maxM = Math.max(selectedStartMeter, selectedEndMeter);
     const staAwal = formatKeSTA(minM);
     const staAkhir = formatKeSTA(maxM);
     const totalPanjang = maxM - minM;
 
-    let featuresInRange = [];
-    if (roadGeoJsonLayer) {
-      roadGeoJsonLayer.eachLayer(l => {
-        const fp = l.feature.properties || {};
-        const fRoad = (fp.Nama_Jalan || fp["Nama Jalan"] || activeRoad).trim();
-        if (fRoad.toLowerCase() === activeRoad.toLowerCase()) {
-          const fm = parseMeterSTA(fp.Station_m !== undefined ? fp.Station_m : fp.STA);
-          if (fm >= minM && fm <= maxM) {
-            featuresInRange.push(fp);
-          }
-        }
-      });
-    }
+    let featuresInRange = rawGeoJsonFeatures.filter(f => {
+      const fp = f.properties || {};
+      const fRoad = (fp.Nama_Jalan || fp["Nama Jalan"] || activeRoad).trim();
+      if (fRoad.toLowerCase() === activeRoad.toLowerCase()) {
+        const fm = parseMeterSTA(fp.Station_m !== undefined ? fp.Station_m : fp.STA);
+        return fm >= minM && fm <= maxM;
+      }
+      return false;
+    });
 
     let avgLebar = 0;
     let minLebar = 999;
     let maxLebar = 0;
     let countNonCompliant = 0;
-    const stdLebar = parseFloat(pStart.Standar_m || 30.8).toFixed(2);
-    const kelasJalan = pStart.Kelas_Jala || (pStart.Payload ? `Class ${pStart.Payload}` : "Class 200");
-    const payloadTon = pStart.Payload || "200";
+    const stdLebar = 30.8;
+    let kelasJalan = "Class 200";
+    let payloadTon = "200";
 
     if (featuresInRange.length > 0) {
       let totalW = 0;
       featuresInRange.forEach(f => {
-        const w = parseFloat(f.Lebar_m || f.Shape_Leng || 0);
+        const w = parseFloat(f.properties.Lebar_m || f.properties.Shape_Leng || 0);
         totalW += w;
         if (w < minLebar) minLebar = w;
         if (w > maxLebar) maxLebar = w;
-        if (w < parseFloat(stdLebar)) countNonCompliant++;
+        if (w < stdLebar) countNonCompliant++;
       });
       avgLebar = (totalW / featuresInRange.length).toFixed(2);
       minLebar = minLebar.toFixed(2);
       maxLebar = maxLebar.toFixed(2);
-    } else {
-      avgLebar = parseFloat(pStart.Lebar_m || 0).toFixed(2);
-      minLebar = avgLebar;
-      maxLebar = avgLebar;
+      kelasJalan = featuresInRange[0].properties.Kelas_Jala || kelasJalan;
+      payloadTon = featuresInRange[0].properties.Payload || payloadTon;
     }
 
     panelBody.innerHTML = `
@@ -735,7 +803,7 @@ function renderLebarSummary() {
         <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #22c55e; padding:6px 10px; border-radius:4px;">
           <div style="font-size:10px; color:#64748b;">Standar Desain</div>
           <div style="font-size:14px; font-weight:bold; color:#1e293b;">${stdLebar} Meter</div>
-          <div style="font-size:9px; color:#64748b;">Defisit: -${(parseFloat(stdLebar) - parseFloat(avgLebar)).toFixed(2)} m</div>
+          <div style="font-size:9px; color:#64748b;">Defisit: -${(stdLebar - parseFloat(avgLebar)).toFixed(2)} m</div>
         </div>
 
         <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #f59e0b; padding:6px 10px; border-radius:4px;">
@@ -754,7 +822,7 @@ function renderLebarSummary() {
     return;
   }
 
-  // TAMPILAN DEFAULT JIKA TIDAK ADA YANG TERPILIH
+  // Tampilan Default Lebar
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
   const nonStd = roadData.filter(d => {
     const s = (d["Status Lebar Jalan"] || "").toUpperCase();
@@ -770,7 +838,7 @@ function renderLebarSummary() {
 
   panelBody.innerHTML = `
     <div style="font-size:11px; color:#64748b; margin-bottom:6px;">
-      💡 <i>Klik salah satu garis di peta untuk detail STA, atau klik 2 titik untuk ringkasan segmen. Klik area peta kosong untuk reset.</i>
+      💡 <i>Klik garis di peta untuk detail STA, atau klik 2 titik untuk ringkasan segmen. Klik area peta kosong untuk reset.</i>
     </div>
     ${nonStd.length ? listHtml : `<p style="font-size:12px; color:green; text-align:center; padding-top:20px;">Semua segmen di ${activeRoad} memenuhi standar lebar.</p>`}
   `;
@@ -792,10 +860,8 @@ function renderTabContent() {
 
   if (currentTab === 'grade') {
     renderGradeSummary();
-
   } else if (currentTab === 'lebar') {
     renderLebarSummary();
-
   } else if (currentTab === 'crossfall') {
     panelTitle.innerHTML = `Cross Section 3 Titik: ${roadSelectHtml}`;
     panelBody.innerHTML = `
