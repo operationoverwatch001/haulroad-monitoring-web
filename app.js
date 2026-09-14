@@ -205,33 +205,62 @@ function toggleBasemapSatelit() {
   }
 }
 
+// Helper: Konversi angka meteran atau string ke format standar STA (contoh: 280 -> 0+280, 1450 -> 1+450)
+function formatKeSTA(val) {
+  if (val === undefined || val === null || val === "") return "-";
+  const str = val.toString().trim();
+  if (str.includes("+")) return str;
+  const num = parseFloat(str);
+  if (isNaN(num)) return str;
+  const km = Math.floor(num / 1000);
+  const m = Math.round(num % 1000).toString().padStart(3, '0');
+  return `${km}+${m}`;
+}
+
 // Helper: Penentuan Gaya Warna Vektor Garis Jalan (Hijau, Kuning, Merah)
 function getRoadFeatureStyle(feature) {
   const props = feature.properties || {};
-  const staVal = props.STA || props.sta || props.Sta || "";
+
+  // Deteksi stationing dari semua kemungkinan kolom ArcGIS/Shapefile
+  const rawStation = props.Station_m !== undefined ? props.Station_m : (props.Station || props.station || props.STA || props.sta || props.Sta || props.Chainage || props.chainage || props.ID || "");
+  const staFormatted = formatKeSTA(rawStation);
   const roadVal = props.Nama_Jalan || props["Nama Jalan"] || props.nama_jalan || activeRoad;
 
-  // Cek atribut langsung dari GeoJSON jika ada
-  let statusGrade = props["Status Grade"] || props.Status || props.status || "";
-  let statusLebar = props["Status Lebar Jalan"] || props["Status Lebar"] || props.Status_Leb || props.status_leb || "";
+  // Baca status langsung dari atribut GeoJSON
+  const rawStatus = (props.Status || props["Status Grade"] || props.status || "").toString().toUpperCase();
 
-  // Jika di GeoJSON tidak ada kolom status, cocokkan dengan data Excel (monitoringData) berdasarkan STA & Ruas Jalan
-  if (monitoringData && monitoringData.length > 0 && staVal) {
+  let isNonCompliant = rawStatus.includes("NON COMPLIANT") || rawStatus.includes("NONSTANDARD") || rawStatus.includes("OVERGRADE") || rawStatus.includes("SEMPIT");
+  let isWarning = rawStatus.includes("WARNING");
+
+  // Sinkronisasi silang ke data tabel Excel (Overwatch.xlsx) jika tersedia
+  if (monitoringData && monitoringData.length > 0 && staFormatted !== "-") {
     const matchedRow = monitoringData.find(d => {
       const matchRoad = roadVal ? (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.trim().toLowerCase() : true;
-      const matchSTA = (d["STA"] || "").toString().trim() === staVal.toString().trim();
-      return matchRoad && matchSTA;
+      const dSta = (d["STA"] || "").toString().trim();
+      return matchRoad && (dSta === staFormatted || dSta === rawStation.toString());
     });
 
     if (matchedRow) {
-      if (!statusGrade) statusGrade = matchedRow["Status Grade"] || "";
-      if (!statusLebar) statusLebar = matchedRow["Status Lebar Jalan"] || "";
+      if (currentTab === 'lebar') {
+        const sLebar = (matchedRow["Status Lebar Jalan"] || "").toUpperCase();
+        if (sLebar.includes("NONSTANDARD") || sLebar.includes("SEMPIT") || sLebar.includes("NON COMPLIANT")) {
+          isNonCompliant = true;
+        }
+      } else if (currentTab === 'grade') {
+        const sGrade = (matchedRow["Status Grade"] || "").toUpperCase();
+        if (sGrade.includes("OVERGRADE") || sGrade.includes("NONSTANDARD") || sGrade.includes("NON COMPLIANT")) {
+          isNonCompliant = true;
+        }
+        if (sGrade.includes("WARNING")) {
+          isWarning = true;
+        }
+      }
     }
   }
 
   // 1. Pewarnaan Tab LEBAR
   if (currentTab === 'lebar') {
-    if (statusLebar === "Nonstandard" || statusLebar === "Sempit") {
+    if (isNonCompliant) {
       return { color: "#e11d48", weight: 5, opacity: 0.95 }; // Merah menyala
     }
     return { color: "#22c55e", weight: 3.5, opacity: 0.85 }; // Hijau standar
@@ -239,15 +268,15 @@ function getRoadFeatureStyle(feature) {
 
   // 2. Pewarnaan Tab GRADE
   if (currentTab === 'grade') {
-    if (statusGrade === "Overgrade" || statusGrade === "Nonstandard") {
+    if (isNonCompliant) {
       return { color: "#e11d48", weight: 5, opacity: 0.95 }; // Merah
-    } else if (statusGrade === "Warning") {
+    } else if (isWarning) {
       return { color: "#eab308", weight: 4.5, opacity: 0.95 }; // Kuning
     }
     return { color: "#22c55e", weight: 3.5, opacity: 0.85 }; // Hijau standar
   }
 
-  // 3. Pewarnaan Tab CROSSFALL / Lainnya
+  // 3. Tab CROSSFALL / Default
   return { color: "#00e5ff", weight: 3.5, opacity: 0.85 };
 }
 
@@ -277,10 +306,15 @@ async function loadRoadLayersGeoJSON() {
       style: getRoadFeatureStyle,
       onEachFeature: function(feature, layer) {
         const props = feature.properties || {};
-        const sta = props.STA || props.sta || props.Sta || props.ID || "-";
+        
+        // Baca stationing sapu jagat
+        const rawStation = props.Station_m !== undefined ? props.Station_m : (props.Station || props.station || props.STA || props.sta || props.Sta || props.Chainage || props.chainage || props.ID || "-");
+        const sta = formatKeSTA(rawStation);
         const road = props.Nama_Jalan || props["Nama Jalan"] || props.nama_jalan || activeRoad;
-
-        layer.bindTooltip(`<b>${road}</b><br>STA: ${sta}`, { sticky: true });
+        
+        // Tooltip detail dengan informasi nama jalan, STA, dan lebar aktual
+        const lebarAktual = props.Lebar_m ? `<br>Lebar: <b>${parseFloat(props.Lebar_m).toFixed(1)} m</b>` : "";
+        layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b>${lebarAktual}`, { sticky: true });
 
         // Klik garis/titik di peta sinkron ke tab & grafik
         layer.on('click', () => {
@@ -289,8 +323,10 @@ async function loadRoadLayersGeoJSON() {
           }
           if (currentTab === 'crossfall' && sta !== "-") {
             const staSelect = document.getElementById('select-sta-cs');
-            if (staSelect) staSelect.value = sta;
-            drawCrossSectionChart(sta);
+            if (staSelect) {
+              staSelect.value = sta;
+              drawCrossSectionChart(sta);
+            }
           }
         });
       }
@@ -320,7 +356,7 @@ async function loadExcelData() {
       renderTabContent();
     }
 
-    // Refresh style GeoJSON agar membaca status dari baris Excel
+    // Refresh warna GeoJSON setelah dataset Excel selesai dimuat
     if (roadGeoJsonLayer) {
       roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
     }
@@ -349,7 +385,7 @@ function switchTab(tabName) {
     window.event.target.classList.add('active');
   }
 
-  // Refresh warna garis jalan di peta agar sesuai dengan tab yang sedang aktif
+  // Refresh warna garis jalan di peta agar sinkron dengan tab yang aktif
   if (roadGeoJsonLayer) {
     roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
   }
@@ -361,7 +397,7 @@ function switchTab(tabName) {
 // Ubah Pilihan Nama Jalan
 function changeRoad(roadName) {
   activeRoad = roadName;
-  
+
   if (roadGeoJsonLayer) {
     roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
   }
@@ -414,7 +450,10 @@ function renderTabContent() {
 
   } else if (currentTab === 'lebar') {
     panelTitle.innerHTML = `Audit Lebar Jalan: ${roadSelectHtml}`;
-    const nonStd = roadData.filter(d => d["Status Lebar Jalan"] === "Nonstandard");
+    const nonStd = roadData.filter(d => {
+      const s = (d["Status Lebar Jalan"] || "").toUpperCase();
+      return s.includes("NONSTANDARD") || s.includes("SEMPIT") || s.includes("NON COMPLIANT");
+    });
     let listHtml = nonStd.map(d => `
       <div style="padding:6px 10px; background:#fff0f0; border-left:4px solid #c00000; margin-bottom:4px; font-size:12px; display:flex; justify-content:space-between;">
         <span>STA <b>${d["STA"]}</b>: Aktual <b>${d["Lebar Total (m)"]} m</b> (Std: ${d["Lebar Standar (m)"]} m)</span>
@@ -456,14 +495,15 @@ function drawLongSectionChart(dataSubset) {
   const globalYMax = Math.ceil(rawMax / step) * step;
 
   const pointColors = dataSubset.map(d => {
-    const status = d["Status Grade"];
-    if (status === "Overgrade") return "#c00000";
-    if (status === "Warning") return "#ffc000";
+    const status = (d["Status Grade"] || "").toUpperCase();
+    if (status.includes("OVERGRADE") || status.includes("NON COMPLIANT")) return "#c00000";
+    if (status.includes("WARNING")) return "#ffc000";
     return "#1f4e79";
   });
 
   const pointSizes = dataSubset.map(d => {
-    return (d["Status Grade"] === "Warning" || d["Status Grade"] === "Overgrade") ? 6 : 3;
+    const status = (d["Status Grade"] || "").toUpperCase();
+    return (status.includes("WARNING") || status.includes("OVERGRADE") || status.includes("NON COMPLIANT")) ? 6 : 3;
   });
 
   chartInstance = new Chart(ctx, {
@@ -507,8 +547,9 @@ function drawLongSectionChart(dataSubset) {
           font: { size: 8, weight: 'bold' },
           color: function(context) {
             const d = dataSubset[context.dataIndex];
-            if (d["Status Grade"] === "Overgrade") return "#c00000";
-            if (d["Status Grade"] === "Warning") return "#b25900";
+            const status = (d["Status Grade"] || "").toUpperCase();
+            if (status.includes("OVERGRADE") || status.includes("NON COMPLIANT")) return "#c00000";
+            if (status.includes("WARNING")) return "#b25900";
             return "#444444";
           },
           formatter: function(value, context) {
