@@ -35,13 +35,10 @@ async function prosesLoginWebGIS() {
       currentNRP = nrpVal;
       currentNamaUser = result.nama;
 
-      // Hapus modal login
       const modal = document.getElementById('whitelistModal');
       if (modal) modal.remove();
 
-      // Jalankan animasi loading splash screen & sinkronisasi data
       mulaiAnimasiIntroDanLoadData();
-
     } else {
       if (btnLogin) btnLogin.disabled = false;
       if (errorMsg) {
@@ -81,7 +78,6 @@ function mulaiAnimasiIntroDanLoadData() {
     if (statusText) statusText.innerText = 'SYNCHRONIZING TELEMETRY...';
   }, 1600);
 
-  // Ambil dataset Excel & Vektor Spasial di background
   loadExcelData();
   loadRoadLayersGeoJSON();
 
@@ -91,31 +87,25 @@ function mulaiAnimasiIntroDanLoadData() {
     if (titleElement) titleElement.classList.add('glitch-outro');
   }, 2600);
 
-  // Selesai intro: hilangkan total elemen splash dari DOM
   setTimeout(() => {
     if (splash) {
       splash.style.transition = 'opacity 0.4s ease';
       splash.style.opacity = '0';
       setTimeout(() => {
         splash.style.display = 'none';
-        splash.remove(); // Dihapus bersih dari halaman
-        
-        // Paksa peta Leaflet hitung ulang ukuran kontainer
-        if (map) {
-          map.invalidateSize(true);
-        }
+        splash.remove();
+        if (map) map.invalidateSize(true);
       }, 400);
     }
   }, 3200);
 }
 
-// 3. Catat Log ke Server (Mode beacon no-cors)
+// 3. Catat Log ke Server
 function catatLogKeServer(kegiatan, detailAktivitas) {
   if (!currentNRP) return;
   const targetUrl = `${WEB_APP_URL}?action=LOG_AKTIVITAS&nrp=${encodeURIComponent(currentNRP)}&kegiatan=${encodeURIComponent(kegiatan)}&detail=${encodeURIComponent(detailAktivitas)}`;
   fetch(targetUrl, { mode: "no-cors" }).catch(err => console.error("Log error:", err));
 }
-
 
 // ==========================================
 // KODE UTAMA WEBGIS (PETA, PMTILES, GEOJSON)
@@ -129,10 +119,12 @@ let chartInstance = null;
 let userYInterval = undefined;
 let roadGeoJsonLayer = null;
 
-// Daftarkan plugin Datalabels global untuk Chart.js
+// State Seleksi Range STA di Peta
+let selectedStartFeature = null;
+let selectedEndFeature = null;
+
 Chart.register(ChartDataLabels);
 
-// Inisialisasi Peta Leaflet
 const map = L.map('map', { zoomControl: false }).setView([-2.169338, 115.572115], 15);
 
 // 1. Layer Satelit Global Esri
@@ -164,7 +156,6 @@ if (pmtilesLib) {
       attribution: 'Drone Orthophoto'
     }).addTo(map);
 
-    // Auto fit zoom kamera ke batas bounding box orthophoto
     p.getHeader().then(header => {
       if (header && header.minLon && header.minLat) {
         map.fitBounds([
@@ -177,11 +168,9 @@ if (pmtilesLib) {
   } catch (err) {
     console.error("Gagal mounting layer PMTiles:", err);
   }
-} else {
-  console.warn("Library pmtiles belum terdeteksi di DOM window.");
 }
 
-// 3. Fungsi Toggle Basemap Satelit Luar (Terhubung ke tombol di index.html)
+// 3. Toggle Basemap Satelit Luar
 let isBasemapActive = true;
 function toggleBasemapSatelit() {
   const btn = document.getElementById('btnToggleBasemap');
@@ -205,7 +194,7 @@ function toggleBasemapSatelit() {
   }
 }
 
-// Helper: Konversi angka meteran atau string ke format standar STA (contoh: 280 -> 0+280, 1450 -> 1+450)
+// Helper: Konversi angka meteran atau string ke format standar STA (280 -> 0+280)
 function formatKeSTA(val) {
   if (val === undefined || val === null || val === "") return "-";
   const str = val.toString().trim();
@@ -217,22 +206,47 @@ function formatKeSTA(val) {
   return `${km}+${m}`;
 }
 
-// Helper: Penentuan Gaya Warna Vektor Garis Jalan (Hijau, Kuning, Merah)
+// Helper: Parsing nilai numerik meteran dari STA (misal: "0+280" -> 280, 280 -> 280)
+function parseMeterSTA(val) {
+  if (val === undefined || val === null || val === "") return 0;
+  const str = val.toString().trim();
+  if (str.includes("+")) {
+    const parts = str.split("+");
+    return (parseFloat(parts[0]) || 0) * 1000 + (parseFloat(parts[1]) || 0);
+  }
+  return parseFloat(str) || 0;
+}
+
+// Helper: Penentuan Gaya Warna Garis Jalan di Peta
 function getRoadFeatureStyle(feature) {
   const props = feature.properties || {};
+  const rawStation = props.Station_m !== undefined ? props.Station_m : (props.Station || props.station || props.STA || props.sta || props.ID || 0);
+  const meterVal = parseMeterSTA(rawStation);
 
-  // Deteksi stationing dari semua kemungkinan kolom ArcGIS/Shapefile
-  const rawStation = props.Station_m !== undefined ? props.Station_m : (props.Station || props.station || props.STA || props.sta || props.Sta || props.Chainage || props.chainage || props.ID || "");
+  // Cek apakah garis ini berada di dalam Range Seleksi Klik User
+  if (selectedStartFeature) {
+    const startM = parseMeterSTA(selectedStartFeature.properties.Station_m !== undefined ? selectedStartFeature.properties.Station_m : selectedStartFeature.properties.STA);
+    
+    if (selectedEndFeature) {
+      const endM = parseMeterSTA(selectedEndFeature.properties.Station_m !== undefined ? selectedEndFeature.properties.Station_m : selectedEndFeature.properties.STA);
+      const minM = Math.min(startM, endM);
+      const maxM = Math.max(startM, endM);
+
+      if (meterVal >= minM && meterVal <= maxM) {
+        return { color: "#00f0ff", weight: 7, opacity: 1 }; // Highlight Biru Neon Tebal saat terpilih range
+      }
+    } else if (meterVal === startM) {
+      return { color: "#00f0ff", weight: 7, opacity: 1 }; // Highlight Klik Pertama
+    }
+  }
+
   const staFormatted = formatKeSTA(rawStation);
-  const roadVal = props.Nama_Jalan || props["Nama Jalan"] || props.nama_jalan || activeRoad;
-
-  // Baca status langsung dari atribut GeoJSON
+  const roadVal = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
   const rawStatus = (props.Status || props["Status Grade"] || props.status || "").toString().toUpperCase();
 
   let isNonCompliant = rawStatus.includes("NON COMPLIANT") || rawStatus.includes("NONSTANDARD") || rawStatus.includes("OVERGRADE") || rawStatus.includes("SEMPIT");
   let isWarning = rawStatus.includes("WARNING");
 
-  // Sinkronisasi silang ke data tabel Excel (Overwatch.xlsx) jika tersedia
   if (monitoringData && monitoringData.length > 0 && staFormatted !== "-") {
     const matchedRow = monitoringData.find(d => {
       const matchRoad = roadVal ? (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.trim().toLowerCase() : true;
@@ -243,91 +257,98 @@ function getRoadFeatureStyle(feature) {
     if (matchedRow) {
       if (currentTab === 'lebar') {
         const sLebar = (matchedRow["Status Lebar Jalan"] || "").toUpperCase();
-        if (sLebar.includes("NONSTANDARD") || sLebar.includes("SEMPIT") || sLebar.includes("NON COMPLIANT")) {
-          isNonCompliant = true;
-        }
+        if (sLebar.includes("NONSTANDARD") || sLebar.includes("SEMPIT") || sLebar.includes("NON COMPLIANT")) isNonCompliant = true;
       } else if (currentTab === 'grade') {
         const sGrade = (matchedRow["Status Grade"] || "").toUpperCase();
-        if (sGrade.includes("OVERGRADE") || sGrade.includes("NONSTANDARD") || sGrade.includes("NON COMPLIANT")) {
-          isNonCompliant = true;
-        }
-        if (sGrade.includes("WARNING")) {
-          isWarning = true;
-        }
+        if (sGrade.includes("OVERGRADE") || sGrade.includes("NONSTANDARD") || sGrade.includes("NON COMPLIANT")) isNonCompliant = true;
+        if (sGrade.includes("WARNING")) isWarning = true;
       }
     }
   }
 
-  // 1. Pewarnaan Tab LEBAR
   if (currentTab === 'lebar') {
-    if (isNonCompliant) {
-      return { color: "#e11d48", weight: 5, opacity: 0.95 }; // Merah menyala
-    }
-    return { color: "#22c55e", weight: 3.5, opacity: 0.85 }; // Hijau standar
+    if (isNonCompliant) return { color: "#e11d48", weight: 5, opacity: 0.95 }; // Merah
+    return { color: "#22c55e", weight: 3.5, opacity: 0.85 }; // Hijau
   }
 
-  // 2. Pewarnaan Tab GRADE
   if (currentTab === 'grade') {
-    if (isNonCompliant) {
-      return { color: "#e11d48", weight: 5, opacity: 0.95 }; // Merah
-    } else if (isWarning) {
-      return { color: "#eab308", weight: 4.5, opacity: 0.95 }; // Kuning
-    }
-    return { color: "#22c55e", weight: 3.5, opacity: 0.85 }; // Hijau standar
+    if (isNonCompliant) return { color: "#e11d48", weight: 5, opacity: 0.95 };
+    if (isWarning) return { color: "#eab308", weight: 4.5, opacity: 0.95 };
+    return { color: "#22c55e", weight: 3.5, opacity: 0.85 };
   }
 
-  // 3. Tab CROSSFALL / Default
   return { color: "#00e5ff", weight: 3.5, opacity: 0.85 };
+}
+
+// Reset Seleksi Segmen Jalan
+function resetSegmentSelection() {
+  selectedStartFeature = null;
+  selectedEndFeature = null;
+  if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
+  renderTabContent();
+}
+
+// Handler Saat Segmen Jalan Diklik di Peta
+function handleFeatureClick(feature) {
+  const props = feature.properties || {};
+  const clickedRoad = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
+
+  // Jika klik jalan lain, switch nama jalannya
+  if (clickedRoad && clickedRoad !== activeRoad) {
+    changeRoad(clickedRoad);
+  }
+
+  if (currentTab === 'lebar') {
+    if (!selectedStartFeature || (selectedStartFeature && selectedEndFeature)) {
+      // Klik ke-1: Titik awal
+      selectedStartFeature = feature;
+      selectedEndFeature = null;
+    } else {
+      // Klik ke-2: Titik akhir
+      selectedEndFeature = feature;
+    }
+
+    if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
+    renderLebarSummary();
+
+    const staAwal = formatKeSTA(selectedStartFeature.properties.Station_m !== undefined ? selectedStartFeature.properties.Station_m : selectedStartFeature.properties.STA);
+    const staAkhir = selectedEndFeature ? formatKeSTA(selectedEndFeature.properties.Station_m !== undefined ? selectedEndFeature.properties.Station_m : selectedEndFeature.properties.STA) : "-";
+    catatLogKeServer("PILIH SEGMEN", `Inspeksi Lebar: ${activeRoad} (${staAwal} s/d ${staAkhir})`);
+  } else if (currentTab === 'crossfall') {
+    const sta = formatKeSTA(props.Station_m !== undefined ? props.Station_m : props.STA);
+    const staSelect = document.getElementById('select-sta-cs');
+    if (staSelect) staSelect.value = sta;
+    drawCrossSectionChart(sta);
+  }
 }
 
 // Muat Vektor Spasial Garis Jalan (Road_Layers.geojson)
 async function loadRoadLayersGeoJSON() {
   try {
     const res = await fetch('data/Road_Layers.geojson');
-    if (!res.ok) {
-      console.info("Info: data/Road_Layers.geojson belum tersedia, layer vektor dilewati.");
-      return;
-    }
-    
-    // Verifikasi respons bukan dokumen HTML (404 Cloudflare redirect)
+    if (!res.ok) return;
+
     const contentType = res.headers.get("content-type") || "";
-    if (!contentType.includes("json") && !contentType.includes("octet-stream")) {
-      console.info("Info: Endpoint Road_Layers.geojson mengembalikan non-JSON data.");
-      return;
-    }
+    if (!contentType.includes("json") && !contentType.includes("octet-stream")) return;
 
     const geojsonData = await res.json();
 
-    if (roadGeoJsonLayer) {
-      map.removeLayer(roadGeoJsonLayer);
-    }
+    if (roadGeoJsonLayer) map.removeLayer(roadGeoJsonLayer);
 
     roadGeoJsonLayer = L.geoJSON(geojsonData, {
       style: getRoadFeatureStyle,
       onEachFeature: function(feature, layer) {
         const props = feature.properties || {};
-        
-        // Baca stationing sapu jagat
-        const rawStation = props.Station_m !== undefined ? props.Station_m : (props.Station || props.station || props.STA || props.sta || props.Sta || props.Chainage || props.chainage || props.ID || "-");
+        const rawStation = props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || props.sta || "-");
         const sta = formatKeSTA(rawStation);
-        const road = props.Nama_Jalan || props["Nama Jalan"] || props.nama_jalan || activeRoad;
-        
-        // Tooltip detail dengan informasi nama jalan, STA, dan lebar aktual
+        const road = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
         const lebarAktual = props.Lebar_m ? `<br>Lebar: <b>${parseFloat(props.Lebar_m).toFixed(1)} m</b>` : "";
-        layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b>${lebarAktual}`, { sticky: true });
+        const payloadInfo = props.Kelas_Jala ? `<br>Kelas: <b>${props.Kelas_Jala}</b>` : "";
 
-        // Klik garis/titik di peta sinkron ke tab & grafik
+        layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b>${lebarAktual}${payloadInfo}`, { sticky: true });
+
         layer.on('click', () => {
-          if (props.Nama_Jalan && props.Nama_Jalan !== activeRoad) {
-            changeRoad(props.Nama_Jalan);
-          }
-          if (currentTab === 'crossfall' && sta !== "-") {
-            const staSelect = document.getElementById('select-sta-cs');
-            if (staSelect) {
-              staSelect.value = sta;
-              drawCrossSectionChart(sta);
-            }
-          }
+          handleFeatureClick(feature);
         });
       }
     }).addTo(map);
@@ -352,18 +373,12 @@ async function loadExcelData() {
 
     if (monitoringData.length > 0) {
       roadNames = [...new Set(monitoringData.map(d => (d["Nama Jalan"] || "").trim()))].filter(n => n.length > 0);
-      activeRoad = roadNames[0] || "Jl Bontang";
+      activeRoad = roadNames[0] || "Jl Sumba";
       renderTabContent();
     }
 
-    // Refresh warna GeoJSON setelah dataset Excel selesai dimuat
-    if (roadGeoJsonLayer) {
-      roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
-    }
-
-    if (map) {
-      map.invalidateSize(true);
-    }
+    if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
+    if (map) map.invalidateSize(true);
 
     catatLogKeServer("BUKA APLIKASI", `User ${currentNamaUser} (${currentNRP}) berhasil masuk Dashboard WebGIS.`);
 
@@ -371,8 +386,7 @@ async function loadExcelData() {
     console.error("Excel load error:", error);
     const panelBody = document.getElementById('panel-body');
     if (panelBody) {
-      panelBody.innerHTML = 
-        `<p style="color:red; font-size:12px; text-align:center;">Gagal memuat data Excel. Pastikan file Overwatch.xlsx ada di folder data/.</p>`;
+      panelBody.innerHTML = `<p style="color:red; font-size:12px; text-align:center;">Gagal memuat data Excel. Pastikan file Overwatch.xlsx ada di folder data/.</p>`;
     }
   }
 }
@@ -380,15 +394,14 @@ async function loadExcelData() {
 // Navigasi Tab
 function switchTab(tabName) {
   currentTab = tabName;
+  resetSegmentSelection();
+
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
   if (window.event && window.event.target) {
     window.event.target.classList.add('active');
   }
 
-  // Refresh warna garis jalan di peta agar sinkron dengan tab yang aktif
-  if (roadGeoJsonLayer) {
-    roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
-  }
+  if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
 
   renderTabContent();
   catatLogKeServer("PINDAH TAB", `Melihat tab fitur: ${tabName.toUpperCase()}`);
@@ -397,10 +410,9 @@ function switchTab(tabName) {
 // Ubah Pilihan Nama Jalan
 function changeRoad(roadName) {
   activeRoad = roadName;
+  resetSegmentSelection();
 
-  if (roadGeoJsonLayer) {
-    roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
-  }
+  if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
 
   renderTabContent();
   catatLogKeServer("GANTI JALAN", `Memilih ruas jalan: ${roadName}`);
@@ -413,7 +425,185 @@ function changeYInterval(val) {
   drawLongSectionChart(roadData);
 }
 
-// Render Panel Bawah Sesuai Tab
+// Render Panel Audit Lebar Jalan (Mendukung Single STA & Range 2 Klik)
+function renderLebarSummary() {
+  const panelBody = document.getElementById('panel-body');
+  const panelTitle = document.getElementById('panel-title');
+  if (!panelBody || !panelTitle) return;
+
+  const roadSelectHtml = `
+    <select onchange="changeRoad(this.value)" style="font-size:11px; font-weight:bold; padding:2px 4px; border-radius:4px;">
+      ${roadNames.map(r => `<option value="${r}" ${r === activeRoad ? 'selected' : ''}>${r}</option>`).join('')}
+    </select>
+  `;
+  panelTitle.innerHTML = `Audit Lebar Jalan: ${roadSelectHtml}`;
+
+  // KONDISI JIKA ADA SELEKSI DARI PETA
+  if (selectedStartFeature) {
+    const pStart = selectedStartFeature.properties || {};
+    const mStart = parseMeterSTA(pStart.Station_m !== undefined ? pStart.Station_m : pStart.STA);
+    const staStartFormatted = formatKeSTA(mStart);
+
+    // KASUS A: KLIK 1 KALI (Single STA Terpilih)
+    if (!selectedEndFeature) {
+      const lebarAktual = parseFloat(pStart.Lebar_m || 0).toFixed(2);
+      const lebarStandar = parseFloat(pStart.Standar_m || 30.8).toFixed(2);
+      const statusText = (pStart.Status || "NON COMPLIANT").toUpperCase();
+      const isSempit = statusText.includes("NON") || parseFloat(lebarAktual) < parseFloat(lebarStandar);
+      const kelasJalan = pStart.Kelas_Jala || (pStart.Payload ? `Class ${pStart.Payload}` : "Class 200");
+      const payloadTon = pStart.Payload || "200";
+
+      panelBody.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; color:#fff; padding:6px 12px; border-radius:6px; margin-bottom:8px;">
+          <div>
+            <span style="font-size:11px; color:#94a3b8;">SELEKSI STA TUNGGAL:</span>
+            <span style="font-size:14px; font-weight:bold; color:#00f0ff; margin-left:6px;">STA ${staStartFormatted}</span>
+          </div>
+          <button onclick="resetSegmentSelection()" style="background:#334155; color:#fff; border:none; padding:3px 8px; border-radius:4px; font-size:11px; cursor:pointer;">✕ Reset Peta</button>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:6px;">
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid ${isSempit ? '#e11d48' : '#22c55e'}; padding:6px 10px; border-radius:4px;">
+            <div style="font-size:10px; color:#64748b;">Lebar Aktual</div>
+            <div style="font-size:14px; font-weight:bold; color:${isSempit ? '#e11d48' : '#1e293b'};">${lebarAktual} m</div>
+          </div>
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #3b82f6; padding:6px 10px; border-radius:4px;">
+            <div style="font-size:10px; color:#64748b;">Standar Desain</div>
+            <div style="font-size:14px; font-weight:bold; color:#1e293b;">${lebarStandar} m</div>
+          </div>
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #f59e0b; padding:6px 10px; border-radius:4px;">
+            <div style="font-size:10px; color:#64748b;">Payload Target</div>
+            <div style="font-size:14px; font-weight:bold; color:#b45309;">${kelasJalan} (${payloadTon} Ton)</div>
+          </div>
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid ${isSempit ? '#e11d48' : '#22c55e'}; padding:6px 10px; border-radius:4px;">
+            <div style="font-size:10px; color:#64748b;">Kondisi Ruas</div>
+            <div style="font-size:14px; font-weight:bold; color:${isSempit ? '#e11d48' : '#15803d'};">${isSempit ? 'Sempit / Non-Compliant' : 'Compliant (Standar)'}</div>
+          </div>
+        </div>
+        <p style="font-size:10px; color:#64748b; margin:0; text-align:right;">*Tips: Klik 1 titik lagi di peta untuk menganalisis rentang segmen.</p>
+      `;
+      return;
+    }
+
+    // KASUS B: KLIK 2 KALI (Rentang Segmen Terpilih)
+    const pEnd = selectedEndFeature.properties || {};
+    const mEnd = parseMeterSTA(pEnd.Station_m !== undefined ? pEnd.Station_m : pEnd.STA);
+
+    const minM = Math.min(mStart, mEnd);
+    const maxM = Math.max(mStart, mEnd);
+    const staAwal = formatKeSTA(minM);
+    const staAkhir = formatKeSTA(maxM);
+    const totalPanjang = maxM - minM;
+
+    // Filter semua fitur GeoJSON yang berada di dalam range meteran
+    let featuresInRange = [];
+    if (roadGeoJsonLayer) {
+      roadGeoJsonLayer.eachLayer(l => {
+        const fp = l.feature.properties || {};
+        const fRoad = fp.Nama_Jalan || fp["Nama Jalan"] || activeRoad;
+        if (fRoad === activeRoad) {
+          const fm = parseMeterSTA(fp.Station_m !== undefined ? fp.Station_m : fp.STA);
+          if (fm >= minM && fm <= maxM) {
+            featuresInRange.push(fp);
+          }
+        }
+      });
+    }
+
+    // Hitung rata-rata, min, max lebar
+    let avgLebar = 0;
+    let minLebar = 999;
+    let maxLebar = 0;
+    let countNonCompliant = 0;
+    const stdLebar = parseFloat(pStart.Standar_m || 30.8).toFixed(2);
+    const kelasJalan = pStart.Kelas_Jala || (pStart.Payload ? `Class ${pStart.Payload}` : "Class 200");
+    const payloadTon = pStart.Payload || "200";
+
+    if (featuresInRange.length > 0) {
+      let totalW = 0;
+      featuresInRange.forEach(f => {
+        const w = parseFloat(f.Lebar_m || f.Shape_Leng || 0);
+        totalW += w;
+        if (w < minLebar) minLebar = w;
+        if (w > maxLebar) maxLebar = w;
+        const st = (f.Status || "").toUpperCase();
+        if (st.includes("NON") || w < parseFloat(stdLebar)) countNonCompliant++;
+      });
+      avgLebar = (totalW / featuresInRange.length).toFixed(2);
+      minLebar = minLebar.toFixed(2);
+      maxLebar = maxLebar.toFixed(2);
+    } else {
+      avgLebar = parseFloat(pStart.Lebar_m || 0).toFixed(2);
+      minLebar = avgLebar;
+      maxLebar = avgLebar;
+    }
+
+    panelBody.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; color:#fff; padding:6px 12px; border-radius:6px; margin-bottom:8px;">
+        <div>
+          <span style="font-size:11px; color:#94a3b8;">SEGMEN TERPILIH:</span>
+          <span style="font-size:14px; font-weight:bold; color:#00f0ff; margin-left:6px;">STA ${staAwal} s/d ${staAkhir}</span>
+        </div>
+        <button onclick="resetSegmentSelection()" style="background:#334155; color:#fff; border:none; padding:3px 8px; border-radius:4px; font-size:11px; cursor:pointer;">✕ Reset Peta</button>
+      </div>
+
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:8px;">
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #3b82f6; padding:6px 10px; border-radius:4px;">
+          <div style="font-size:10px; color:#64748b;">Total Panjang Segmen</div>
+          <div style="font-size:14px; font-weight:bold; color:#1e293b;">${totalPanjang} Meter</div>
+        </div>
+
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #e11d48; padding:6px 10px; border-radius:4px;">
+          <div style="font-size:10px; color:#64748b;">Rata-rata Lebar (Aktual)</div>
+          <div style="font-size:14px; font-weight:bold; color:#e11d48;">${avgLebar} m</div>
+          <div style="font-size:9px; color:#64748b;">Min: ${minLebar}m | Max: ${maxLebar}m</div>
+        </div>
+
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #22c55e; padding:6px 10px; border-radius:4px;">
+          <div style="font-size:10px; color:#64748b;">Standar Desain</div>
+          <div style="font-size:14px; font-weight:bold; color:#1e293b;">${stdLebar} Meter</div>
+          <div style="font-size:9px; color:#64748b;">Defisit: -${(parseFloat(stdLebar) - parseFloat(avgLebar)).toFixed(2)} m</div>
+        </div>
+
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #f59e0b; padding:6px 10px; border-radius:4px;">
+          <div style="font-size:10px; color:#64748b;">Payload Kelas Hauler</div>
+          <div style="font-size:14px; font-weight:bold; color:#b45309;">${kelasJalan}</div>
+          <div style="font-size:9px; color:#64748b;">Kapasitas: ${payloadTon} Ton</div>
+        </div>
+
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #e11d48; padding:6px 10px; border-radius:4px;">
+          <div style="font-size:10px; color:#64748b;">Kesesuaian Standar</div>
+          <div style="font-size:14px; font-weight:bold; color:#e11d48;">${countNonCompliant} Slice Sempit</div>
+          <div style="font-size:9px; color:#e11d48;">Perlu pelebaran roadway</div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // DEFAULT LIST JIKA BELUM ADA YANG DIKLIK
+  const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
+  const nonStd = roadData.filter(d => {
+    const s = (d["Status Lebar Jalan"] || "").toUpperCase();
+    return s.includes("NONSTANDARD") || s.includes("SEMPIT") || s.includes("NON COMPLIANT");
+  });
+
+  let listHtml = nonStd.map(d => `
+    <div style="padding:6px 10px; background:#fff0f0; border-left:4px solid #c00000; margin-bottom:4px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
+      <span>STA <b>${d["STA"]}</b>: Aktual <b>${d["Lebar Total (m)"]} m</b> (Std: ${d["Lebar Standar (m)"]} m)</span>
+      <span style="color:#c00000; font-weight:bold;">Sempit</span>
+    </div>
+  `).join('');
+
+  panelBody.innerHTML = `
+    <div style="font-size:11px; color:#64748b; margin-bottom:6px;">
+      💡 <i>Klik salah satu garis merah di peta untuk melihat detail STA, atau klik 2 titik untuk ringkasan segmen.</i>
+    </div>
+    ${nonStd.length ? listHtml : `<p style="font-size:12px; color:green; text-align:center; padding-top:20px;">Semua segmen di ${activeRoad} memenuhi standar lebar.</p>`}
+  `;
+}
+
+// Render Konten Tab Panel Bawah
 function renderTabContent() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
@@ -449,19 +639,7 @@ function renderTabContent() {
     drawLongSectionChart(roadData);
 
   } else if (currentTab === 'lebar') {
-    panelTitle.innerHTML = `Audit Lebar Jalan: ${roadSelectHtml}`;
-    const nonStd = roadData.filter(d => {
-      const s = (d["Status Lebar Jalan"] || "").toUpperCase();
-      return s.includes("NONSTANDARD") || s.includes("SEMPIT") || s.includes("NON COMPLIANT");
-    });
-    let listHtml = nonStd.map(d => `
-      <div style="padding:6px 10px; background:#fff0f0; border-left:4px solid #c00000; margin-bottom:4px; font-size:12px; display:flex; justify-content:space-between;">
-        <span>STA <b>${d["STA"]}</b>: Aktual <b>${d["Lebar Total (m)"]} m</b> (Std: ${d["Lebar Standar (m)"]} m)</span>
-        <span style="color:#c00000; font-weight:bold;">Sempit</span>
-      </div>
-    `).join('');
-
-    panelBody.innerHTML = nonStd.length ? listHtml : `<p style="font-size:12px; color:green; text-align:center; padding-top:20px;">Semua segmen di ${activeRoad} memenuhi standar lebar.</p>`;
+    renderLebarSummary();
 
   } else if (currentTab === 'crossfall') {
     panelTitle.innerHTML = `Cross Section 3 Titik: ${roadSelectHtml}`;
