@@ -2,13 +2,8 @@
 // KONFIGURASI BACKEND GOOGLE SHEETS (LOG & WHITELIST)
 // ==========================================
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec";
-let currentNRP = "SUPABASE_USER";
+let currentNRP = "ADMIN_USER";
 let currentNamaUser = "Pekerja / Inspector";
-
-// (Dimatikan karena pemicu intro & load data sekarang di-handle oleh sukses login Supabase di index.html)
-// document.addEventListener('DOMContentLoaded', () => {
-//   mulaiAnimasiIntroDanLoadData();
-// });
 
 // 2. Timeline Animasi Intro Loading & Fetch Data
 function mulaiAnimasiIntroDanLoadData() {
@@ -260,7 +255,6 @@ function getGradePolygonBlockStyle(feature) {
   const meterVal = parseMeterSTA(staVal);
   const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
 
-  // Seleksi aktif: Highlight Cyan Solid
   if (isMeterSelected(meterVal, roadVal)) {
     return {
       color: "#00f0ff",
@@ -438,7 +432,6 @@ map.on('click', () => {
 
 // Muat Kedua File GeoJSON
 async function loadAllVectorLayers() {
-  // 1. Muat Layer Blok Poligon Grade (Road_Grade_Polygons.geojson)
   try {
     const resGrade = await fetch('data/Road_Grade_Polygons.geojson');
     if (resGrade.ok) {
@@ -469,7 +462,6 @@ async function loadAllVectorLayers() {
           const center = layer.getBounds().getCenter();
           const angle = calculatePolygonAngle(layer);
 
-          // Label Nomor STA Berotasi
           const staMarker = L.marker(center, {
             icon: L.divIcon({
               className: 'sta-rotated-label',
@@ -482,7 +474,6 @@ async function loadAllVectorLayers() {
           });
           gradeLabelsLayer.addLayer(staMarker);
 
-          // Badge Kapsul Grade (Overgrade / Warning)
           if (gVal) {
             let badgeType = "";
             if (statusGrade.includes("OVERGRADE") || statusGrade.includes("NON COMPLIANT")) {
@@ -517,7 +508,6 @@ async function loadAllVectorLayers() {
     console.warn("Info Layer Grade:", err.message);
   }
 
-  // 2. Muat Layer Irisan Lebar Jalan (Road_Layers.geojson)
   try {
     const resWidth = await fetch('data/Road_Layers.geojson');
     if (resWidth.ok) {
@@ -575,7 +565,7 @@ async function loadExcelData() {
     refreshVisibleLayers();
     if (map) map.invalidateSize(true);
 
-    catatLogKeServer("BUKA APLIKASI", `User sukses masuk Dashboard WebGIS via Supabase Auth.`);
+    catatLogKeServer("BUKA APLIKASI", `User sukses masuk Dashboard WebGIS via Password Manual.`);
 
   } catch (error) {
     console.error("Excel load error:", error);
@@ -697,7 +687,7 @@ function renderGradeSummary() {
   drawLongSectionChart(roadData);
 }
 
-// Render Panel Audit Lebar Jalan (Mendukung Single STA & Range 2 Klik dengan Standar Dinamis)
+// Render Panel Audit Lebar Jalan
 function renderLebarSummary() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
@@ -715,7 +705,6 @@ function renderLebarSummary() {
   if (selectedStartMeter !== null) {
     const staStartFormatted = formatKeSTA(selectedStartMeter);
 
-    // KASUS 1: Single STA Terpilih
     if (selectedEndMeter === null) {
       const matchFeature = rawWidthFeatures.find(f => {
         const fp = f.properties || {};
@@ -770,7 +759,6 @@ function renderLebarSummary() {
       return;
     }
 
-    // KASUS 2: Rentang Range STA Terpilih (2x Klik)
     const minM = Math.min(selectedStartMeter, selectedEndMeter);
     const maxM = Math.max(selectedStartMeter, selectedEndMeter);
     const staAwal = formatKeSTA(minM);
@@ -859,7 +847,6 @@ function renderLebarSummary() {
     return;
   }
 
-  // Tampilan Default Lebar
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
   const nonStd = roadData.filter(d => {
     const s = (d["Status Lebar Jalan"] || "").toUpperCase();
@@ -1157,9 +1144,7 @@ function locateUser() {
   );
 }
 
-// ==========================================================
-// INTERACTIVE RESIZABLE BOTTOM PANEL (PC MOUSE & MOBILE TOUCH)
-// ==========================================================
+// Interactive Resizable Bottom Panel
 document.addEventListener("DOMContentLoaded", () => {
   const bottomPanel = document.getElementById('bottom-panel');
   const panelHeader = document.querySelector('.panel-header');
@@ -1201,7 +1186,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (map) map.invalidateSize();
   }
 
-  // Event Mouse (Desktop PC / Laptop)
   panelHeader.addEventListener('mousedown', (e) => {
     if (['SELECT', 'OPTION', 'BUTTON'].includes(e.target.tagName)) return;
     onDragStart(e.clientY);
@@ -1215,7 +1199,6 @@ document.addEventListener("DOMContentLoaded", () => {
     onDragEnd();
   });
 
-  // Event Touch (Mobile Smartphone / Tablet)
   panelHeader.addEventListener('touchstart', (e) => {
     if (['SELECT', 'OPTION', 'BUTTON'].includes(e.target.tagName)) return;
     onDragStart(e.touches[0].clientY);
