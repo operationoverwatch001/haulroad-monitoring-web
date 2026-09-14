@@ -197,113 +197,113 @@
     </div>
   </div>
 
-  <!-- SCRIPT INISIALISASI & AUTENTIKASI SUPABASE -->
+  <!-- SCRIPT INISIALISASI & AUTENTIKASI SUPABASE (AMAN DARI BENTROK) -->
   <script>
-      const SUPABASE_URL = 'https://bjgojyazemlrwnqpxoqp.supabase.co';
-      const SUPABASE_ANON_KEY = 'sb_publishable_mUqC6rBWoHL-5IjW44uhfA_TL7YB1Zg';
-      const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      (function() {
+          const SUPABASE_URL = 'https://bjgojyazemlrwnqpxoqp.supabase.co';
+          const SUPABASE_ANON_KEY = 'sb_publishable_mUqC6rBWoHL-5IjW44uhfA_TL7YB1Zg';
+          const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-      // Cek apakah user sudah punya sesi aktif saat web dibuka
-      window.addEventListener('DOMContentLoaded', async () => {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-              // Kalau sudah login, sembunyikan kotak login & jalankan peta dari app.js
-              document.getElementById('auth-overlay').style.display = 'none';
-              if (typeof currentNRP !== 'undefined') currentNRP = session.user.email;
-              if (typeof mulaiAnimasiIntroDanLoadData === 'function') {
-                  mulaiAnimasiIntroDanLoadData();
-              }
-          } else {
-              // Kalau belum, tampilkan form login
-              document.getElementById('auth-overlay').style.display = 'flex';
-          }
-      });
-
-      // Fungsi Request OTP dengan Pengecekan Domain + Tabel Whitelist Supabase
-      async function requestOtp() {
-          const email = document.getElementById('email-input').value.trim().toLowerCase();
-          const statusMsg = document.getElementById('auth-status');
-
-          if (!email) {
-              statusMsg.innerText = 'Masukkan email dulu, bre!';
-              return;
-          }
-
-          statusMsg.innerText = 'Memeriksa hak akses...';
-
-          // 1. Cek domain kantor
-          let isAllowed = email.endsWith('@saptaindra.co.id');
-
-          // 2. Jika bukan, cek ke tabel Whitelist Supabase yang tadi lu buat
-          if (!isAllowed) {
-              const { data, error } = await supabase
-                  .from('Whitelist')
-                  .select('email')
-                  .eq('email', email);
-
-              if (data && data.length > 0) {
-                  isAllowed = true;
-              }
-          }
-
-          if (!isAllowed) {
-              statusMsg.innerText = 'Akses ditolak! Email tidak terdaftar di sistem.';
-              return;
-          }
-
-          statusMsg.innerText = 'Mengirim kode OTP...';
-
-          const { error } = await supabase.auth.signInWithOtp({
-              email: email,
-              options: { shouldCreateUser: true }
-          });
-
-          if (error) {
-              statusMsg.innerText = 'Gagal mengirim OTP: ' + error.message;
-          } else {
-              statusMsg.innerText = 'Kode OTP terkirim! Cek inbox email lu.';
-              document.getElementById('email-section').classList.add('hidden');
-              document.getElementById('otp-section').classList.remove('hidden');
-          }
-      }
-
-      // Fungsi Verifikasi OTP
-      async function verifyOtp() {
-          const email = document.getElementById('email-input').value.trim().toLowerCase();
-          const token = document.getElementById('otp-input').value.trim();
-          const statusMsg = document.getElementById('auth-status');
-
-          if (!token || token.length < 6) {
-              statusMsg.innerText = 'Masukkan 6 digit kode OTP secara lengkap!';
-              return;
-          }
-
-          statusMsg.innerText = 'Memverifikasi kode...';
-
-          const { data, error } = await supabase.auth.verifyOtp({
-              email: email,
-              token: token,
-              type: 'email'
-          });
-
-          if (error) {
-              statusMsg.innerText = 'Kode salah atau kedaluwarsa: ' + error.message;
-          } else {
-              statusMsg.innerText = 'Login Berhasil! Memuat peta...';
-              setTimeout(() => {
+          // Cek Sesi Login Saat Web Dibuka
+          window.addEventListener('DOMContentLoaded', async () => {
+              const { data: { session } } = await _supabase.auth.getSession();
+              if (session) {
                   document.getElementById('auth-overlay').style.display = 'none';
-                  if (typeof currentNRP !== 'undefined') currentNRP = email;
+                  if (typeof currentNRP !== 'undefined') currentNRP = session.user.email;
                   if (typeof mulaiAnimasiIntroDanLoadData === 'function') {
                       mulaiAnimasiIntroDanLoadData();
-                  } else {
-                      location.reload(); // Reload jaga-jaga kalau app.js belum load sempurna
                   }
-              }, 800);
-          }
-      }
+              } else {
+                  document.getElementById('auth-overlay').style.display = 'flex';
+              }
+          });
+
+          // Fungsi Kirim OTP & Cek Whitelist Database Supabase
+          window.requestOtp = async function() {
+              const email = document.getElementById('email-input').value.trim().toLowerCase();
+              const statusMsg = document.getElementById('auth-status');
+
+              if (!email) {
+                  statusMsg.innerText = 'Masukkan email dulu, bre!';
+                  return;
+              }
+
+              statusMsg.innerText = 'Memeriksa hak akses...';
+
+              // 1. Cek Domain Kantor
+              let isAllowed = email.endsWith('@saptaindra.co.id');
+
+              // 2. Cek Tabel Whitelist Supabase
+              if (!isAllowed) {
+                  const { data, error } = await _supabase
+                      .from('Whitelist')
+                      .select('email')
+                      .eq('email', email);
+
+                  if (data && data.length > 0) {
+                      isAllowed = true;
+                  }
+              }
+
+              if (!isAllowed) {
+                  statusMsg.innerText = 'Akses ditolak! Email tidak terdaftar di sistem.';
+                  return;
+              }
+
+              statusMsg.innerText = 'Mengirim kode OTP...';
+
+              const { error } = await _supabase.auth.signInWithOtp({
+                  email: email,
+                  options: { shouldCreateUser: true }
+              });
+
+              if (error) {
+                  statusMsg.innerText = 'Gagal mengirim OTP: ' + error.message;
+              } else {
+                  statusMsg.innerText = 'Kode OTP terkirim! Cek inbox email lu.';
+                  document.getElementById('email-section').classList.add('hidden');
+                  document.getElementById('otp-section').classList.remove('hidden');
+              }
+          };
+
+          // Fungsi Verifikasi Kode OTP
+          window.verifyOtp = async function() {
+              const email = document.getElementById('email-input').value.trim().toLowerCase();
+              const token = document.getElementById('otp-input').value.trim();
+              const statusMsg = document.getElementById('auth-status');
+
+              if (!token || token.length < 6) {
+                  statusMsg.innerText = 'Masukkan 6 digit kode OTP secara lengkap!';
+                  return;
+              }
+
+              statusMsg.innerText = 'Memverifikasi kode...';
+
+              const { data, error } = await _supabase.auth.verifyOtp({
+                  email: email,
+                  token: token,
+                  type: 'email'
+              });
+
+              if (error) {
+                  statusMsg.innerText = 'Kode salah atau kedaluwarsa: ' + error.message;
+              } else {
+                  statusMsg.innerText = 'Login Berhasil! Memuat peta...';
+                  setTimeout(() => {
+                      document.getElementById('auth-overlay').style.display = 'none';
+                      if (typeof currentNRP !== 'undefined') currentNRP = email;
+                      if (typeof mulaiAnimasiIntroDanLoadData === 'function') {
+                          mulaiAnimasiIntroDanLoadData();
+                      } else {
+                          location.reload();
+                      }
+                  }, 800);
+              }
+          };
+      })();
   </script>
 
-  <!-- Script logic utama WebGIS (app.js lu yang lama tetap aman di sini) -->
+  <!-- Script logic utama WebGIS (app.js lu yang lama) -->
   <script src="app.js"></script>
 </body>
 </html>
