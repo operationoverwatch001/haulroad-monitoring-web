@@ -197,7 +197,7 @@
     </div>
   </div>
 
-  <!-- SCRIPT INISIALISASI & AUTENTIKASI SUPABASE (AMAN DARI BENTROK) -->
+  <!-- SCRIPT INISIALISASI & AUTENTIKASI SUPABASE (FIX KOLOM "Email") -->
   <script>
       (function() {
           const SUPABASE_URL = 'https://bjgojyazemlrwnqpxoqp.supabase.co';
@@ -233,12 +233,18 @@
               // 1. Cek Domain Kantor
               let isAllowed = email.endsWith('@saptaindra.co.id');
 
-              // 2. Cek Tabel Whitelist Supabase
+              // 2. Cek Tabel Whitelist Supabase (Menggunakan kolom "Email" huruf besar)
               if (!isAllowed) {
                   const { data, error } = await _supabase
                       .from('Whitelist')
-                      .select('email')
-                      .eq('email', email);
+                      .select('Email')
+                      .eq('Email', email);
+
+                  if (error) {
+                      console.error("Supabase Error:", error);
+                      statusMsg.innerText = 'Error DB: ' + error.message;
+                      return;
+                  }
 
                   if (data && data.length > 0) {
                       isAllowed = true;
