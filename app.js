@@ -205,6 +205,52 @@ function toggleBasemapSatelit() {
   }
 }
 
+// Helper: Penentuan Gaya Warna Vektor Garis Jalan (Hijau, Kuning, Merah)
+function getRoadFeatureStyle(feature) {
+  const props = feature.properties || {};
+  const staVal = props.STA || props.sta || props.Sta || "";
+  const roadVal = props.Nama_Jalan || props["Nama Jalan"] || props.nama_jalan || activeRoad;
+
+  // Cek atribut langsung dari GeoJSON jika ada
+  let statusGrade = props["Status Grade"] || props.Status || props.status || "";
+  let statusLebar = props["Status Lebar Jalan"] || props["Status Lebar"] || props.Status_Leb || props.status_leb || "";
+
+  // Jika di GeoJSON tidak ada kolom status, cocokkan dengan data Excel (monitoringData) berdasarkan STA & Ruas Jalan
+  if (monitoringData && monitoringData.length > 0 && staVal) {
+    const matchedRow = monitoringData.find(d => {
+      const matchRoad = roadVal ? (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.trim().toLowerCase() : true;
+      const matchSTA = (d["STA"] || "").toString().trim() === staVal.toString().trim();
+      return matchRoad && matchSTA;
+    });
+
+    if (matchedRow) {
+      if (!statusGrade) statusGrade = matchedRow["Status Grade"] || "";
+      if (!statusLebar) statusLebar = matchedRow["Status Lebar Jalan"] || "";
+    }
+  }
+
+  // 1. Pewarnaan Tab LEBAR
+  if (currentTab === 'lebar') {
+    if (statusLebar === "Nonstandard" || statusLebar === "Sempit") {
+      return { color: "#e11d48", weight: 5, opacity: 0.95 }; // Merah menyala
+    }
+    return { color: "#22c55e", weight: 3.5, opacity: 0.85 }; // Hijau standar
+  }
+
+  // 2. Pewarnaan Tab GRADE
+  if (currentTab === 'grade') {
+    if (statusGrade === "Overgrade" || statusGrade === "Nonstandard") {
+      return { color: "#e11d48", weight: 5, opacity: 0.95 }; // Merah
+    } else if (statusGrade === "Warning") {
+      return { color: "#eab308", weight: 4.5, opacity: 0.95 }; // Kuning
+    }
+    return { color: "#22c55e", weight: 3.5, opacity: 0.85 }; // Hijau standar
+  }
+
+  // 3. Pewarnaan Tab CROSSFALL / Lainnya
+  return { color: "#00e5ff", weight: 3.5, opacity: 0.85 };
+}
+
 // Muat Vektor Spasial Garis Jalan (Road_Layers.geojson)
 async function loadRoadLayersGeoJSON() {
   try {
@@ -228,20 +274,11 @@ async function loadRoadLayersGeoJSON() {
     }
 
     roadGeoJsonLayer = L.geoJSON(geojsonData, {
-      style: function(feature) {
-        const props = feature.properties || {};
-        const status = props.Status || props["Status Grade"] || "";
-        if (status === "Overgrade" || status === "Nonstandard") {
-          return { color: "#c00000", weight: 4, opacity: 0.9 };
-        } else if (status === "Warning") {
-          return { color: "#ffc000", weight: 3.5, opacity: 0.9 };
-        }
-        return { color: "#00e5ff", weight: 3, opacity: 0.8 };
-      },
+      style: getRoadFeatureStyle,
       onEachFeature: function(feature, layer) {
         const props = feature.properties || {};
-        const sta = props.STA || "-";
-        const road = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
+        const sta = props.STA || props.sta || props.Sta || props.ID || "-";
+        const road = props.Nama_Jalan || props["Nama Jalan"] || props.nama_jalan || activeRoad;
 
         layer.bindTooltip(`<b>${road}</b><br>STA: ${sta}`, { sticky: true });
 
@@ -250,10 +287,10 @@ async function loadRoadLayersGeoJSON() {
           if (props.Nama_Jalan && props.Nama_Jalan !== activeRoad) {
             changeRoad(props.Nama_Jalan);
           }
-          if (currentTab === 'crossfall' && props.STA) {
+          if (currentTab === 'crossfall' && sta !== "-") {
             const staSelect = document.getElementById('select-sta-cs');
-            if (staSelect) staSelect.value = props.STA;
-            drawCrossSectionChart(props.STA);
+            if (staSelect) staSelect.value = sta;
+            drawCrossSectionChart(sta);
           }
         });
       }
@@ -283,6 +320,11 @@ async function loadExcelData() {
       renderTabContent();
     }
 
+    // Refresh style GeoJSON agar membaca status dari baris Excel
+    if (roadGeoJsonLayer) {
+      roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
+    }
+
     if (map) {
       map.invalidateSize(true);
     }
@@ -306,6 +348,12 @@ function switchTab(tabName) {
   if (window.event && window.event.target) {
     window.event.target.classList.add('active');
   }
+
+  // Refresh warna garis jalan di peta agar sesuai dengan tab yang sedang aktif
+  if (roadGeoJsonLayer) {
+    roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
+  }
+
   renderTabContent();
   catatLogKeServer("PINDAH TAB", `Melihat tab fitur: ${tabName.toUpperCase()}`);
 }
@@ -313,6 +361,11 @@ function switchTab(tabName) {
 // Ubah Pilihan Nama Jalan
 function changeRoad(roadName) {
   activeRoad = roadName;
+  
+  if (roadGeoJsonLayer) {
+    roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
+  }
+
   renderTabContent();
   catatLogKeServer("GANTI JALAN", `Memilih ruas jalan: ${roadName}`);
 }
