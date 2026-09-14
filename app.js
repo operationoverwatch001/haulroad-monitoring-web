@@ -2,62 +2,13 @@
 // KONFIGURASI BACKEND GOOGLE SHEETS (LOG & WHITELIST)
 // ==========================================
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec";
-let currentNRP = "";
-let currentNamaUser = "";
+let currentNRP = "CLOUDFLARE_USER";
+let currentNamaUser = "Pekerja / Inspector";
 
-// 1. Verifikasi Login Whitelist
-async function prosesLoginWebGIS() {
-  const inputEl = document.getElementById('inputNrpLogin');
-  const errorMsg = document.getElementById('loginErrorMsg');
-  const btnLogin = document.getElementById('btnVerifikasiNRP');
-  const nrpVal = inputEl ? inputEl.value.trim() : "";
-
-  if (!nrpVal) {
-    if (errorMsg) {
-      errorMsg.style.color = "#ff4d4d";
-      errorMsg.innerText = "NRP tidak boleh kosong!";
-    }
-    return;
-  }
-
-  if (errorMsg) {
-    errorMsg.style.color = "#38bdf8";
-    errorMsg.innerText = "Memverifikasi whitelist server...";
-  }
-  if (btnLogin) btnLogin.disabled = true;
-
-  try {
-    const targetUrl = `${WEB_APP_URL}?action=LOGIN&nrp=${encodeURIComponent(nrpVal)}`;
-    const response = await fetch(targetUrl, {
-      method: "GET",
-      redirect: "follow"
-    });
-    const result = await response.json();
-
-    if (result.status === "success") {
-      currentNRP = nrpVal;
-      currentNamaUser = result.nama;
-
-      const modal = document.getElementById('whitelistModal');
-      if (modal) modal.remove();
-
-      mulaiAnimasiIntroDanLoadData();
-    } else {
-      if (btnLogin) btnLogin.disabled = false;
-      if (errorMsg) {
-        errorMsg.style.color = "#ff4d4d";
-        errorMsg.innerText = result.pesan || "Akses ditolak!";
-      }
-    }
-  } catch (err) {
-    console.error("Login Error:", err);
-    if (btnLogin) btnLogin.disabled = false;
-    if (errorMsg) {
-      errorMsg.style.color = "#ff4d4d";
-      errorMsg.innerText = "Gagal terhubung ke database server!";
-    }
-  }
-}
+// 1. Langsung Jalankan Intro & Load Data karena Autentikasi di-handle Cloudflare Zero Trust
+document.addEventListener('DOMContentLoaded', () => {
+  mulaiAnimasiIntroDanLoadData();
+});
 
 // 2. Timeline Animasi Intro Loading & Fetch Data
 function mulaiAnimasiIntroDanLoadData() {
@@ -86,7 +37,7 @@ function mulaiAnimasiIntroDanLoadData() {
 
   setTimeout(() => {
     if (bar) bar.style.width = '100%';
-    if (statusText) statusText.innerText = `WELCOME, ${currentNamaUser.toUpperCase()}`;
+    if (statusText) statusText.innerText = `WELCOME TO OVERWATCH`;
     if (titleElement) titleElement.classList.add('glitch-outro');
   }, 2600);
 
@@ -105,7 +56,6 @@ function mulaiAnimasiIntroDanLoadData() {
 
 // 3. Catat Log ke Server
 function catatLogKeServer(kegiatan, detailAktivitas) {
-  if (!currentNRP) return;
   const targetUrl = `${WEB_APP_URL}?action=LOG_AKTIVITAS&nrp=${encodeURIComponent(currentNRP)}&kegiatan=${encodeURIComponent(kegiatan)}&detail=${encodeURIComponent(detailAktivitas)}`;
   fetch(targetUrl, { mode: "no-cors" }).catch(err => console.error("Log error:", err));
 }
@@ -625,7 +575,7 @@ async function loadExcelData() {
     refreshVisibleLayers();
     if (map) map.invalidateSize(true);
 
-    catatLogKeServer("BUKA APLIKASI", `User ${currentNamaUser} (${currentNRP}) berhasil masuk Dashboard WebGIS.`);
+    catatLogKeServer("BUKA APLIKASI", `User sukses masuk Dashboard WebGIS via Cloudflare Access.`);
 
   } catch (error) {
     console.error("Excel load error:", error);
@@ -777,7 +727,6 @@ function renderLebarSummary() {
       const pStart = matchFeature ? matchFeature.properties : {};
       const lebarAktual = parseFloat(pStart.Lebar_m || 0).toFixed(2);
       
-      // Mengambil standar dari properti fitur jika ada, jika tidak gunakan standar aktif jalan
       const lebarStandarNum = pStart.Standar_m !== undefined ? parseFloat(pStart.Standar_m) : activeStdLebar;
       const lebarStandar = lebarStandarNum.toFixed(2);
       const isSempit = parseFloat(lebarAktual) < lebarStandarNum;
@@ -843,7 +792,6 @@ function renderLebarSummary() {
     let maxLebar = 0;
     let countNonCompliant = 0;
     
-    // Menggunakan standar dinamis kelas jalan aktif (misal 24.15 untuk Jl Metro)
     const stdLebarNum = activeStdLebar;
     const stdLebar = stdLebarNum.toFixed(2);
 
