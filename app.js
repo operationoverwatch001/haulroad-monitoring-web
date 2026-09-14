@@ -222,26 +222,32 @@ function getRoadFeatureStyle(feature) {
   const props = feature.properties || {};
   const rawStation = props.Station_m !== undefined ? props.Station_m : (props.Station || props.station || props.STA || props.sta || props.ID || 0);
   const meterVal = parseMeterSTA(rawStation);
+  const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
 
-  // Cek apakah garis ini berada di dalam Range Seleksi Klik User
+  // Highlight Range Seleksi: Wajib cocok nama jalannya juga
   if (selectedStartFeature) {
-    const startM = parseMeterSTA(selectedStartFeature.properties.Station_m !== undefined ? selectedStartFeature.properties.Station_m : selectedStartFeature.properties.STA);
-    
-    if (selectedEndFeature) {
-      const endM = parseMeterSTA(selectedEndFeature.properties.Station_m !== undefined ? selectedEndFeature.properties.Station_m : selectedEndFeature.properties.STA);
-      const minM = Math.min(startM, endM);
-      const maxM = Math.max(startM, endM);
+    const startProps = selectedStartFeature.properties || {};
+    const startRoad = (startProps.Nama_Jalan || startProps["Nama Jalan"] || activeRoad).trim();
 
-      if (meterVal >= minM && meterVal <= maxM) {
-        return { color: "#00f0ff", weight: 7, opacity: 1 }; // Highlight Biru Neon Tebal saat terpilih range
+    if (roadVal === startRoad) {
+      const startM = parseMeterSTA(startProps.Station_m !== undefined ? startProps.Station_m : startProps.STA);
+      
+      if (selectedEndFeature) {
+        const endProps = selectedEndFeature.properties || {};
+        const endM = parseMeterSTA(endProps.Station_m !== undefined ? endProps.Station_m : endProps.STA);
+        const minM = Math.min(startM, endM);
+        const maxM = Math.max(startM, endM);
+
+        if (meterVal >= minM && meterVal <= maxM) {
+          return { color: "#00f0ff", weight: 7, opacity: 1 }; // Highlight Biru Neon Tebal untuk segmen terpilih
+        }
+      } else if (meterVal === startM) {
+        return { color: "#00f0ff", weight: 7, opacity: 1 }; // Highlight Klik Pertama
       }
-    } else if (meterVal === startM) {
-      return { color: "#00f0ff", weight: 7, opacity: 1 }; // Highlight Klik Pertama
     }
   }
 
   const staFormatted = formatKeSTA(rawStation);
-  const roadVal = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
   const rawStatus = (props.Status || props["Status Grade"] || props.status || "").toString().toUpperCase();
 
   let isNonCompliant = rawStatus.includes("NON COMPLIANT") || rawStatus.includes("NONSTANDARD") || rawStatus.includes("OVERGRADE") || rawStatus.includes("SEMPIT");
@@ -249,7 +255,7 @@ function getRoadFeatureStyle(feature) {
 
   if (monitoringData && monitoringData.length > 0 && staFormatted !== "-") {
     const matchedRow = monitoringData.find(d => {
-      const matchRoad = roadVal ? (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.trim().toLowerCase() : true;
+      const matchRoad = roadVal ? (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.toLowerCase() : true;
       const dSta = (d["STA"] || "").toString().trim();
       return matchRoad && (dSta === staFormatted || dSta === rawStation.toString());
     });
@@ -282,19 +288,22 @@ function getRoadFeatureStyle(feature) {
 
 // Reset Seleksi Segmen Jalan
 function resetSegmentSelection() {
+  if (!selectedStartFeature && !selectedEndFeature) return;
   selectedStartFeature = null;
   selectedEndFeature = null;
   if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
   renderTabContent();
 }
 
-// Handler Saat Segmen Jalan Diklik di Peta
+// Handler Klik Segmen Jalan
 function handleFeatureClick(feature) {
   const props = feature.properties || {};
-  const clickedRoad = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
+  const clickedRoad = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
 
-  // Jika klik jalan lain, switch nama jalannya
+  // Jika klik jalan berbeda, reset seleksi dan ganti jalan aktif
   if (clickedRoad && clickedRoad !== activeRoad) {
+    selectedStartFeature = null;
+    selectedEndFeature = null;
     changeRoad(clickedRoad);
   }
 
@@ -322,6 +331,13 @@ function handleFeatureClick(feature) {
   }
 }
 
+// Event Peta: Klik di area bebas untuk membatalkan seleksi segmen
+map.on('click', () => {
+  if (selectedStartFeature || selectedEndFeature) {
+    resetSegmentSelection();
+  }
+});
+
 // Muat Vektor Spasial Garis Jalan (Road_Layers.geojson)
 async function loadRoadLayersGeoJSON() {
   try {
@@ -347,7 +363,8 @@ async function loadRoadLayersGeoJSON() {
 
         layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b>${lebarAktual}${payloadInfo}`, { sticky: true });
 
-        layer.on('click', () => {
+        layer.on('click', (e) => {
+          L.DomEvent.stopPropagation(e); // Cegah trigger map.on('click') reset
           handleFeatureClick(feature);
         });
       }
@@ -409,7 +426,7 @@ function switchTab(tabName) {
 
 // Ubah Pilihan Nama Jalan
 function changeRoad(roadName) {
-  activeRoad = roadName;
+  activeRoad = roadName.trim();
   resetSegmentSelection();
 
   if (roadGeoJsonLayer) roadGeoJsonLayer.setStyle(getRoadFeatureStyle);
@@ -438,7 +455,7 @@ function renderLebarSummary() {
   `;
   panelTitle.innerHTML = `Audit Lebar Jalan: ${roadSelectHtml}`;
 
-  // KONDISI JIKA ADA SELEKSI DARI PETA
+  // JIKA ADA SELEKSI DARI PETA
   if (selectedStartFeature) {
     const pStart = selectedStartFeature.properties || {};
     const mStart = parseMeterSTA(pStart.Station_m !== undefined ? pStart.Station_m : pStart.STA);
@@ -480,7 +497,7 @@ function renderLebarSummary() {
             <div style="font-size:14px; font-weight:bold; color:${isSempit ? '#e11d48' : '#15803d'};">${isSempit ? 'Sempit / Non-Compliant' : 'Compliant (Standar)'}</div>
           </div>
         </div>
-        <p style="font-size:10px; color:#64748b; margin:0; text-align:right;">*Tips: Klik 1 titik lagi di peta untuk menganalisis rentang segmen.</p>
+        <p style="font-size:10px; color:#64748b; margin:0; text-align:right;">*Klik di luar jalan untuk cancel seleksi, atau klik 1 titik lagi untuk rentang segmen.</p>
       `;
       return;
     }
@@ -495,13 +512,13 @@ function renderLebarSummary() {
     const staAkhir = formatKeSTA(maxM);
     const totalPanjang = maxM - minM;
 
-    // Filter semua fitur GeoJSON yang berada di dalam range meteran
+    // Filter fitur hanya pada jalan aktif dan di dalam range meteran
     let featuresInRange = [];
     if (roadGeoJsonLayer) {
       roadGeoJsonLayer.eachLayer(l => {
         const fp = l.feature.properties || {};
-        const fRoad = fp.Nama_Jalan || fp["Nama Jalan"] || activeRoad;
-        if (fRoad === activeRoad) {
+        const fRoad = (fp.Nama_Jalan || fp["Nama Jalan"] || activeRoad).trim();
+        if (fRoad.toLowerCase() === activeRoad.toLowerCase()) {
           const fm = parseMeterSTA(fp.Station_m !== undefined ? fp.Station_m : fp.STA);
           if (fm >= minM && fm <= maxM) {
             featuresInRange.push(fp);
@@ -510,7 +527,6 @@ function renderLebarSummary() {
       });
     }
 
-    // Hitung rata-rata, min, max lebar
     let avgLebar = 0;
     let minLebar = 999;
     let maxLebar = 0;
@@ -581,8 +597,8 @@ function renderLebarSummary() {
     return;
   }
 
-  // DEFAULT LIST JIKA BELUM ADA YANG DIKLIK
-  const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
+  // TAMPILAN DEFAULT JIKA TIDAK ADA YANG TERPILIH
+  const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
   const nonStd = roadData.filter(d => {
     const s = (d["Status Lebar Jalan"] || "").toUpperCase();
     return s.includes("NONSTANDARD") || s.includes("SEMPIT") || s.includes("NON COMPLIANT");
@@ -597,7 +613,7 @@ function renderLebarSummary() {
 
   panelBody.innerHTML = `
     <div style="font-size:11px; color:#64748b; margin-bottom:6px;">
-      💡 <i>Klik salah satu garis merah di peta untuk melihat detail STA, atau klik 2 titik untuk ringkasan segmen.</i>
+      💡 <i>Klik salah satu garis di peta untuk detail STA, atau klik 2 titik untuk ringkasan segmen. Klik area peta kosong untuk reset.</i>
     </div>
     ${nonStd.length ? listHtml : `<p style="font-size:12px; color:green; text-align:center; padding-top:20px;">Semua segmen di ${activeRoad} memenuhi standar lebar.</p>`}
   `;
@@ -609,11 +625,11 @@ function renderTabContent() {
   const panelTitle = document.getElementById('panel-title');
   if (!panelBody || !panelTitle) return;
 
-  const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
+  const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
 
   const roadSelectHtml = `
     <select onchange="changeRoad(this.value)" style="font-size:11px; font-weight:bold; padding:2px 4px; border-radius:4px;">
-      ${roadNames.map(r => `<option value="${r}" ${r === activeRoad ? 'selected' : ''}>${r}</option>`).join('')}
+      ${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}
     </select>
   `;
 
@@ -662,7 +678,7 @@ function drawLongSectionChart(dataSubset) {
   if (!ctx) return;
   if (chartInstance) chartInstance.destroy();
 
-  const roadFullData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
+  const roadFullData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
   const allElevations = roadFullData.map(d => parseFloat(d["Elevasi As (m)"])).filter(v => !isNaN(v));
 
   const step = userYInterval || 5;
@@ -760,7 +776,7 @@ function drawCrossSectionChart(staTarget) {
   const keyTarget = `${activeRoad}_${staTarget}`;
   let pts = crossSectionData.filter(d => (d["Key"] || "").trim() === keyTarget);
   if (pts.length < 3) {
-    pts = crossSectionData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad && d["STA"] === staTarget);
+    pts = crossSectionData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase() && d["STA"] === staTarget);
   }
   if (pts.length < 3) return;
 
@@ -783,7 +799,7 @@ function drawCrossSectionChart(staTarget) {
     { x: offsetRight, y: parseFloat(ptRight["Elevasi_RL"]), label: `Tepi Kanan (+${offsetRight.toFixed(1)}m)` }
   ];
 
-  const monRow = monitoringData.find(d => (d["Nama Jalan"] || "").trim() === activeRoad && d["STA"] === staTarget);
+  const monRow = monitoringData.find(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase() && d["STA"] === staTarget);
   const cfL = monRow ? Math.abs(parseFloat(monRow["Crossfall Kiri (%)"]) || 0).toFixed(2) : "0.00";
   const cfR = monRow ? Math.abs(parseFloat(monRow["Crossfall Kanan (%)"]) || 0).toFixed(2) : "0.00";
 
@@ -947,7 +963,7 @@ async function executeExportPDF() {
     return;
   }
 
-  const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim() === activeRoad);
+  const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
   catatLogKeServer("EXPORT PDF", `Mengekspor laporan PDF profil jalan ${activeRoad} (${selectedOpt}).`);
 
   if (selectedOpt === 'single') {
