@@ -1,242 +1,524 @@
 <!DOCTYPE html>
+
 <html lang="id">
+
 <head>
+
   <meta charset="UTF-8">
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
   <title>Monitoring Haul Road - Overwatch</title>
+
   
+
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
   <link rel="stylesheet" href="style.css" />
 
+
+
   <!-- Library Excel, Chart, Leaflet, jsPDF -->
+
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   
+
   <!-- Engine PMTiles untuk Citra Drone Cloud-Optimized (v3 Stable) -->
+
   <script src="https://unpkg.com/pmtiles@3.0.7/dist/pmtiles.js"></script>
 
+
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
-  <!-- Tailwind CSS khusus buat styling modal login minimalis -->
-  <script src="https://cdn.tailwindcss.com"></script>
+
 
   <style>
+
     /* RESET & DASAR */
+
     html, body {
+
       width: 100%;
+
       height: 100%;
+
       margin: 0;
+
       padding: 0;
+
       overflow: hidden;
+
       background: #040508;
+
       position: relative;
+
     }
 
-    /* PETA LEAFLET */
+
+
+    /* PETA LEAFLET (HARUS MENGISI LAYER BELAKANG PENUH) */
+
     #map {
+
       position: absolute;
+
       top: 0;
+
       bottom: 0;
+
       left: 0;
+
       right: 0;
+
       width: 100%;
+
       height: 100%;
+
       z-index: 1;
+
       background: #040508;
+
     }
 
-    /* TOMBOL TOGGLE BASEMAP SATELIT */
+
+
+    /* TOMBOL TOGGLE BASEMAP SATELIT (MELAYANG DI ATAS PETA) */
+
     #btnToggleBasemap {
+
       position: fixed;
+
       top: 60px;
+
       right: 15px;
-      z-index: 1000;
+
+      z-index: 10000;
+
       background: rgba(15, 23, 42, 0.92);
+
       color: #38bdf8;
+
       border: 1px solid #1e293b;
+
       border-radius: 6px;
+
       padding: 8px 14px;
+
       font-size: 11px;
+
       font-weight: bold;
+
       cursor: pointer;
+
       box-shadow: 0 4px 14px rgba(0,0,0,0.6);
+
       backdrop-filter: blur(4px);
+
       transition: all 0.2s ease;
+
     }
+
     #btnToggleBasemap:hover {
+
       background: #1e293b;
+
       border-color: #38bdf8;
+
     }
+
+
+
+    /* MODAL LOGIN (MUNCUL PERTAMA) */
+
+    #whitelistModal {
+
+      position: fixed;
+
+      inset: 0;
+
+      width: 100vw;
+
+      height: 100vh;
+
+      background: #040508;
+
+      z-index: 999999;
+
+      display: flex;
+
+      justify-content: center;
+
+      align-items: center;
+
+    }
+
+
+
+    .login-box {
+
+      background: #0f172a;
+
+      border: 1px solid #1e293b;
+
+      padding: 32px 24px;
+
+      border-radius: 12px;
+
+      width: 90%;
+
+      max-width: 330px;
+
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+
+      text-align: center;
+
+      color: #fff;
+
+    }
+
+
+
+    .login-box h3 {
+
+      margin-bottom: 8px;
+
+      font-size: 15px;
+
+      color: #38bdf8;
+
+      letter-spacing: 1.5px;
+
+      font-family: monospace;
+
+    }
+
+
+
+    .login-box p {
+
+      font-size: 11px;
+
+      color: #94a3b8;
+
+      margin-bottom: 18px;
+
+      line-height: 1.4;
+
+    }
+
+
+
+    .login-box input {
+
+      width: 100%;
+
+      padding: 12px;
+
+      box-sizing: border-box;
+
+      background: #1e293b;
+
+      border: 1px solid #334155;
+
+      color: #fff;
+
+      border-radius: 6px;
+
+      font-size: 14px;
+
+      text-align: center;
+
+      margin-bottom: 12px;
+
+      outline: none;
+
+    }
+
+
+
+    .login-box button {
+
+      width: 100%;
+
+      padding: 12px;
+
+      background: #b81432;
+
+      color: #fff;
+
+      border: none;
+
+      border-radius: 6px;
+
+      font-weight: bold;
+
+      cursor: pointer;
+
+      font-size: 13px;
+
+      letter-spacing: 0.5px;
+
+    }
+
+
+
+    #loginErrorMsg {
+
+      font-size: 11px;
+
+      margin-top: 10px;
+
+      min-height: 14px;
+
+      font-family: monospace;
+
+    }
+
+
 
     /* INTRO SPLASH */
+
     #intro-splash {
+
       position: fixed;
+
       inset: 0;
+
       width: 100vw;
+
       height: 100vh;
+
       background: #040508;
+
       z-index: 999998;
+
       display: none;
+
       flex-direction: column;
+
       justify-content: center;
+
       align-items: center;
+
     }
+
+
 
     .splash-logo-container {
+
       width: 120px;
+
       height: 120px;
+
       margin-bottom: 10px;
+
     }
+
+
 
     .splash-logo {
+
       width: 100%;
+
       height: 100%;
+
       object-fit: contain;
+
     }
+
   </style>
+
 </head>
+
 <body>
 
-  <!-- MODAL LOGIN PASSWORD MANUAL -->
-  <div id="auth-overlay" class="fixed inset-0 bg-slate-950/95 z-[999999] flex items-center justify-center p-4">
-      <div class="bg-slate-900 border border-slate-700 p-8 rounded-xl shadow-2xl w-full max-w-md text-white">
-          <h2 class="text-2xl font-bold mb-2 text-center text-cyan-400">WebGIS Overwatch</h2>
-          <p class="text-xs text-slate-400 text-center mb-6">Autentikasi Internal Tambang (Protected Mode)</p>
 
-          <!-- Form Password -->
-          <div id="password-section">
-              <label class="block text-sm font-medium mb-2">Password Akses</label>
-              <input type="password" id="password-input" placeholder="Masukkan password..." 
-                  class="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg mb-4 text-white focus:outline-none focus:border-cyan-500">
-              <button onclick="verifyPassword()" id="login-btn" 
-                  class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-medium py-2 rounded-lg transition duration-200 shadow-lg cursor-pointer">
-                  Masuk Aplikasi
-              </button>
-          </div>
 
-          <p id="auth-status" class="text-xs text-center mt-4 text-yellow-400 font-medium"></p>
-      </div>
+  <!-- 1. MODAL LOGIN (MUNCUL PERTAMA) -->
+
+  <div id="whitelistModal">
+
+    <div class="login-box">
+
+      <h3>OPERATION OVERWATCH</h3>
+
+      <p>Masukkan Nomor NRP Terdaftar untuk Mengakses Sistem WebGIS</p>
+
+      <input type="text" id="inputNrpLogin" placeholder="Contoh: 80005908" autocomplete="off" />
+
+      <button type="button" id="btnVerifikasiNRP" onclick="prosesLoginWebGIS()">VERIFIKASI NRP</button>
+
+      <p id="loginErrorMsg"></p>
+
+    </div>
+
   </div>
 
-  <!-- 1. INTRO SPLASH SCREEN -->
+
+
+  <!-- 2. INTRO SPLASH SCREEN -->
+
   <div id="intro-splash">
+
     <div class="splash-logo-container">
+
       <img src="data/logo_overwatch.png" alt="Operation Overwatch" class="splash-logo">
+
     </div>
+
     <h2 class="glitch-title" data-text="OPERATION OVERWATCH">OPERATION <span>OVERWATCH</span></h2>
+
     <div class="loading-track">
+
       <div id="loading-bar"></div>
+
     </div>
+
     <div class="loading-status" id="status-text">INITIALIZING SECURE LINK...</div>
+
   </div>
 
-  <!-- 2. HEADER UTAMA -->
+
+
+  <!-- 3. HEADER UTAMA -->
+
   <header class="app-header">
+
     <div class="brand">
+
       <img src="data/logo_overwatch.png" alt="Logo" class="header-logo-img">
+
       <span>OVERWATCH ROAD INSPECTOR</span>
+
     </div>
+
     <nav class="tab-container">
+
       <button class="tab-btn active" onclick="switchTab('grade')">Grade</button>
+
       <button class="tab-btn" onclick="switchTab('lebar')">Lebar</button>
+
       <button class="tab-btn" onclick="switchTab('crossfall')">Crossfall</button>
+
     </nav>
+
   </header>
 
-  <!-- 3. PETA, GPS, & TOMBOL TOGGLE SATELIT -->
+
+
+  <!-- 4. PETA, GPS, & TOMBOL TOGGLE SATELIT -->
+
   <div id="map"></div>
+
   <button class="gps-btn" onclick="locateUser()" title="Posisi Saya">📍</button>
+
   <button id="btnToggleBasemap" onclick="toggleBasemapSatelit()" title="Matikan / Hidupkan Satelit Luar">🌍 Satelit: <b>ON</b></button>
 
-  <!-- 4. PANEL BAWAH -->
+
+
+  <!-- 5. PANEL BAWAH -->
+
   <div id="bottom-panel" class="bottom-panel">
+
     <div class="panel-header">
+
       <div class="drag-handle"></div>
+
       <div class="panel-title" id="panel-title">Pilih Parameter / STA</div>
+
     </div>
+
     <div class="panel-body" id="panel-body"></div>
+
   </div>
 
-  <!-- 5. MODAL EXPORT PDF -->
+
+
+  <!-- 6. MODAL EXPORT PDF -->
+
   <div id="pdfModalOverlay" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:99999; justify-content:center; align-items:center;">
+
     <div style="background:#0f172a; color:#fff; padding:20px; border-radius:8px; width:90%; max-width:350px; border:1px solid #1e293b; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+
       <h3 style="margin-top:0; font-size:14px; color:#ff2b54; letter-spacing:1px; font-family:monospace;">EXPORT GRAFIK KE PDF</h3>
+
       <p style="font-size:11px; color:#94a3b8; margin-bottom:15px;">Pilih format layout cetak grafik memanjang:</p>
+
       
+
       <label style="display:flex; align-items:center; gap:8px; font-size:12px; margin-bottom:10px; cursor:pointer;">
+
         <input type="radio" name="pdfExportOpt" value="single" checked style="accent-color:#b81432;">
+
         <span><b>Opsi 1:</b> Utuh 1 Lembar (Landscape Panjang)</span>
+
       </label>
+
       
+
       <label style="display:flex; align-items:center; gap:8px; font-size:12px; margin-bottom:20px; cursor:pointer;">
+
         <input type="radio" name="pdfExportOpt" value="paging" style="accent-color:#b81432;">
+
         <span><b>Opsi 2:</b> Dipecah Per Section (Multi-Page Renggang)</span>
+
       </label>
+
       
+
       <div style="display:flex; justify-content:flex-end; gap:8px;">
+
         <button onclick="closePdfModal()" style="background:#1e293b; color:#cbd5e1; border:none; padding:6px 12px; border-radius:4px; font-size:11px; cursor:pointer;">Batal</button>
+
         <button onclick="executeExportPDF()" style="background:#b81432; color:#fff; border:none; padding:6px 14px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer;">Download</button>
+
       </div>
+
     </div>
+
   </div>
 
-  <!-- SCRIPT AUTENTIKASI PASSWORD MANUAL -->
+
+
   <script>
-      (function() {
-          window.addEventListener('DOMContentLoaded', () => {
-              const isLogedIn = sessionStorage.getItem('overwatch_auth');
-              if (isLogedIn === 'true') {
-                  document.getElementById('auth-overlay').style.display = 'none';
-                  if (typeof mulaiAnimasiIntroDanLoadData === 'function') {
-                      mulaiAnimasiIntroDanLoadData();
-                  }
-              } else {
-                  document.getElementById('auth-overlay').style.display = 'flex';
-              }
-          });
 
-          window.verifyPassword = function() {
-              const pwdInput = document.getElementById('password-input').value.trim();
-              const statusMsg = document.getElementById('auth-status');
+    document.addEventListener('DOMContentLoaded', () => {
 
-              if (!pwdInput) {
-                  statusMsg.innerText = 'Password belum diisi, bre!';
-                  return;
-              }
+      const input = document.getElementById('inputNrpLogin');
 
-              if (pwdInput === 'admo123') {
-                  statusMsg.innerText = 'Login Berhasil! Memuat sistem...';
-                  sessionStorage.setItem('overwatch_auth', 'true');
-                  setTimeout(() => {
-                      document.getElementById('auth-overlay').style.display = 'none';
-                      if (typeof mulaiAnimasiIntroDanLoadData === 'function') {
-                          mulaiAnimasiIntroDanLoadData();
-                      } else {
-                          location.reload();
-                      }
-                  }, 600);
-              } else {
-                  statusMsg.innerText = 'Password salah! Coba ingat-ingat lagi.';
-              }
-          };
+      if (input) {
 
-          document.addEventListener('DOMContentLoaded', () => {
-              const pwdField = document.getElementById('password-input');
-              if (pwdField) {
-                  pwdField.addEventListener('keypress', function(e) {
-                      if (e.key === 'Enter') {
-                          verifyPassword();
-                      }
-                  });
-              }
-          });
-      })();
+        input.focus();
+
+        input.addEventListener('keypress', (e) => {
+
+          if (e.key === 'Enter') prosesLoginWebGIS();
+
+        });
+
+      }
+
+    });
+
   </script>
 
-  <!-- Script logic utama WebGIS -->
+
+
+  <!-- Script logic WebGIS -->
+
   <script src="app.js"></script>
+
 </body>
-</html>
+
+</html> 
+
