@@ -5,7 +5,7 @@ const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5Lz
 let currentNRP = "";
 let currentNamaUser = "";
 
-// 1. Verifikasi Login Whitelist
+// 1. Verifikasi Login Whitelist (Versi Murni Tanpa Ubah Google Sheet)
 async function prosesLoginWebGIS() {
   const inputEl = document.getElementById('inputNrpLogin');
   const errorMsg = document.getElementById('loginErrorMsg');
@@ -28,7 +28,10 @@ async function prosesLoginWebGIS() {
 
   try {
     const targetUrl = `${WEB_APP_URL}?action=LOGIN&nrp=${encodeURIComponent(nrpVal)}`;
-    const response = await fetch(targetUrl);
+    const response = await fetch(targetUrl, {
+      method: "GET",
+      redirect: "follow"
+    });
     const result = await response.json();
 
     if (result.status === "success") {
@@ -237,7 +240,6 @@ function parseMeterSTA(val) {
 function getActiveRoadStandardWidth(roadTarget) {
   const target = (roadTarget || activeRoad).trim().toLowerCase();
   
-  // 1. Ambil dari baris monitoring data Excel
   if (monitoringData && monitoringData.length > 0) {
     const row = monitoringData.find(d => (d["Nama Jalan"] || "").trim().toLowerCase() === target);
     if (row && row["Lebar Standar (m)"]) {
@@ -246,7 +248,6 @@ function getActiveRoadStandardWidth(roadTarget) {
     }
   }
 
-  // 2. Ambil dari fitur GeoJSON
   if (rawWidthFeatures && rawWidthFeatures.length > 0) {
     const feat = rawWidthFeatures.find(f => {
       const fp = f.properties || {};
@@ -259,7 +260,6 @@ function getActiveRoadStandardWidth(roadTarget) {
     }
   }
 
-  // Fallback standar
   return 30.8;
 }
 
@@ -364,7 +364,6 @@ function getWidthSliceStyle(feature) {
 
   if (currentTab === 'lebar') {
     const lebarAktual = parseFloat(props.Lebar_m !== undefined ? props.Lebar_m : (props.Shape_Leng || 0));
-    // Menggunakan standar dinamis kelas jalan yang aktif
     const lebarStandar = props.Standar_m !== undefined ? parseFloat(props.Standar_m) : getActiveRoadStandardWidth(roadVal);
     const rawStatus = (props.Status || "").toString().trim().toUpperCase();
 
@@ -426,7 +425,6 @@ function refreshVisibleLayers() {
   if (currentTab === 'grade') {
     if (roadWidthLayer && map.hasLayer(roadWidthLayer)) map.removeLayer(roadWidthLayer);
     if (roadGradeLayer && !map.hasLayer(roadGradeLayer)) roadGradeLayer.addTo(map);
-    if (gradeLabelsLayer && !map.hasLayer(gradeLabelsLayer)) gradeLabelsLayer.addTo(map);
     if (roadGradeLayer) roadGradeLayer.setStyle(getGradePolygonBlockStyle);
     updateGradeLabelsVisibility();
   } else {
@@ -761,7 +759,6 @@ function renderLebarSummary() {
   `;
   panelTitle.innerHTML = `Audit Lebar Jalan: ${roadSelectHtml}`;
 
-  // Ambil standar desain dinamis untuk jalan aktif (misal Jl Metro = 24.15)
   const activeStdLebar = getActiveRoadStandardWidth(activeRoad);
 
   if (selectedStartMeter !== null) {
@@ -778,12 +775,9 @@ function renderLebarSummary() {
 
       const pStart = matchFeature ? matchFeature.properties : {};
       const lebarAktual = parseFloat(pStart.Lebar_m || 0).toFixed(2);
-      
-      // Ambil nilai standar dinamis per STA jika tersedia, jika tidak pakai standar jalan aktif
       const lebarStandar = pStart.Standar_m !== undefined ? parseFloat(pStart.Standar_m).toFixed(2) : activeStdLebar.toFixed(2);
       const isSempit = parseFloat(lebarAktual) < parseFloat(lebarStandar);
 
-      // Payload / Kelas
       let kelasJalan = pStart.Kelas_Jala || "";
       let payloadTon = pStart.Payload || "";
       if (!kelasJalan && monitoringData) {
@@ -848,7 +842,6 @@ function renderLebarSummary() {
     let maxLebar = 0;
     let countNonCompliant = 0;
     
-    // Gunakan standar dinamis jalan aktif (24.15 untuk Jl Metro)
     const stdLebarNum = activeStdLebar;
     const stdLebar = stdLebarNum.toFixed(2);
 
@@ -916,7 +909,7 @@ function renderLebarSummary() {
     return;
   }
 
-  // Tampilan Default Lebar (Daftar semua STA sempit berdasarkan standar aktif)
+  // Tampilan Default Lebar
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
   const nonStd = roadData.filter(d => {
     const s = (d["Status Lebar Jalan"] || "").toUpperCase();
