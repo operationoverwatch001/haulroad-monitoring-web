@@ -181,6 +181,7 @@ body, html {
   justify-content: center;
 }
 
+/* MATIKAN TOTAL ELEMEN LOGO HEADER LEWAT CSS */
 .header-logo-img {
   display: none !important;
   width: 0 !important;
@@ -395,4 +396,27 @@ body, html {
   white-space: nowrap !important;
   letter-spacing: -0.2px !important;
   transform: translateY(-8px);
+}
+
+/* ========================================================== */
+/* LABEL TEKS NOMOR STA DI TENGAH BLOK KOTAK POLIGON JALAN    */
+/* ========================================================== */
+.leaflet-tooltip.sta-block-label {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-weight: 800 !important;
+  font-size: 8.5px !important;
+  color: #000000 !important;
+  letter-spacing: -0.2px !important;
+  pointer-events: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  white-space: nowrap !important;
+  text-shadow: 0 0 2px rgba(255, 255, 255, 0.6) !important;
+}
+
+.leaflet-tooltip.sta-block-label::before {
+  display: none !important;
 }
