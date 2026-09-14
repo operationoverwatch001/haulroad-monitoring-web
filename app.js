@@ -2,13 +2,13 @@
 // KONFIGURASI BACKEND GOOGLE SHEETS (LOG & WHITELIST)
 // ==========================================
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec";
-let currentNRP = "CLOUDFLARE_USER";
+let currentNRP = "SUPABASE_USER";
 let currentNamaUser = "Pekerja / Inspector";
 
-// 1. Langsung Jalankan Intro & Load Data karena Autentikasi di-handle Cloudflare Zero Trust
-document.addEventListener('DOMContentLoaded', () => {
-  mulaiAnimasiIntroDanLoadData();
-});
+// (Dimatikan karena pemicu intro & load data sekarang di-handle oleh sukses login Supabase di index.html)
+// document.addEventListener('DOMContentLoaded', () => {
+//   mulaiAnimasiIntroDanLoadData();
+// });
 
 // 2. Timeline Animasi Intro Loading & Fetch Data
 function mulaiAnimasiIntroDanLoadData() {
@@ -72,8 +72,8 @@ let chartInstance = null;
 let userYInterval = undefined;
 
 let rawWidthFeatures = [];
-let roadWidthLayer = null;       // Layer irisan melintang lebar
-let roadGradeLayer = null;       // Layer blok poligon kotak grade
+let roadWidthLayer = null;        // Layer irisan melintang lebar
+let roadGradeLayer = null;        // Layer blok poligon kotak grade
 let gradeLabelsLayer = L.layerGroup();  // Layer label marker teks STA & Grade
 
 // State Seleksi Range STA di Peta
@@ -575,7 +575,7 @@ async function loadExcelData() {
     refreshVisibleLayers();
     if (map) map.invalidateSize(true);
 
-    catatLogKeServer("BUKA APLIKASI", `User sukses masuk Dashboard WebGIS via Cloudflare Access.`);
+    catatLogKeServer("BUKA APLIKASI", `User sukses masuk Dashboard WebGIS via Supabase Auth.`);
 
   } catch (error) {
     console.error("Excel load error:", error);
