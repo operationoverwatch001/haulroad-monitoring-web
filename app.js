@@ -120,7 +120,7 @@ let userYInterval = undefined;
 
 let rawWidthFeatures = [];
 let roadWidthLayer = null;    // Layer irisan melintang (Road_Layers.geojson)
-let roadGradeLayer = null;    // Layer as jalan grade (Road_Grade_Polygons.geojson)
+let roadGradeLayer = null;    // Layer poligon blok kotak grade (Road_Grade_Polygons.geojson)
 
 // State Seleksi Range STA di Peta
 let selectedStartMeter = null;
@@ -205,7 +205,7 @@ function toggleBasemapSatelit() {
 // Listener penyesuaian gaya garis saat zoom
 map.on('zoomend', () => {
   if (roadWidthLayer) roadWidthLayer.setStyle(getWidthSliceStyle);
-  if (roadGradeLayer) roadGradeLayer.setStyle(getGradeLineStyle);
+  if (roadGradeLayer) roadGradeLayer.setStyle(getGradePolygonBlockStyle);
 });
 
 // Helper: Konversi meteran ke format STA (280 -> 0+280)
@@ -244,30 +244,26 @@ function isMeterSelected(meterVal, roadName) {
   return meterVal === selectedStartMeter;
 }
 
-// Style Garis As Jalan Grade (OW_13_Grade.shp / Road_Grade_Polygons.geojson)
-function getGradeLineStyle(feature) {
+// Style Poligon Blok Kotak Grade (Sesuai Foto 2: Berwarna Solid + Border Hitam)
+function getGradePolygonBlockStyle(feature) {
   const props = feature.properties || {};
-  // Baca STA dari kolom DBF asli (STA_Akhir atau STA_Awal)
   const staVal = props.STA_Akhir || props.STA_Awal || props.STA || props.Station_m || 0;
   const meterVal = parseMeterSTA(staVal);
   const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
-
-  const currentZoom = map ? map.getZoom() : 15;
-  let baseWeight = currentZoom >= 18 ? 8 : (currentZoom >= 16 ? 6 : (currentZoom >= 14 ? 4 : 2.5));
 
   // Seleksi aktif: Highlight Cyan Solid
   if (isMeterSelected(meterVal, roadVal)) {
     return {
       color: "#00f0ff",
-      weight: baseWeight + 4,
-      opacity: 1
+      weight: 3.5,
+      fillColor: "#00f0ff",
+      fillOpacity: 0.95
     };
   }
 
-  // Baca Status Grade langsung dari DBF (Status_Gra) atau Excel
+  // Cek Status Grade dari DBF atau Excel
   let statusGrade = (props.Status_Gra || props["Status Grade"] || props.Status || "").toString().toUpperCase();
 
-  // Cross-check ke sheet Excel jika status di file spasial belum lengkap
   if (monitoringData && monitoringData.length > 0) {
     const staFormatted = formatKeSTA(meterVal);
     const matchedRow = monitoringData.find(d => {
@@ -280,19 +276,18 @@ function getGradeLineStyle(feature) {
     }
   }
 
-  let color = "#22c55e"; // Aman / Normal -> Hijau
+  let fillColor = "#22c55e"; // Aman (<8%) -> Hijau
   if (statusGrade.includes("OVERGRADE") || statusGrade.includes("NON COMPLIANT")) {
-    color = "#e11d48";   // Overgrade (>10%) -> Merah
+    fillColor = "#e11d48";   // Overgrade (>10%) -> Merah
   } else if (statusGrade.includes("WARNING")) {
-    color = "#eab308";   // Warning (>8%) -> Kuning
+    fillColor = "#eab308";   // Warning (>8%) -> Kuning
   }
 
   return {
-    color: color,
-    weight: color === "#e11d48" ? baseWeight + 2 : baseWeight,
-    opacity: 0.95,
-    lineCap: "round",
-    lineJoin: "round"
+    color: "#000000",       // Border hitam tegas pemisah tiap STA (persis Foto 2)
+    weight: 1.2,
+    fillColor: fillColor,   // Warna blok terisi solid
+    fillOpacity: 0.88
   };
 }
 
@@ -342,7 +337,7 @@ function refreshVisibleLayers() {
   if (currentTab === 'grade') {
     if (roadWidthLayer && map.hasLayer(roadWidthLayer)) map.removeLayer(roadWidthLayer);
     if (roadGradeLayer && !map.hasLayer(roadGradeLayer)) roadGradeLayer.addTo(map);
-    if (roadGradeLayer) roadGradeLayer.setStyle(getGradeLineStyle);
+    if (roadGradeLayer) roadGradeLayer.setStyle(getGradePolygonBlockStyle);
   } else {
     if (roadGradeLayer && map.hasLayer(roadGradeLayer)) map.removeLayer(roadGradeLayer);
     if (roadWidthLayer && !map.hasLayer(roadWidthLayer)) roadWidthLayer.addTo(map);
@@ -402,7 +397,7 @@ map.on('click', () => {
 
 // Muat Kedua File GeoJSON
 async function loadAllVectorLayers() {
-  // 1. Muat Layer As Jalan Grade (Road_Grade_Polygons.geojson dari OW_13_Grade.shp)
+  // 1. Muat Layer Blok Poligon Grade (Road_Grade_Polygons.geojson)
   try {
     const resGrade = await fetch('data/Road_Grade_Polygons.geojson');
     if (resGrade.ok) {
@@ -410,14 +405,13 @@ async function loadAllVectorLayers() {
       if (roadGradeLayer) map.removeLayer(roadGradeLayer);
 
       roadGradeLayer = L.geoJSON(geojsonGrade, {
-        style: getGradeLineStyle,
+        style: getGradePolygonBlockStyle,
         onEachFeature: function(feature, layer) {
           const props = feature.properties || {};
           const sta = props.STA_Akhir || formatKeSTA(props.Station_m || props.STA_Awal || 0);
           const road = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
           const statusGrade = (props.Status_Gra || props["Status Grade"] || "Aman").toString().toUpperCase();
           
-          // Format angka persentase kemiringan jalan
           let gVal = "";
           if (props.Grade_Pct !== undefined && props.Grade_Pct !== null && props.Grade_Pct !== "") {
             const parsedG = parseFloat(props.Grade_Pct);
@@ -428,10 +422,17 @@ async function loadAllVectorLayers() {
             gVal = props.Label_Grad.toString().trim();
           }
 
-          // Tooltip informatif saat kursor mendekat / hover
+          // Tooltip umum saat hover
           layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b><br>Grade: <b>${gVal || "-"}</b>`, { sticky: true });
 
-          // LABEL KAPSUL PERMANEN PERSIS REFERENSI (HANYA OVERGRADE & WARNING)
+          // 1. LABEL NOMOR STA DI TENGAH BLOK POLIGON (Persis Foto 2)
+          layer.bindTooltip(`${sta}`, {
+            permanent: true,
+            direction: "center",
+            className: "sta-block-label"
+          });
+
+          // 2. LABEL KAPSUL PERSENTASE KEMIRINGAN (Hanya Overgrade & Warning)
           if (gVal) {
             if (statusGrade.includes("OVERGRADE") || statusGrade.includes("NON COMPLIANT")) {
               layer.bindTooltip(`<span class="badge-overgrade-text">${gVal}</span>`, {
