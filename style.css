@@ -137,29 +137,6 @@ body, html {
 }
 
 /* ========================================== */
-/* EFEK GLITCH BUYAR PECAH (BRUTAL OUTRO)     */
-/* ========================================== */
-@keyframes brutalTextScatter {
-  0% { transform: scale(1) translate(0, 0); filter: blur(0px); opacity: 1; clip-path: inset(0 0 0 0); }
-  25% { transform: scale(1.05) translate(8px, -5px) skew(30deg); color: #ff0033; clip-path: inset(30% 0 20% 0); letter-spacing: 8px; }
-  50% { transform: scale(0.95) translate(-12px, 8px) skew(-45deg); color: #00ffff; clip-path: inset(0 40% 40% 0); letter-spacing: 2px; filter: blur(2px); }
-  75% { transform: scale(1.1) translate(20px, -15px) skew(60deg); color: #ffff00; clip-path: inset(60% 0 10% 30%); letter-spacing: 20px; filter: blur(5px); opacity: 0.6; }
-  100% { transform: scale(0.5) translate(-30px, 30px) skew(-90deg); filter: blur(12px); opacity: 0; letter-spacing: 40px; clip-path: inset(50% 50% 50% 50%); }
-}
-
-.glitch-title.glitch-outro {
-  animation: brutalTextScatter 0.4s cubic-bezier(0.11, 0, 0.5, 1) forwards !important;
-}
-
-.glitch-title.glitch-outro::before {
-  animation: glitch-anim-1 0.04s infinite linear !important;
-}
-
-.glitch-title.glitch-outro::after {
-  animation: glitch-anim-2 0.04s infinite linear !important;
-}
-
-/* ========================================== */
 /* HEADER & TABS                              */
 /* ========================================== */
 .app-header {
@@ -251,33 +228,33 @@ body, html {
   cursor: pointer;
 }
 
-/* Bottom Sheet & Panel */
+/* ========================================================== */
+/* BOTTOM PANEL (FREE RESIZABLE BY DRAGGING PC & MOBILE)      */
+/* ========================================================== */
 .bottom-panel {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   height: 220px;
+  min-height: 44px;
+  max-height: 80vh;
   background: #ffffff;
   z-index: 1000;
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
-  box-shadow: 0 -3px 12px rgba(0,0,0,0.25);
+  box-shadow: 0 -3px 14px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
-  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.bottom-panel.minimized {
-  transform: translateY(calc(220px - 44px));
+  user-select: none;
 }
 
 .panel-header {
-  padding: 10px 16px;
+  padding: 6px 16px 8px;
   text-align: center;
   border-bottom: 1px solid #e2e8f0;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
+  cursor: grab;
+  cursor: -webkit-grab;
   background: #f8fafc;
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
@@ -286,36 +263,20 @@ body, html {
   align-items: center;
   justify-content: center;
   position: relative;
+  touch-action: none;
+}
+
+.panel-header:active {
+  cursor: grabbing;
+  cursor: -webkit-grabbing;
 }
 
 .drag-handle {
-  width: 56px;
-  height: 28px;
-  background: #0f172a;
-  border-radius: 8px;
-  margin: 0 auto 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-  transition: background 0.2s, transform 0.2s;
-}
-
-.drag-handle:active {
-  transform: scale(0.95);
-  background: #b81432;
-}
-
-.drag-handle::after {
-  content: "▲";
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: bold;
-  transition: transform 0.3s ease;
-}
-
-.bottom-panel.minimized .drag-handle::after {
-  transform: rotate(180deg);
+  width: 52px;
+  height: 5px;
+  background: #94a3b8;
+  border-radius: 3px;
+  margin: 2px auto 6px;
 }
 
 .panel-title {
@@ -333,17 +294,15 @@ body, html {
 .chart-container {
   position: relative;
   width: 100%;
-  height: 140px;
+  height: calc(100% - 30px);
+  min-height: 120px;
 }
 
 /* ========================================================== */
-/* LABEL POLIGON BLOK PERSIS FOTO 2 (ARCGIS STANDARD)        */
+/* LABEL TEKS ROTASI MENGIKUTI KOTAK JALAN (PERSIS FOTO 1)    */
 /* ========================================================== */
-
-/* Reset dasar Leaflet Tooltip */
-.leaflet-tooltip.sta-block-label,
-.leaflet-tooltip.grade-badge-overgrade,
-.leaflet-tooltip.grade-badge-warning {
+.leaflet-tooltip.sta-rotated-label,
+.leaflet-tooltip.grade-badge-label {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -352,55 +311,44 @@ body, html {
   pointer-events: none !important;
 }
 
-.leaflet-tooltip.sta-block-label::before,
-.leaflet-tooltip.grade-badge-overgrade::before,
-.leaflet-tooltip.grade-badge-warning::before {
+.leaflet-tooltip.sta-rotated-label::before,
+.leaflet-tooltip.grade-badge-label::before {
   display: none !important;
 }
 
-/* 1. Teks Nomor STA di Tengah Blok (Warna Hitam Pekat Tegas) */
-.sta-center-text {
+/* Teks STA: Posisi di Tengah Blok & Terputar Mengikuti Badan Jalan */
+.sta-text-box {
   display: block;
   color: #000000 !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   font-weight: 800 !important;
-  font-size: 8px !important;
+  font-size: 7.5px !important;
   line-height: 1 !important;
   white-space: nowrap !important;
   text-align: center !important;
-  pointer-events: none !important;
-  text-shadow: 0 0 2px rgba(255, 255, 255, 0.8) !important;
+  text-shadow: 0 0 2px rgba(255, 255, 255, 0.9) !important;
+  transform-origin: center center;
 }
 
-/* 2. Badge Kapsul Putih Persentase Grade (Overgrade / Warning) */
-.badge-overgrade-text {
+/* Badge Kapsul Putih Persentase Grade di Luar Kotak */
+.badge-grade-box {
   display: inline-block;
   background: #ffffff !important;
   color: #000000 !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   font-weight: 900 !important;
-  font-size: 9px !important;
+  font-size: 8.5px !important;
   line-height: 1 !important;
-  padding: 1.5px 4px !important;
+  padding: 1px 3.5px !important;
   border-radius: 3px !important;
+  white-space: nowrap !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45) !important;
+}
+
+.badge-grade-box.overgrade {
   border: 1.2px solid #c00000 !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5) !important;
-  white-space: nowrap !important;
-  transform: translateY(-16px);
 }
 
-.badge-warning-text {
-  display: inline-block;
-  background: #ffffff !important;
-  color: #000000 !important;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-  font-weight: 900 !important;
-  font-size: 9px !important;
-  line-height: 1 !important;
-  padding: 1.5px 4px !important;
-  border-radius: 3px !important;
+.badge-grade-box.warning {
   border: 1.2px solid #d97706 !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5) !important;
-  white-space: nowrap !important;
-  transform: translateY(-16px);
 }
