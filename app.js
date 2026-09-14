@@ -119,9 +119,9 @@ let chartInstance = null;
 let userYInterval = undefined;
 
 let rawWidthFeatures = [];
-let roadWidthLayer = null;      // Layer irisan melintang lebar
-let roadGradeLayer = null;      // Layer blok poligon kotak grade
-let gradeLabelsLayer = L.layerGroup(); // Layer teks STA & label grade terpisah agar tidak tertimpa
+let roadWidthLayer = null;       // Layer irisan melintang lebar
+let roadGradeLayer = null;       // Layer blok poligon kotak grade
+let gradeLabelsLayer = L.layerGroup();  // Layer label marker teks STA & Grade
 
 // State Seleksi Range STA di Peta
 let selectedStartMeter = null;
@@ -130,7 +130,7 @@ let selectedRoadTarget = "";
 
 Chart.register(ChartDataLabels);
 
-// Inisialisasi Peta Leaflet dengan Canvas Renderer agar enteng di HP
+// Inisialisasi Peta Leaflet dengan Canvas Renderer
 const map = L.map('map', { 
   zoomControl: false,
   preferCanvas: true 
@@ -203,10 +203,11 @@ function toggleBasemapSatelit() {
   }
 }
 
-// Listener penyesuaian gaya garis saat zoom
+// Listener: Perbarui gaya vektor & visibilitas label saat level zoom berubah
 map.on('zoomend', () => {
   if (roadWidthLayer) roadWidthLayer.setStyle(getWidthSliceStyle);
   if (roadGradeLayer) roadGradeLayer.setStyle(getGradePolygonBlockStyle);
+  updateGradeLabelsVisibility();
 });
 
 // Helper: Konversi meteran ke format STA (280 -> 0+280)
@@ -245,7 +246,38 @@ function isMeterSelected(meterVal, roadName) {
   return meterVal === selectedStartMeter;
 }
 
-// Style Poligon Blok Kotak Grade (Foto 2: Solid Fill + Border Garis Hitam)
+// Helper: Hitung sudut rotasi derajat kemiringan poligon jalan
+function calculatePolygonAngle(layer) {
+  try {
+    const latlngs = layer.getLatLngs();
+    const ring = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
+    if (ring && ring.length >= 4) {
+      // Titik tengah garis sisi depan dan belakang
+      const mid1 = {
+        lat: (ring[0].lat + ring[3].lat) / 2,
+        lng: (ring[0].lng + ring[3].lng) / 2
+      };
+      const mid2 = {
+        lat: (ring[1].lat + ring[2].lat) / 2,
+        lng: (ring[1].lng + ring[2].lng) / 2
+      };
+
+      const p1 = map.latLngToContainerPoint(mid1);
+      const p2 = map.latLngToContainerPoint(mid2);
+
+      let angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
+      // Koreksi agar teks selalu terbaca dari kiri ke kanan (tidak terbalik 180 derajat)
+      if (angle > 90) angle -= 180;
+      if (angle < -90) angle += 180;
+      return Math.round(angle);
+    }
+  } catch (e) {
+    // fallback
+  }
+  return 0;
+}
+
+// Style Poligon Blok Kotak Grade (Solid Fill + Garis Tepi Hitam)
 function getGradePolygonBlockStyle(feature) {
   const props = feature.properties || {};
   const staVal = props.STA_Akhir || props.STA_Awal || props.STA || props.Station_m || 0;
@@ -285,9 +317,9 @@ function getGradePolygonBlockStyle(feature) {
   }
 
   return {
-    color: "#000000",       // Border hitam tegas pemisah tiap STA (persis Foto 2)
+    color: "#000000",       // Garis batas pemisah tiap STA warna hitam
     weight: 1.2,
-    fillColor: fillColor,   // Warna blok terisi solid
+    fillColor: fillColor,
     fillOpacity: 0.88
   };
 }
@@ -323,6 +355,39 @@ function getWidthSliceStyle(feature) {
   return { color: "#00e5ff", weight: baseWeight, opacity: 0.85 };
 }
 
+// Kontrol Visibilitas Label agar tidak semrawut saat Zoom Out (Mengatasi Foto 3)
+function updateGradeLabelsVisibility() {
+  if (currentTab !== 'grade') {
+    if (map.hasLayer(gradeLabelsLayer)) map.removeLayer(gradeLabelsLayer);
+    return;
+  }
+
+  const zoom = map.getZoom();
+
+  // Saat Zoom Out Jauh (< 16), sembunyikan seluruh label agar peta bersih
+  if (zoom < 16) {
+    if (map.hasLayer(gradeLabelsLayer)) map.removeLayer(gradeLabelsLayer);
+    return;
+  }
+
+  if (!map.hasLayer(gradeLabelsLayer)) map.addLayer(gradeLabelsLayer);
+
+  gradeLabelsLayer.eachLayer(layer => {
+    const isSTA = layer.options.isSTA;
+    const isProblem = layer.options.isProblem;
+
+    if (layer.getElement()) {
+      if (isSTA) {
+        // Teks nomor STA hanya muncul saat dizoom sangat dekat (>= 18)
+        layer.getElement().style.display = (zoom >= 18) ? 'block' : 'none';
+      } else if (isProblem) {
+        // Label nilai grade warning/overgrade sudah mulai muncul sejak zoom 16
+        layer.getElement().style.display = (zoom >= 16) ? 'block' : 'none';
+      }
+    }
+  });
+}
+
 // Reset Seleksi Segmen Jalan
 function resetSegmentSelection() {
   if (selectedStartMeter === null && selectedEndMeter === null) return;
@@ -338,8 +403,8 @@ function refreshVisibleLayers() {
   if (currentTab === 'grade') {
     if (roadWidthLayer && map.hasLayer(roadWidthLayer)) map.removeLayer(roadWidthLayer);
     if (roadGradeLayer && !map.hasLayer(roadGradeLayer)) roadGradeLayer.addTo(map);
-    if (gradeLabelsLayer && !map.hasLayer(gradeLabelsLayer)) gradeLabelsLayer.addTo(map);
     if (roadGradeLayer) roadGradeLayer.setStyle(getGradePolygonBlockStyle);
+    updateGradeLabelsVisibility();
   } else {
     if (roadGradeLayer && map.hasLayer(roadGradeLayer)) map.removeLayer(roadGradeLayer);
     if (gradeLabelsLayer && map.hasLayer(gradeLabelsLayer)) map.removeLayer(gradeLabelsLayer);
@@ -426,42 +491,44 @@ async function loadAllVectorLayers() {
             gVal = props.Label_Grad.toString().trim();
           }
 
-          // Tooltip interaktif saat mouse hover
+          // Tooltip interaktif saat kursor diarahkan ke blok
           layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b><br>Grade: <b>${gVal || "-"}</b>`, { sticky: true });
 
-          // Hitung titik tengah poligon untuk menempatkan label permanen
           const center = layer.getBounds().getCenter();
+          const angle = calculatePolygonAngle(layer);
 
-          // 1. LABEL NOMOR STA PERMANEN DI TENGAH BLOK KOTAK (PERSIS FOTO 2)
+          // 1. LABEL NOMOR STA PERMANEN (DIPUTAR SESUAI KEMIRINGAN BLOK PERSIS FOTO 1)
           const staMarker = L.marker(center, {
             icon: L.divIcon({
-              className: 'sta-block-label',
-              html: `<span class="sta-center-text">${sta}</span>`,
+              className: 'sta-rotated-label',
+              html: `<span class="sta-text-box" style="transform: rotate(${angle}deg);">${sta}</span>`,
               iconSize: [40, 12],
               iconAnchor: [20, 6]
             }),
-            interactive: false
+            interactive: false,
+            isSTA: true
           });
           gradeLabelsLayer.addLayer(staMarker);
 
-          // 2. LABEL KAPSUL GRADE PERMANEN (HANYA OVERGRADE & WARNING PERSIS FOTO 2)
+          // 2. BADGE KAPSUL GRADE (HANYA OVERGRADE & WARNING)
           if (gVal) {
-            let badgeClass = "";
+            let badgeType = "";
             if (statusGrade.includes("OVERGRADE") || statusGrade.includes("NON COMPLIANT")) {
-              badgeClass = "badge-overgrade-text";
+              badgeType = "overgrade";
             } else if (statusGrade.includes("WARNING")) {
-              badgeClass = "badge-warning-text";
+              badgeType = "warning";
             }
 
-            if (badgeClass) {
+            if (badgeType) {
               const gradeMarker = L.marker(center, {
                 icon: L.divIcon({
-                  className: 'sta-block-label',
-                  html: `<span class="${badgeClass}">${gVal}</span>`,
+                  className: 'grade-badge-label',
+                  html: `<span class="badge-grade-box ${badgeType}">${gVal}</span>`,
                   iconSize: [44, 14],
-                  iconAnchor: [22, 18] // Melayang sedikit di atas outline jalan
+                  iconAnchor: [22, 18]
                 }),
-                interactive: false
+                interactive: false,
+                isProblem: true
               });
               gradeLabelsLayer.addLayer(gradeMarker);
             }
@@ -653,7 +720,7 @@ function renderGradeSummary() {
         <span style="font-size:11px; color:#1f4e79;"><b>${roadData.length} STA</b></span>
       </div>
     </div>
-    <div class="chart-container" style="height:140px;"><canvas id="chartCanvas"></canvas></div>
+    <div class="chart-container"><canvas id="chartCanvas"></canvas></div>
   `;
   drawLongSectionChart(roadData);
 }
@@ -855,13 +922,13 @@ function renderTabContent() {
           ${roadData.map(d => `<option value="${d['STA']}">${d['STA']}</option>`).join('')}
         </select>
       </div>
-      <div class="chart-container" style="height:140px;"><canvas id="chartCanvas"></canvas></div>
+      <div class="chart-container"><canvas id="chartCanvas"></canvas></div>
     `;
     if (roadData.length > 0) drawCrossSectionChart(roadData[0]["STA"]);
   }
 }
 
-// Grafik Profil Memanjang (Dinamis Sesuai Filter Rentang STA)
+// Grafik Profil Memanjang
 function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -1102,28 +1169,80 @@ function locateUser() {
   );
 }
 
-// Toggle Show/Hide Panel Bawah
+// ==========================================================
+// INTERACTIVE RESIZABLE BOTTOM PANEL (PC MOUSE & MOBILE TOUCH)
+// ==========================================================
 document.addEventListener("DOMContentLoaded", () => {
   const bottomPanel = document.getElementById('bottom-panel');
   const panelHeader = document.querySelector('.panel-header');
-  if (bottomPanel && panelHeader) {
-    let startY = 0, currentY = 0, isDragging = false;
-    panelHeader.addEventListener('click', (e) => {
-      if (['SELECT', 'OPTION', 'BUTTON'].includes(e.target.tagName)) return;
-      bottomPanel.classList.toggle('minimized');
-    });
-    panelHeader.addEventListener('touchstart', (e) => {
-      if (['SELECT', 'BUTTON'].includes(e.target.tagName)) return;
-      startY = e.touches[0].clientY; isDragging = true;
-    }, { passive: true });
-    panelHeader.addEventListener('touchmove', (e) => { if (!isDragging) return; currentY = e.touches[0].clientY; }, { passive: true });
-    panelHeader.addEventListener('touchend', () => {
-      if (!isDragging) return; isDragging = false;
-      const diffY = currentY - startY;
-      if (diffY > 30) bottomPanel.classList.add('minimized');
-      else if (diffY < -30) bottomPanel.classList.remove('minimized');
-    });
+  if (!bottomPanel || !panelHeader) return;
+
+  let isDragging = false;
+  let startY = 0;
+  let startHeight = 0;
+
+  function onDragStart(clientY) {
+    isDragging = true;
+    startY = clientY;
+    startHeight = bottomPanel.getBoundingClientRect().height;
+    document.body.style.userSelect = 'none';
   }
+
+  function onDragMove(clientY) {
+    if (!isDragging) return;
+    const deltaY = startY - clientY;
+    let newHeight = startHeight + deltaY;
+
+    // Batasan: minimal 44px (header saja), maksimal 75% tinggi layar
+    const minHeight = 44;
+    const maxHeight = window.innerHeight * 0.75;
+
+    if (newHeight < minHeight) newHeight = minHeight;
+    if (newHeight > maxHeight) newHeight = maxHeight;
+
+    bottomPanel.style.height = `${newHeight}px`;
+
+    if (chartInstance) {
+      chartInstance.resize();
+    }
+  }
+
+  function onDragEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+    document.body.style.userSelect = '';
+    if (map) map.invalidateSize();
+  }
+
+  // Event Mouse (Desktop PC / Laptop)
+  panelHeader.addEventListener('mousedown', (e) => {
+    if (['SELECT', 'OPTION', 'BUTTON'].includes(e.target.tagName)) return;
+    onDragStart(e.clientY);
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    onDragMove(e.clientY);
+  });
+
+  window.addEventListener('mouseup', () => {
+    onDragEnd();
+  });
+
+  // Event Touch (Mobile Smartphone / Tablet)
+  panelHeader.addEventListener('touchstart', (e) => {
+    if (['SELECT', 'OPTION', 'BUTTON'].includes(e.target.tagName)) return;
+    onDragStart(e.touches[0].clientY);
+  }, { passive: true });
+
+  window.addEventListener('touchmove', (e) => {
+    if (isDragging) {
+      onDragMove(e.touches[0].clientY);
+    }
+  }, { passive: true });
+
+  window.addEventListener('touchend', () => {
+    onDragEnd();
+  });
 });
 
 // Modal & Export PDF
