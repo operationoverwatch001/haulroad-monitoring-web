@@ -5,7 +5,7 @@ const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5Lz
 let currentNRP = "";
 let currentNamaUser = "";
 
-// 1. Verifikasi Login Whitelist (Versi Murni Tanpa Ubah Google Sheet)
+// 1. Verifikasi Login Whitelist
 async function prosesLoginWebGIS() {
   const inputEl = document.getElementById('inputNrpLogin');
   const errorMsg = document.getElementById('loginErrorMsg');
@@ -28,10 +28,7 @@ async function prosesLoginWebGIS() {
 
   try {
     const targetUrl = `${WEB_APP_URL}?action=LOGIN&nrp=${encodeURIComponent(nrpVal)}`;
-    const response = await fetch(targetUrl, {
-      method: "GET",
-      redirect: "follow"
-    });
+    const response = await fetch(targetUrl);
     const result = await response.json();
 
     if (result.status === "success") {
@@ -236,33 +233,6 @@ function parseMeterSTA(val) {
   return parseFloat(str) || 0;
 }
 
-// Helper: Ambil standar lebar desain aktif untuk jalan tertentu
-function getActiveRoadStandardWidth(roadTarget) {
-  const target = (roadTarget || activeRoad).trim().toLowerCase();
-  
-  if (monitoringData && monitoringData.length > 0) {
-    const row = monitoringData.find(d => (d["Nama Jalan"] || "").trim().toLowerCase() === target);
-    if (row && row["Lebar Standar (m)"]) {
-      const std = parseFloat(row["Lebar Standar (m)"]);
-      if (!isNaN(std) && std > 0) return std;
-    }
-  }
-
-  if (rawWidthFeatures && rawWidthFeatures.length > 0) {
-    const feat = rawWidthFeatures.find(f => {
-      const fp = f.properties || {};
-      const r = (fp.Nama_Jalan || fp["Nama Jalan"] || "").trim().toLowerCase();
-      return r === target && fp.Standar_m;
-    });
-    if (feat) {
-      const std = parseFloat(feat.properties.Standar_m);
-      if (!isNaN(std) && std > 0) return std;
-    }
-  }
-
-  return 30.8;
-}
-
 // Helper: Cek apakah STA dalam rentang seleksi aktif
 function isMeterSelected(meterVal, roadName) {
   if (selectedStartMeter === null || !selectedRoadTarget) return false;
@@ -282,6 +252,7 @@ function calculatePolygonAngle(layer) {
     const latlngs = layer.getLatLngs();
     const ring = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
     if (ring && ring.length >= 4) {
+      // Titik tengah garis sisi depan dan belakang
       const mid1 = {
         lat: (ring[0].lat + ring[3].lat) / 2,
         lng: (ring[0].lng + ring[3].lng) / 2
@@ -295,11 +266,14 @@ function calculatePolygonAngle(layer) {
       const p2 = map.latLngToContainerPoint(mid2);
 
       let angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
+      // Koreksi agar teks selalu terbaca dari kiri ke kanan (tidak terbalik 180 derajat)
       if (angle > 90) angle -= 180;
       if (angle < -90) angle += 180;
       return Math.round(angle);
     }
-  } catch (e) {}
+  } catch (e) {
+    // fallback
+  }
   return 0;
 }
 
@@ -320,6 +294,7 @@ function getGradePolygonBlockStyle(feature) {
     };
   }
 
+  // Cek Status Grade dari DBF atau Excel
   let statusGrade = (props.Status_Gra || props["Status Grade"] || props.Status || "").toString().toUpperCase();
 
   if (monitoringData && monitoringData.length > 0) {
@@ -342,7 +317,7 @@ function getGradePolygonBlockStyle(feature) {
   }
 
   return {
-    color: "#000000",
+    color: "#000000",       // Garis batas pemisah tiap STA warna hitam
     weight: 1.2,
     fillColor: fillColor,
     fillOpacity: 0.88
@@ -364,7 +339,7 @@ function getWidthSliceStyle(feature) {
 
   if (currentTab === 'lebar') {
     const lebarAktual = parseFloat(props.Lebar_m !== undefined ? props.Lebar_m : (props.Shape_Leng || 0));
-    const lebarStandar = props.Standar_m !== undefined ? parseFloat(props.Standar_m) : getActiveRoadStandardWidth(roadVal);
+    const lebarStandar = parseFloat(props.Standar_m !== undefined ? props.Standar_m : 30.8);
     const rawStatus = (props.Status || "").toString().trim().toUpperCase();
 
     let color = "#22c55e";
@@ -380,7 +355,7 @@ function getWidthSliceStyle(feature) {
   return { color: "#00e5ff", weight: baseWeight, opacity: 0.85 };
 }
 
-// Kontrol Visibilitas Label agar tidak semrawut saat Zoom Out
+// Kontrol Visibilitas Label agar tidak semrawut saat Zoom Out (Mengatasi Foto 3)
 function updateGradeLabelsVisibility() {
   if (currentTab !== 'grade') {
     if (map.hasLayer(gradeLabelsLayer)) map.removeLayer(gradeLabelsLayer);
@@ -389,6 +364,7 @@ function updateGradeLabelsVisibility() {
 
   const zoom = map.getZoom();
 
+  // Saat Zoom Out Jauh (< 16), sembunyikan seluruh label agar peta bersih
   if (zoom < 16) {
     if (map.hasLayer(gradeLabelsLayer)) map.removeLayer(gradeLabelsLayer);
     return;
@@ -402,8 +378,10 @@ function updateGradeLabelsVisibility() {
 
     if (layer.getElement()) {
       if (isSTA) {
+        // Teks nomor STA hanya muncul saat dizoom sangat dekat (>= 18)
         layer.getElement().style.display = (zoom >= 18) ? 'block' : 'none';
       } else if (isProblem) {
+        // Label nilai grade warning/overgrade sudah mulai muncul sejak zoom 16
         layer.getElement().style.display = (zoom >= 16) ? 'block' : 'none';
       }
     }
@@ -513,12 +491,13 @@ async function loadAllVectorLayers() {
             gVal = props.Label_Grad.toString().trim();
           }
 
+          // Tooltip interaktif saat kursor diarahkan ke blok
           layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b><br>Grade: <b>${gVal || "-"}</b>`, { sticky: true });
 
           const center = layer.getBounds().getCenter();
           const angle = calculatePolygonAngle(layer);
 
-          // Label Nomor STA Berotasi
+          // 1. LABEL NOMOR STA PERMANEN (DIPUTAR SESUAI KEMIRINGAN BLOK PERSIS FOTO 1)
           const staMarker = L.marker(center, {
             icon: L.divIcon({
               className: 'sta-rotated-label',
@@ -531,7 +510,7 @@ async function loadAllVectorLayers() {
           });
           gradeLabelsLayer.addLayer(staMarker);
 
-          // Badge Kapsul Grade (Overgrade / Warning)
+          // 2. BADGE KAPSUL GRADE (HANYA OVERGRADE & WARNING)
           if (gVal) {
             let badgeType = "";
             if (statusGrade.includes("OVERGRADE") || statusGrade.includes("NON COMPLIANT")) {
@@ -759,12 +738,10 @@ function renderLebarSummary() {
   `;
   panelTitle.innerHTML = `Audit Lebar Jalan: ${roadSelectHtml}`;
 
-  const activeStdLebar = getActiveRoadStandardWidth(activeRoad);
-
   if (selectedStartMeter !== null) {
     const staStartFormatted = formatKeSTA(selectedStartMeter);
 
-    // KASUS 1: Single STA Terpilih
+    // Single STA
     if (selectedEndMeter === null) {
       const matchFeature = rawWidthFeatures.find(f => {
         const fp = f.properties || {};
@@ -775,18 +752,10 @@ function renderLebarSummary() {
 
       const pStart = matchFeature ? matchFeature.properties : {};
       const lebarAktual = parseFloat(pStart.Lebar_m || 0).toFixed(2);
-      const lebarStandar = pStart.Standar_m !== undefined ? parseFloat(pStart.Standar_m).toFixed(2) : activeStdLebar.toFixed(2);
+      const lebarStandar = parseFloat(pStart.Standar_m || 30.8).toFixed(2);
       const isSempit = parseFloat(lebarAktual) < parseFloat(lebarStandar);
-
-      let kelasJalan = pStart.Kelas_Jala || "";
-      let payloadTon = pStart.Payload || "";
-      if (!kelasJalan && monitoringData) {
-        const monRow = monitoringData.find(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
-        if (monRow) {
-          kelasJalan = monRow["Kelas Jalan"] || (activeStdLebar <= 25 ? "Class 100" : "Class 200");
-          payloadTon = activeStdLebar <= 25 ? "100" : "200";
-        }
-      }
+      const kelasJalan = pStart.Kelas_Jala || (pStart.Payload ? `Class ${pStart.Payload}` : "Class 200");
+      const payloadTon = pStart.Payload || "200";
 
       panelBody.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; color:#fff; padding:6px 12px; border-radius:6px; margin-bottom:8px;">
@@ -808,7 +777,7 @@ function renderLebarSummary() {
           </div>
           <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #f59e0b; padding:6px 10px; border-radius:4px;">
             <div style="font-size:10px; color:#64748b;">Payload Target</div>
-            <div style="font-size:14px; font-weight:bold; color:#b45309;">${kelasJalan || 'Class ' + payloadTon} (${payloadTon || '100'} Ton)</div>
+            <div style="font-size:14px; font-weight:bold; color:#b45309;">${kelasJalan} (${payloadTon} Ton)</div>
           </div>
           <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid ${isSempit ? '#e11d48' : '#22c55e'}; padding:6px 10px; border-radius:4px;">
             <div style="font-size:10px; color:#64748b;">Kondisi Ruas</div>
@@ -820,7 +789,7 @@ function renderLebarSummary() {
       return;
     }
 
-    // KASUS 2: Rentang Range STA Terpilih
+    // Range STA
     const minM = Math.min(selectedStartMeter, selectedEndMeter);
     const maxM = Math.max(selectedStartMeter, selectedEndMeter);
     const staAwal = formatKeSTA(minM);
@@ -841,12 +810,9 @@ function renderLebarSummary() {
     let minLebar = 999;
     let maxLebar = 0;
     let countNonCompliant = 0;
-    
-    const stdLebarNum = activeStdLebar;
-    const stdLebar = stdLebarNum.toFixed(2);
-
-    let kelasJalan = activeStdLebar <= 25 ? "Class 100" : "Class 200";
-    let payloadTon = activeStdLebar <= 25 ? "100" : "200";
+    const stdLebar = 30.8;
+    let kelasJalan = "Class 200";
+    let payloadTon = "200";
 
     if (featuresInRange.length > 0) {
       let totalW = 0;
@@ -855,7 +821,7 @@ function renderLebarSummary() {
         totalW += w;
         if (w < minLebar) minLebar = w;
         if (w > maxLebar) maxLebar = w;
-        if (w < stdLebarNum) countNonCompliant++;
+        if (w < stdLebar) countNonCompliant++;
       });
       avgLebar = (totalW / featuresInRange.length).toFixed(2);
       minLebar = minLebar.toFixed(2);
@@ -863,8 +829,6 @@ function renderLebarSummary() {
       kelasJalan = featuresInRange[0].properties.Kelas_Jala || kelasJalan;
       payloadTon = featuresInRange[0].properties.Payload || payloadTon;
     }
-
-    const defisit = (stdLebarNum - parseFloat(avgLebar)).toFixed(2);
 
     panelBody.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; color:#fff; padding:6px 12px; border-radius:6px; margin-bottom:8px;">
@@ -890,7 +854,7 @@ function renderLebarSummary() {
         <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #22c55e; padding:6px 10px; border-radius:4px;">
           <div style="font-size:10px; color:#64748b;">Standar Desain</div>
           <div style="font-size:14px; font-weight:bold; color:#1e293b;">${stdLebar} Meter</div>
-          <div style="font-size:9px; color:#64748b;">Defisit: -${defisit} m</div>
+          <div style="font-size:9px; color:#64748b;">Defisit: -${(stdLebar - parseFloat(avgLebar)).toFixed(2)} m</div>
         </div>
 
         <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #f59e0b; padding:6px 10px; border-radius:4px;">
@@ -913,14 +877,12 @@ function renderLebarSummary() {
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
   const nonStd = roadData.filter(d => {
     const s = (d["Status Lebar Jalan"] || "").toUpperCase();
-    const act = parseFloat(d["Lebar Total (m)"] || 0);
-    const std = parseFloat(d["Lebar Standar (m)"] || activeStdLebar);
-    return s.includes("NONSTANDARD") || s.includes("SEMPIT") || s.includes("NON COMPLIANT") || act < std;
+    return s.includes("NONSTANDARD") || s.includes("SEMPIT") || s.includes("NON COMPLIANT");
   });
 
   let listHtml = nonStd.map(d => `
     <div style="padding:6px 10px; background:#fff0f0; border-left:4px solid #c00000; margin-bottom:4px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
-      <span>STA <b>${d["STA"]}</b>: Aktual <b>${d["Lebar Total (m)"]} m</b> (Std: ${d["Lebar Standar (m)"] || activeStdLebar} m)</span>
+      <span>STA <b>${d["STA"]}</b>: Aktual <b>${d["Lebar Total (m)"]} m</b> (Std: ${d["Lebar Standar (m)"]} m)</span>
       <span style="color:#c00000; font-weight:bold;">Sempit</span>
     </div>
   `).join('');
@@ -1231,6 +1193,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const deltaY = startY - clientY;
     let newHeight = startHeight + deltaY;
 
+    // Batasan: minimal 44px (header saja), maksimal 75% tinggi layar
     const minHeight = 44;
     const maxHeight = window.innerHeight * 0.75;
 
