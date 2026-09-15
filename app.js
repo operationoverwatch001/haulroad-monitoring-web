@@ -153,7 +153,7 @@ window.verifyOtp = async function() {
 };
 
 // ==========================================
-// MODUL GEO-TICKETING WORK ORDER (WO) - FLOATING BUTTON
+// MODUL GEO-TICKETING WORK ORDER (WO) - FLOATING BUTTON & REKAMAN IDENTITAS
 // ==========================================
 let isWorkOrderModeActive = false;
 let activeWoFeatureData = null;
@@ -180,6 +180,7 @@ function toggleWorkOrderFloating() {
     }
 }
 
+// Handler Klik Fitur Spasial (Garis/Blok Jalan) saat Mode WO Aktif
 function handleWorkOrderClick(feature) {
     if (!isWorkOrderModeActive) return;
 
@@ -188,21 +189,49 @@ function handleWorkOrderClick(feature) {
     const rawSta = props.STA_Akhir || props.STA_Awal || props.Station_m || props.STA || "0+000";
     const staFormatted = formatKeSTA(parseMeterSTA(rawSta));
 
-    activeWoFeatureData = { road, sta: staFormatted, rawProps: props };
+    activeWoFeatureData = { type: 'road', road, sta: staFormatted, rawProps: props };
+    openWoModalUI(road, `STA ${staFormatted}`);
+}
 
+// Handler Klik di Area Bebas Peta saat Mode WO Aktif (Drop Pin Koordinat Darurat)
+function handleMapClickForWo(latlng) {
+    if (!isWorkOrderModeActive) return;
+
+    const lat = latlng.lat.toFixed(6);
+    const lng = latlng.lng.toFixed(6);
+
+    activeWoFeatureData = { type: 'coord', road: activeRoad || 'Area Tambang Umum', sta: `Lat/Lng: ${lat}, ${lng}` };
+    openWoModalUI(activeRoad || 'Area Tambang Umum', `Koordinat (${lat}, ${lng})`);
+}
+
+function openWoModalUI(locationName, locationDetail) {
     const modal = document.getElementById('woModalOverlay');
     const title = document.getElementById('woModalTitle');
     const catWrapper = document.getElementById('woCategoryWrapper');
     const locInput = document.getElementById('woLocationInfo');
 
-    locInput.value = `${road} - STA ${staFormatted}`;
+    locInput.value = `${locationName} - ${locationDetail}`;
+
+    // Otomatis inject input nama pelapor jika belum ada di modal
+    let reporterContainer = document.getElementById('woReporterWrapper');
+    if (!reporterContainer) {
+        reporterContainer = document.createElement('div');
+        reporterContainer.id = 'woReporterWrapper';
+        reporterContainer.innerHTML = `
+            <label style="color:#cbd5e1; font-size:11px;">Pelapor (Terekam Otomatis):</label>
+            <input type="text" id="woReporterName" value="${currentNRP}" readonly style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#38bdf8; font-size:11px; margin-top:2px;">
+        `;
+        locInput.parentNode.parentNode.insertBefore(reporterContainer, locInput.parentNode.nextSibling);
+    } else {
+        document.getElementById('woReporterName').value = currentNRP;
+    }
 
     if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
         title.innerText = "BUAT WORK ORDER (WO) BARU";
-        catWrapper.style.display = 'block';
+        if (catWrapper) catWrapper.style.display = 'block';
     } else {
         title.innerText = "SUBMIT EVIDENCE LAPANGAN";
-        catWrapper.style.display = 'none';
+        if (catWrapper) catWrapper.style.display = 'none';
     }
 
     modal.style.display = 'flex';
@@ -215,8 +244,9 @@ function closeWoModal() {
 
 function submitWorkOrder() {
     const notes = document.getElementById('woNotes').value.trim();
-    const category = document.getElementById('woCategory').value;
+    const category = document.getElementById('woCategory') ? document.getElementById('woCategory').value : "Evidence Lapangan";
     const fileInput = document.getElementById('woEvidenceFile');
+    const reporter = document.getElementById('woReporterName') ? document.getElementById('woReporterName').value : currentNRP;
 
     if (!notes) {
         alert("Catatan atau instruksi lapangan wajib diisi!");
@@ -224,10 +254,10 @@ function submitWorkOrder() {
     }
 
     const actionType = (currentUserRole === 'admin' || currentUserRole === 'inspector') ? "CREATE WO" : "SUBMIT EVIDENCE";
-    const detailLog = `Ruas: ${activeWoFeatureData.road}, STA: ${activeWoFeatureData.sta}, Kategori: ${category}, Catatan: ${notes}, User: ${currentNRP}`;
+    const detailLog = `Pelapor: ${reporter}, Lokasi: ${activeWoFeatureData.road} (${activeWoFeatureData.sta}), Kategori: ${category}, Catatan: ${notes}`;
 
     catatLogKeServer(actionType, detailLog);
-    alert(`Berhasil mengirim ${actionType} untuk ${activeWoFeatureData.road} STA ${activeWoFeatureData.sta}! Data tercatat.`);
+    alert(`Berhasil mengirim ${actionType} oleh ${reporter}! Data dan bukti terekam di sistem.`);
 
     document.getElementById('woNotes').value = '';
     if (fileInput) fileInput.value = '';
@@ -668,9 +698,14 @@ function handleFeatureClick(feature) {
   }
 }
 
-// Event Peta: Klik di area bebas untuk membatalkan seleksi segmen
-map.on('click', () => {
-  if (!isWorkOrderModeActive && (selectedStartMeter !== null || selectedEndMeter !== null)) {
+// Event Peta: Klik di area bebas (Mendukung Drop Pin jika Mode WO aktif)
+map.on('click', (e) => {
+  if (isWorkOrderModeActive) {
+    handleMapClickForWo(e.latlng);
+    return;
+  }
+
+  if (selectedStartMeter !== null || selectedEndMeter !== null) {
     resetSegmentSelection();
   }
 });
