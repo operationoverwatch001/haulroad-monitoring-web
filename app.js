@@ -4,7 +4,7 @@
 const SUPABASE_URL = 'https://bjgojyazemlrwnqpxoqp.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_mUqC6rBWoHL-5IjW44uhfA_TL7YB1Zg';
 
-// Inisialisasi client Supabase dengan pengaturan persistensi sesi agar tahan lama
+// Inisialisasi client Supabase dengan persistensi sesi agar tahan lama (1 bulan)
 const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
@@ -20,7 +20,7 @@ const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5Lz
 let currentNRP = "SUPABASE_USER";
 let currentNamaUser = "Pekerja / Inspector";
 
-// Cek Sesi Login Saat Web Dibuka (Auto-Bypass jika sesi 1 bulan masih aktif)
+// Cek Sesi Login Saat Web Dibuka (Auto-Bypass jika sesi aktif)
 window.addEventListener('DOMContentLoaded', async () => {
     const { data: { session } } = await _supabase.auth.getSession();
     if (session) {
@@ -95,7 +95,7 @@ window.requestOtp = async function() {
     }
 };
 
-// Fungsi Verifikasi Kode OTP (Mendukung token 6 digit / 8 digit)
+// Fungsi Verifikasi Kode OTP (Mendukung token 8 digit)
 window.verifyOtp = async function() {
     const emailInput = document.getElementById('email-input');
     const otpInput = document.getElementById('otp-input');
@@ -310,7 +310,7 @@ function parseMeterSTA(val) {
 // Helper: Ambil standar lebar desain aktif untuk jalan tertentu
 function getActiveRoadStandardWidth(roadTarget) {
   const target = (roadTarget || activeRoad).trim().toLowerCase();
-
+  
   if (monitoringData && monitoringData.length > 0) {
     const row = monitoringData.find(d => (d["Nama Jalan"] || "").trim().toLowerCase() === target);
     if (row && row["Lebar Standar (m)"]) {
@@ -559,7 +559,6 @@ map.on('click', () => {
 
 // Muat Kedua File GeoJSON
 async function loadAllVectorLayers() {
-  // 1. Muat Layer Blok Poligon Grade (Road_Grade_Polygons.geojson)
   try {
     const resGrade = await fetch('data/Road_Grade_Polygons.geojson');
     if (resGrade.ok) {
@@ -574,7 +573,7 @@ async function loadAllVectorLayers() {
           const sta = props.STA_Akhir || formatKeSTA(props.Station_m || props.STA_Awal || 0);
           const road = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
           const statusGrade = (props.Status_Gra || props["Status Grade"] || "Aman").toString().toUpperCase();
-
+          
           let gVal = "";
           if (props.Grade_Pct !== undefined && props.Grade_Pct !== null && props.Grade_Pct !== "") {
             const parsedG = parseFloat(props.Grade_Pct);
@@ -590,7 +589,6 @@ async function loadAllVectorLayers() {
           const center = layer.getBounds().getCenter();
           const angle = calculatePolygonAngle(layer);
 
-          // Label Nomor STA Berotasi
           const staMarker = L.marker(center, {
             icon: L.divIcon({
               className: 'sta-rotated-label',
@@ -603,7 +601,6 @@ async function loadAllVectorLayers() {
           });
           gradeLabelsLayer.addLayer(staMarker);
 
-          // Badge Kapsul Grade (Overgrade / Warning)
           if (gVal) {
             let badgeType = "";
             if (statusGrade.includes("OVERGRADE") || statusGrade.includes("NON COMPLIANT")) {
@@ -638,7 +635,6 @@ async function loadAllVectorLayers() {
     console.warn("Info Layer Grade:", err.message);
   }
 
-  // 2. Muat Layer Irisan Lebar Jalan (Road_Layers.geojson)
   try {
     const resWidth = await fetch('data/Road_Layers.geojson');
     if (resWidth.ok) {
@@ -818,7 +814,7 @@ function renderGradeSummary() {
   drawLongSectionChart(roadData);
 }
 
-// Render Panel Audit Lebar Jalan (Mendukung Single STA & Range 2 Klik dengan Standar Dinamis)
+// Render Panel Audit Lebar Jalan
 function renderLebarSummary() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
@@ -836,7 +832,6 @@ function renderLebarSummary() {
   if (selectedStartMeter !== null) {
     const staStartFormatted = formatKeSTA(selectedStartMeter);
 
-    // KASUS 1: Single STA Terpilih
     if (selectedEndMeter === null) {
       const matchFeature = rawWidthFeatures.find(f => {
         const fp = f.properties || {};
@@ -891,7 +886,6 @@ function renderLebarSummary() {
       return;
     }
 
-    // KASUS 2: Rentang Range STA Terpilih (2x Klik)
     const minM = Math.min(selectedStartMeter, selectedEndMeter);
     const maxM = Math.max(selectedStartMeter, selectedEndMeter);
     const staAwal = formatKeSTA(minM);
@@ -980,7 +974,6 @@ function renderLebarSummary() {
     return;
   }
 
-  // Tampilan Default Lebar
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
   const nonStd = roadData.filter(d => {
     const s = (d["Status Lebar Jalan"] || "").toUpperCase();
@@ -1278,9 +1271,7 @@ function locateUser() {
   );
 }
 
-// ==========================================================
-// INTERACTIVE RESIZABLE BOTTOM PANEL (PC MOUSE & MOBILE TOUCH)
-// ==========================================================
+// Panel Resizable Bawah
 document.addEventListener("DOMContentLoaded", () => {
   const bottomPanel = document.getElementById('bottom-panel');
   const panelHeader = document.querySelector('.panel-header');
@@ -1322,7 +1313,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (map) map.invalidateSize();
   }
 
-  // Event Mouse (Desktop PC / Laptop)
   panelHeader.addEventListener('mousedown', (e) => {
     if (['SELECT', 'OPTION', 'BUTTON'].includes(e.target.tagName)) return;
     onDragStart(e.clientY);
@@ -1336,7 +1326,6 @@ document.addEventListener("DOMContentLoaded", () => {
     onDragEnd();
   });
 
-  // Event Touch (Mobile Smartphone / Tablet)
   panelHeader.addEventListener('touchstart', (e) => {
     if (['SELECT', 'OPTION', 'BUTTON'].includes(e.target.tagName)) return;
     onDragStart(e.touches[0].clientY);
