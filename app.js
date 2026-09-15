@@ -153,10 +153,11 @@ window.verifyOtp = async function() {
 };
 
 // ==========================================
-// MODUL GEO-TICKETING WORK ORDER (WO) - FLOATING BUTTON & REKAMAN IDENTITAS
+// MODUL GEO-TICKETING WORK ORDER (WO) & MARKER
 // ==========================================
 let isWorkOrderModeActive = false;
 let activeWoFeatureData = null;
+let workOrderMarkersLayer = L.layerGroup(); // Layer untuk menampung pin/mark WO di peta
 
 function toggleWorkOrderFloating() {
     isWorkOrderModeActive = !isWorkOrderModeActive;
@@ -189,7 +190,14 @@ function handleWorkOrderClick(feature) {
     const rawSta = props.STA_Akhir || props.STA_Awal || props.Station_m || props.STA || "0+000";
     const staFormatted = formatKeSTA(parseMeterSTA(rawSta));
 
-    activeWoFeatureData = { type: 'road', road, sta: staFormatted, rawProps: props };
+    // Ambil koordinat tengah dari feature jalan yang diklik untuk penempatan marker
+    let targetLatLng = map.getCenter();
+    try {
+        const tempLayer = L.geoJSON(feature);
+        targetLatLng = tempLayer.getBounds().getCenter();
+    } catch(e) {}
+
+    activeWoFeatureData = { type: 'road', road, sta: staFormatted, latlng: targetLatLng, rawProps: props };
     openWoModalUI(road, `STA ${staFormatted}`);
 }
 
@@ -200,7 +208,7 @@ function handleMapClickForWo(latlng) {
     const lat = latlng.lat.toFixed(6);
     const lng = latlng.lng.toFixed(6);
 
-    activeWoFeatureData = { type: 'coord', road: activeRoad || 'Area Tambang Umum', sta: `Lat/Lng: ${lat}, ${lng}` };
+    activeWoFeatureData = { type: 'coord', road: activeRoad || 'Area Tambang Umum', sta: `Lat/Lng: ${lat}, ${lng}`, latlng: latlng };
     openWoModalUI(activeRoad || 'Area Tambang Umum', `Koordinat (${lat}, ${lng})`);
 }
 
@@ -210,11 +218,11 @@ function openWoModalUI(locationName, locationDetail) {
     const catWrapper = document.getElementById('woCategoryWrapper');
     const locInput = document.getElementById('woLocationInfo');
 
-    locInput.value = `${locationName} - ${locationDetail}`;
+    if (locInput) locInput.value = `${locationName} - ${locationDetail}`;
 
     // Otomatis inject input nama pelapor jika belum ada di modal
     let reporterContainer = document.getElementById('woReporterWrapper');
-    if (!reporterContainer) {
+    if (!reporterContainer && locInput) {
         reporterContainer = document.createElement('div');
         reporterContainer.id = 'woReporterWrapper';
         reporterContainer.innerHTML = `
@@ -222,31 +230,36 @@ function openWoModalUI(locationName, locationDetail) {
             <input type="text" id="woReporterName" value="${currentNRP}" readonly style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#38bdf8; font-size:11px; margin-top:2px;">
         `;
         locInput.parentNode.parentNode.insertBefore(reporterContainer, locInput.parentNode.nextSibling);
-    } else {
+    } else if (document.getElementById('woReporterName')) {
         document.getElementById('woReporterName').value = currentNRP;
     }
 
     if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
-        title.innerText = "BUAT WORK ORDER (WO) BARU";
+        if (title) title.innerText = "BUAT WORK ORDER (WO) BARU";
         if (catWrapper) catWrapper.style.display = 'block';
     } else {
-        title.innerText = "SUBMIT EVIDENCE LAPANGAN";
+        if (title) title.innerText = "SUBMIT EVIDENCE LAPANGAN";
         if (catWrapper) catWrapper.style.display = 'none';
     }
 
-    modal.style.display = 'flex';
+    if (modal) modal.style.display = 'flex';
 }
 
 function closeWoModal() {
-    document.getElementById('woModalOverlay').style.display = 'none';
+    const modal = document.getElementById('woModalOverlay');
+    if (modal) modal.style.display = 'none';
     activeWoFeatureData = null;
 }
 
 function submitWorkOrder() {
-    const notes = document.getElementById('woNotes').value.trim();
-    const category = document.getElementById('woCategory') ? document.getElementById('woCategory').value : "Evidence Lapangan";
+    const notesElem = document.getElementById('woNotes');
+    const categoryElem = document.getElementById('woCategory');
     const fileInput = document.getElementById('woEvidenceFile');
-    const reporter = document.getElementById('woReporterName') ? document.getElementById('woReporterName').value : currentNRP;
+    const reporterElem = document.getElementById('woReporterName');
+
+    const notes = notesElem ? notesElem.value.trim() : "";
+    const category = categoryElem ? categoryElem.value : "Evidence Lapangan";
+    const reporter = reporterElem ? reporterElem.value : currentNRP;
 
     if (!notes) {
         alert("Catatan atau instruksi lapangan wajib diisi!");
@@ -257,9 +270,37 @@ function submitWorkOrder() {
     const detailLog = `Pelapor: ${reporter}, Lokasi: ${activeWoFeatureData.road} (${activeWoFeatureData.sta}), Kategori: ${category}, Catatan: ${notes}`;
 
     catatLogKeServer(actionType, detailLog);
-    alert(`Berhasil mengirim ${actionType} oleh ${reporter}! Data dan bukti terekam di sistem.`);
 
-    document.getElementById('woNotes').value = '';
+    // Bikin Tanda / Marker Visual di Peta setelah WO/Evidence berhasil disubmit
+    if (activeWoFeatureData && activeWoFeatureData.latlng) {
+        if (!map.hasLayer(workOrderMarkersLayer)) {
+            workOrderMarkersLayer.addTo(map);
+        }
+
+        const markerColor = (currentUserRole === 'admin' || currentUserRole === 'inspector') ? '#ff2b54' : '#00f0ff';
+        const customIcon = L.divIcon({
+            className: 'custom-wo-marker',
+            html: `<div style="background:${markerColor}; width:16px; height:16px; border:2px solid #ffffff; border-radius:50%; box-shadow:0 0 10px rgba(0,0,0,0.7);"></div>`,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+        });
+
+        const woMarker = L.marker(activeWoFeatureData.latlng, { icon: customIcon });
+        woMarker.bindPopup(`
+            <div style="font-size:11px; color:#0f172a; min-width:160px;">
+                <b style="color:${markerColor};">${actionType}</b><br>
+                <b>Lokasi:</b> ${activeWoFeatureData.road} (${activeWoFeatureData.sta})<br>
+                <b>Kategori:</b> ${category}<br>
+                <b>Catatan:</b> ${notes}<br>
+                <b>Pelapor:</b> ${reporter}
+            </div>
+        `);
+        workOrderMarkersLayer.addLayer(woMarker);
+    }
+
+    alert(`Berhasil mengirim ${actionType} oleh ${reporter}! Pin marker lokasi telah ditambahkan ke peta.`);
+
+    if (notesElem) notesElem.value = '';
     if (fileInput) fileInput.value = '';
     closeWoModal();
 
