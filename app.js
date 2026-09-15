@@ -1,14 +1,135 @@
 // ==========================================
+// KONFIGURASI SUPABASE & AUTHENTICATION
+// ==========================================
+const SUPABASE_URL = 'https://bjgojyazemlrwnqpxoqp.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_mUqC6rBWoHL-5IjW44uhfA_TL7YB1Zg';
+
+// Inisialisasi client Supabase dengan pengaturan persistensi sesi agar tahan lama
+const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
+  }
+});
+
+// ==========================================
 // KONFIGURASI BACKEND GOOGLE SHEETS (LOG & WHITELIST)
 // ==========================================
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec";
 let currentNRP = "SUPABASE_USER";
 let currentNamaUser = "Pekerja / Inspector";
 
-// (Dimatikan karena pemicu intro & load data sekarang di-handle oleh sukses login Supabase di index.html)
-// document.addEventListener('DOMContentLoaded', () => {
-//   mulaiAnimasiIntroDanLoadData();
-// });
+// Cek Sesi Login Saat Web Dibuka (Auto-Bypass jika sesi 1 bulan masih aktif)
+window.addEventListener('DOMContentLoaded', async () => {
+    const { data: { session } } = await _supabase.auth.getSession();
+    if (session) {
+        const authOverlay = document.getElementById('auth-overlay');
+        if (authOverlay) authOverlay.style.display = 'none';
+        if (session.user && session.user.email) {
+            currentNRP = session.user.email;
+        }
+        mulaiAnimasiIntroDanLoadData();
+    } else {
+        const authOverlay = document.getElementById('auth-overlay');
+        if (authOverlay) authOverlay.style.display = 'flex';
+    }
+});
+
+// Fungsi Kirim OTP & Cek Whitelist Database Supabase
+window.requestOtp = async function() {
+    const emailInput = document.getElementById('email-input');
+    const statusMsg = document.getElementById('auth-status');
+    if (!emailInput || !statusMsg) return;
+
+    const email = emailInput.value.trim().toLowerCase();
+
+    if (!email) {
+        statusMsg.innerText = 'Masukkan email dulu, bre!';
+        return;
+    }
+
+    statusMsg.innerText = 'Memeriksa hak akses...';
+
+    // 1. Cek Domain Kantor
+    let isAllowed = email.endsWith('@saptaindra.co.id');
+
+    // 2. Cek Tabel Whitelist Supabase
+    if (!isAllowed) {
+        const { data, error } = await _supabase
+            .from('Whitelist')
+            .select('Email')
+            .eq('Email', email);
+
+        if (error) {
+            console.error("Supabase Error:", error);
+            statusMsg.innerText = 'Error DB: ' + error.message;
+            return;
+        }
+
+        if (data && data.length > 0) {
+            isAllowed = true;
+        }
+    }
+
+    if (!isAllowed) {
+        statusMsg.innerText = 'Akses ditolak! Email tidak terdaftar di sistem.';
+        return;
+    }
+
+    statusMsg.innerText = 'Mengirim kode OTP...';
+
+    const { error } = await _supabase.auth.signInWithOtp({
+        email: email,
+        options: { shouldCreateUser: true }
+    });
+
+    if (error) {
+        statusMsg.innerText = 'Gagal mengirim OTP: ' + error.message;
+    } else {
+        statusMsg.innerText = 'Kode OTP terkirim! Cek inbox email lu.';
+        const emailSec = document.getElementById('email-section');
+        const otpSec = document.getElementById('otp-section');
+        if (emailSec) emailSec.classList.add('hidden');
+        if (otpSec) otpSec.classList.remove('hidden');
+    }
+};
+
+// Fungsi Verifikasi Kode OTP (Mendukung token 6 digit / 8 digit)
+window.verifyOtp = async function() {
+    const emailInput = document.getElementById('email-input');
+    const otpInput = document.getElementById('otp-input');
+    const statusMsg = document.getElementById('auth-status');
+    if (!emailInput || !otpInput || !statusMsg) return;
+
+    const email = emailInput.value.trim().toLowerCase();
+    const token = otpInput.value.trim();
+
+    if (!token || token.length < 6) {
+        statusMsg.innerText = 'Masukkan kode OTP secara lengkap!';
+        return;
+    }
+
+    statusMsg.innerText = 'Memverifikasi kode...';
+
+    const { data, error } = await _supabase.auth.verifyOtp({
+        email: email,
+        token: token,
+        type: 'email'
+    });
+
+    if (error) {
+        statusMsg.innerText = 'Kode salah atau kedaluwarsa: ' + error.message;
+    } else {
+        statusMsg.innerText = 'Login Berhasil! Memuat peta...';
+        setTimeout(() => {
+            const authOverlay = document.getElementById('auth-overlay');
+            if (authOverlay) authOverlay.style.display = 'none';
+            currentNRP = email;
+            mulaiAnimasiIntroDanLoadData();
+        }, 800);
+    }
+};
 
 // 2. Timeline Animasi Intro Loading & Fetch Data
 function mulaiAnimasiIntroDanLoadData() {
@@ -189,7 +310,7 @@ function parseMeterSTA(val) {
 // Helper: Ambil standar lebar desain aktif untuk jalan tertentu
 function getActiveRoadStandardWidth(roadTarget) {
   const target = (roadTarget || activeRoad).trim().toLowerCase();
-  
+
   if (monitoringData && monitoringData.length > 0) {
     const row = monitoringData.find(d => (d["Nama Jalan"] || "").trim().toLowerCase() === target);
     if (row && row["Lebar Standar (m)"]) {
@@ -453,7 +574,7 @@ async function loadAllVectorLayers() {
           const sta = props.STA_Akhir || formatKeSTA(props.Station_m || props.STA_Awal || 0);
           const road = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
           const statusGrade = (props.Status_Gra || props["Status Grade"] || "Aman").toString().toUpperCase();
-          
+
           let gVal = "";
           if (props.Grade_Pct !== undefined && props.Grade_Pct !== null && props.Grade_Pct !== "") {
             const parsedG = parseFloat(props.Grade_Pct);
