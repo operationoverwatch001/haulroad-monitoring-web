@@ -96,7 +96,7 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.5);
       font-size: 20px;
       font-weight: bold;
-      display: none; /* Default sembunyi, muncul via JS untuk Inspector */
+      display: none; /* Default sembunyi, diatur via app.js untuk inspector */
       align-items: center;
       justify-content: center;
       cursor: pointer;
@@ -226,12 +226,12 @@
     </nav>
   </header>
 
-  <!-- 3. PETA, GPS, TOMBOL FLOATING WO & INSPECTOR (+), TOMBOL SATELIT -->
+  <!-- 3. PETA, GPS, GROUP TOMBOL FLOATING, & TOMBOL SATELIT -->
   <div id="map"></div>
   
   <!-- GROUP TOMBOL FLOATING DI KANAN BAWAH -->
   <div class="floating-action-group">
-    <!-- Tombol (+) khusus Inspector untuk Edit/Tambah WO -->
+    <!-- Tombol (+) khusus Inspector -->
     <button id="woPlusBtn" class="wo-plus-floating-btn" onclick="openInspectorEditorModal()" title="Tambah / Edit / Hapus Work Order">
       +
     </button>
