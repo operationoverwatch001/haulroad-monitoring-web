@@ -18,7 +18,7 @@ const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, 
 // ==========================================
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec";
 let currentNRP = "SUPABASE_USER";
-let currentNamaUser = "Pekerja / Inspector";
+let currentUserRole = "viewer"; // Default viewer jika role null/kosong
 
 // Cek Sesi Login Saat Web Dibuka (Auto-Bypass jika sesi aktif)
 window.addEventListener('DOMContentLoaded', async () => {
@@ -28,6 +28,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (authOverlay) authOverlay.style.display = 'none';
         if (session.user && session.user.email) {
             currentNRP = session.user.email;
+            await checkUserRole(currentNRP);
         }
         mulaiAnimasiIntroDanLoadData();
     } else {
@@ -35,6 +36,25 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (authOverlay) authOverlay.style.display = 'flex';
     }
 });
+
+// Cek Role User di Tabel Whitelist Supabase
+async function checkUserRole(email) {
+    try {
+        const { data, error } = await _supabase
+            .from('Whitelist')
+            .select('role')
+            .eq('Email', email)
+            .single();
+
+        if (data && data.role) {
+            currentUserRole = data.role.toLowerCase();
+        } else {
+            currentUserRole = "viewer"; // NULL / tidak diatur otomatis jadi viewer
+        }
+    } catch (err) {
+        currentUserRole = "viewer";
+    }
+}
 
 // Fungsi Kirim OTP & Cek Whitelist Database Supabase
 window.requestOtp = async function() {
@@ -122,6 +142,7 @@ window.verifyOtp = async function() {
         statusMsg.innerText = 'Kode salah atau kedaluwarsa: ' + error.message;
     } else {
         statusMsg.innerText = 'Login Berhasil! Memuat peta...';
+        await checkUserRole(email);
         setTimeout(() => {
             const authOverlay = document.getElementById('auth-overlay');
             if (authOverlay) authOverlay.style.display = 'none';
@@ -130,6 +151,82 @@ window.verifyOtp = async function() {
         }, 800);
     }
 };
+
+// ==========================================
+// MODUL GEO-TICKETING WORK ORDER (WO)
+// ==========================================
+let isWorkOrderModeActive = false;
+let activeWoFeatureData = null;
+
+function toggleWorkOrderMode(checkbox) {
+    isWorkOrderModeActive = checkbox.checked;
+    if (isWorkOrderModeActive) {
+        catatLogKeServer("WO MODE", "Mengaktifkan Mode Geo-Ticketing Work Order.");
+    } else {
+        catatLogKeServer("WO MODE", "Menonaktifkan Mode Geo-Ticketing Work Order.");
+    }
+}
+
+// Handler klik fitur khusus Work Order
+function handleWorkOrderClick(feature) {
+    if (!isWorkOrderModeActive) return;
+
+    const props = feature.properties || {};
+    const road = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
+    const rawSta = props.STA_Akhir || props.STA_Awal || props.Station_m || props.STA || "0+000";
+    const staFormatted = formatKeSTA(parseMeterSTA(rawSta));
+
+    activeWoFeatureData = { road, sta: staFormatted, rawProps: props };
+
+    const modal = document.getElementById('woModalOverlay');
+    const title = document.getElementById('woModalTitle');
+    const catWrapper = document.getElementById('woCategoryWrapper');
+    const locInput = document.getElementById('woLocationInfo');
+
+    locInput.value = `${road} - STA ${staFormatted}`;
+
+    if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
+        title.innerText = "BUAT WORK ORDER (WO) BARU";
+        catWrapper.style.display = 'block';
+    } else {
+        title.innerText = "SUBMIT EVIDENCE LAPANGAN";
+        catWrapper.style.display = 'none';
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeWoModal() {
+    document.getElementById('woModalOverlay').style.display = 'none';
+    activeWoFeatureData = null;
+}
+
+function submitWorkOrder() {
+    const notes = document.getElementById('woNotes').value.trim();
+    const category = document.getElementById('woCategory').value;
+    const fileInput = document.getElementById('woEvidenceFile');
+
+    if (!notes) {
+        alert("Catatan atau instruksi lapangan wajib diisi!");
+        return;
+    }
+
+    const actionType = (currentUserRole === 'admin' || currentUserRole === 'inspector') ? "CREATE WO" : "SUBMIT EVIDENCE";
+    const detailLog = `Ruas: ${activeWoFeatureData.road}, STA: ${activeWoFeatureData.sta}, Kategori: ${category}, Catatan: ${notes}, User: ${currentNRP}`;
+
+    catatLogKeServer(actionType, detailLog);
+    alert(`Berhasil mengirim ${actionType} untuk ${activeWoFeatureData.road} STA ${activeWoFeatureData.sta}! Data tercatat di sistem.`);
+
+    document.getElementById('woNotes').value = '';
+    if (fileInput) fileInput.value = '';
+    closeWoModal();
+
+    const toggle = document.getElementById('woModeToggle');
+    if (toggle) {
+        toggle.checked = false;
+        isWorkOrderModeActive = false;
+    }
+}
 
 // 2. Timeline Animasi Intro Loading & Fetch Data
 function mulaiAnimasiIntroDanLoadData() {
@@ -507,8 +604,13 @@ function refreshVisibleLayers() {
   }
 }
 
-// Handler Klik Fitur Spasial
+// Handler Klik Fitur Spasial (Mendukung Mode WO atau Inspeksi Reguler)
 function handleFeatureClick(feature) {
+  if (isWorkOrderModeActive) {
+    handleWorkOrderClick(feature);
+    return;
+  }
+
   const props = feature.properties || {};
   const clickedRoad = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
   const rawSta = props.STA_Akhir || props.STA_Awal || props.Station_m || props.STA || 0;
@@ -552,7 +654,7 @@ function handleFeatureClick(feature) {
 
 // Event Peta: Klik di area bebas untuk membatalkan seleksi segmen
 map.on('click', () => {
-  if (selectedStartMeter !== null || selectedEndMeter !== null) {
+  if (!isWorkOrderModeActive && (selectedStartMeter !== null || selectedEndMeter !== null)) {
     resetSegmentSelection();
   }
 });
