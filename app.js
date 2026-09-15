@@ -113,7 +113,7 @@ window.requestOtp = async function() {
     if (error) {
         statusMsg.innerText = 'Gagal mengirim OTP: ' + error.message;
     } else {
-        statusMsg.innerText = 'Kode OTP terkirim! Cek inbox email lu.';
+        statusMsg.innerText = 'Kode OTP terkirim! Cek inbox email.';
         const emailSec = document.getElementById('email-section');
         const otpSec = document.getElementById('otp-section');
         if (emailSec) emailSec.classList.add('hidden');
