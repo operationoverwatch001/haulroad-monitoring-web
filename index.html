@@ -22,7 +22,7 @@
 
   <!-- SUPABASE JS CLIENT LIBRARY -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- Tailwind CSS khusus buat styling modal login minimalis -->
+  <!-- Tailwind CSS khusus buat styling modal login & form WO -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
@@ -73,6 +73,45 @@
       border-color: #38bdf8;
     }
 
+    /* TOGGLE MODE WORK ORDER DI HEADER */
+    .wo-toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid #334155;
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-left: auto;
+    }
+    .wo-toggle-label {
+      font-size: 10px;
+      font-weight: bold;
+      color: #cbd5e1;
+      font-family: monospace;
+    }
+    /* Switch Button CSS */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 34px;
+      height: 18px;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; inset: 0;
+      background-color: #475569;
+      transition: .3s; border-radius: 18px;
+    }
+    .slider:before {
+      position: absolute; content: "";
+      height: 12px; width: 12px; left: 3px; bottom: 3px;
+      background-color: white;
+      transition: .3s; border-radius: 50%;
+    }
+    input:checked + .slider { background-color: #00f0ff; }
+    input:checked + .slider:before { transform: translateX(16px); }
+
     /* INTRO SPLASH */
     #intro-splash {
       position: fixed;
@@ -102,13 +141,12 @@
 </head>
 <body>
 
-  <!-- MODAL LOGIN SUPABASE OTP (MUNCUL SEBELUM MASUK PETA) -->
+  <!-- MODAL LOGIN SUPABASE OTP -->
   <div id="auth-overlay" class="fixed inset-0 bg-slate-950/95 z-[999999] flex items-center justify-center p-4">
       <div class="bg-slate-900 border border-slate-700 p-8 rounded-xl shadow-2xl w-full max-w-md text-white">
           <h2 class="text-2xl font-bold mb-2 text-center text-cyan-400">WebGIS Overwatch</h2>
           <p class="text-xs text-slate-400 text-center mb-6">Autentikasi Internal Tambang (Supabase OTP)</p>
 
-          <!-- Form Masukkan Email -->
           <div id="email-section">
               <label class="block text-sm font-medium mb-2">Email Perusahaan / Whitelist</label>
               <input type="email" id="email-input" placeholder="nama@saptaindra.co.id" 
@@ -119,7 +157,6 @@
               </button>
           </div>
 
-          <!-- Form Masukkan OTP (Mendukung hingga 8 digit) -->
           <div id="otp-section" class="hidden">
               <label class="block text-sm font-medium mb-2">Masukkan Kode OTP</label>
               <p class="text-xs text-slate-400 mb-3">Cek inbox email lu untuk mengambil kode verifikasi.</p>
@@ -148,16 +185,25 @@
   </div>
 
   <!-- 2. HEADER UTAMA -->
-  <header class="app-header">
-    <div class="brand">
-      <img src="data/logo_overwatch.png" alt="Logo" class="header-logo-img">
-      <span>OVERWATCH ROAD INSPECTOR</span>
+  <header class="app-header" style="flex-direction: row; justify-content: space-between; align-items: center; padding: 0 16px;">
+    <div class="brand" style="margin-bottom: 0; text-align: left;">
+      <span style="font-size: 12px; font-family: monospace;">OVERWATCH <b style="color: #00f0ff;">INSPECTOR</b></span>
     </div>
-    <nav class="tab-container">
+    
+    <nav class="tab-container" style="max-width: 260px; margin: 0 auto;">
       <button class="tab-btn active" onclick="switchTab('grade')">Grade</button>
       <button class="tab-btn" onclick="switchTab('lebar')">Lebar</button>
       <button class="tab-btn" onclick="switchTab('crossfall')">Crossfall</button>
     </nav>
+
+    <!-- TOGGLE MODE WORK ORDER -->
+    <div class="wo-toggle-container">
+      <span class="wo-toggle-label">MODE WO</span>
+      <label class="switch">
+        <input type="checkbox" id="woModeToggle" onchange="toggleWorkOrderMode(this)">
+        <span class="slider"></span>
+      </label>
+    </div>
   </header>
 
   <!-- 3. PETA, GPS, & TOMBOL TOGGLE SATELIT -->
@@ -174,7 +220,48 @@
     <div class="panel-body" id="panel-body"></div>
   </div>
 
-  <!-- 5. MODAL EXPORT PDF -->
+  <!-- 5. MODAL FORM GEO-TICKETING WORK ORDER & EVIDENCE -->
+  <div id="woModalOverlay" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:99999; justify-content:center; align-items:center; padding: 12px;">
+    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:420px; border:1px solid #334155; box-shadow:0 10px 30px rgba(0,0,0,0.7);">
+      <h3 id="woModalTitle" style="margin-top:0; font-size:14px; color:#00f0ff; letter-spacing:1px; font-family:monospace; border-bottom:1px solid #1e293b; padding-bottom:8px;">BUAT WORK ORDER (WO)</h3>
+      <p id="woModalSub" style="font-size:11px; color:#94a3b8; margin:8px 0 14px;">Tentukan temuan perbaikan infrastruktur jalan tambang.</p>
+      
+      <div style="display:flex; flex-direction:column; gap:10px; font-size:12px;">
+        <div>
+          <label style="color:#cbd5e1; font-size:11px;">Ruas Jalan & STA Terpilih:</label>
+          <input type="text" id="woLocationInfo" readonly style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#38bdf8; font-weight:bold; margin-top:2px;">
+        </div>
+
+        <div id="woCategoryWrapper">
+          <label style="color:#cbd5e1; font-size:11px;">Kategori Kerusakan / Perbaikan:</label>
+          <select id="woCategory" style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; margin-top:2px;">
+            <option value="Overgrade / Tanjakan Curam">Overgrade / Tanjakan Curam</option>
+            <option value="Road Sempit / Perlu Pelebaran">Road Sempit / Perlu Pelebaran</option>
+            <option value="Crossfall Tidak Sesuai / Genangan">Crossfall Tidak Sesuai / Genangan</option>
+            <option value="Butuh Perbaikan Bundwall / Safety Berm">Butuh Perbaikan Bundwall / Safety Berm</option>
+            <option value="Lainnya">Lainnya</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="color:#cbd5e1; font-size:11px;">Catatan / Instruksi Lapangan:</label>
+          <textarea id="woNotes" rows="2" placeholder="Contoh: Perlu Grader untuk meratakan permukaan jalan..." style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; margin-top:2px; resize:none;"></textarea>
+        </div>
+
+        <div>
+          <label style="color:#cbd5e1; font-size:11px;">Upload Bukti Foto / Evidence:</label>
+          <input type="file" id="woEvidenceFile" accept="image/*" style="width:100%; font-size:11px; color:#94a3b8; margin-top:2px; background:#1e293b; padding:4px; border-radius:6px; border:1px solid #475569;">
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+        <button onclick="closeWoModal()" style="background:#1e293b; color:#cbd5e1; border:none; padding:6px 14px; border-radius:6px; font-size:11px; cursor:pointer;">Batal</button>
+        <button onclick="submitWorkOrder()" id="woSubmitBtn" style="background:#00f0ff; color:#000; border:none; padding:6px 16px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Kirim WO</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. MODAL EXPORT PDF -->
   <div id="pdfModalOverlay" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:99999; justify-content:center; align-items:center;">
     <div style="background:#0f172a; color:#fff; padding:20px; border-radius:8px; width:90%; max-width:350px; border:1px solid #1e293b; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
       <h3 style="margin-top:0; font-size:14px; color:#ff2b54; letter-spacing:1px; font-family:monospace;">EXPORT GRAFIK KE PDF</h3>
