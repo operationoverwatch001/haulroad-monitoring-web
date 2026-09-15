@@ -153,7 +153,7 @@ window.verifyOtp = async function() {
 };
 
 // ==========================================
-// MODUL GEO-TICKETING WORK ORDER (WO) & MARKER
+// MODUL GEO-TICKETING WORK ORDER (WO) & PERMIT INSPECTOR
 // ==========================================
 let isWorkOrderModeActive = false;
 let activeWoFeatureData = null;
@@ -163,6 +163,7 @@ function toggleWorkOrderFloating() {
     isWorkOrderModeActive = !isWorkOrderModeActive;
     const btn = document.getElementById('woFloatingBtn');
     const statusTxt = document.getElementById('woStatusText');
+    const plusBtn = document.getElementById('woPlusBtn');
 
     if (isWorkOrderModeActive) {
         if (btn) btn.classList.add('active');
@@ -170,15 +171,44 @@ function toggleWorkOrderFloating() {
             statusTxt.innerText = 'ON';
             statusTxt.style.color = '#000000';
         }
-        catatLogKeServer("WO MODE", "Mengaktifkan Mode Geo-Ticketing Work Order (Floating).");
+
+        // Tampilkan titik-titik WO ke peta saat mode ON untuk semua user
+        if (!map.hasLayer(workOrderMarkersLayer)) {
+            workOrderMarkersLayer.addTo(map);
+        }
+
+        // Jika role Inspector, munculkan tombol plus (+) tambahan di atas tombol utama
+        if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
+            if (plusBtn) plusBtn.style.display = 'flex';
+        }
+
+        catatLogKeServer("WO MODE", "Mengaktifkan Mode WO (Marker Ditampilkan).");
     } else {
         if (btn) btn.classList.remove('active');
         if (statusTxt) {
             statusTxt.innerText = 'OFF';
             statusTxt.style.color = '#94a3b8';
         }
-        catatLogKeServer("WO MODE", "Menonaktifkan Mode Geo-Ticketing Work Order.");
+
+        // Sembunyikan titik-titik WO dari peta saat mode OFF
+        if (map.hasLayer(workOrderMarkersLayer)) {
+            map.removeLayer(workOrderMarkersLayer);
+        }
+
+        // Sembunyikan tombol plus (+)
+        if (plusBtn) plusBtn.style.display = 'none';
+
+        catatLogKeServer("WO MODE", "Menonaktifkan Mode WO (Marker Disembunyikan).");
     }
+}
+
+// Handler khusus tombol plus (+) Inspector untuk Manajemen WO (Add / Edit / Delete)
+function openInspectorEditorModal() {
+    if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') {
+        alert("Akses ditolak: Hanya Inspector yang dapat menambah/mengedit WO.");
+        return;
+    }
+    alert("Panel Inspector: Silakan klik ruas jalan atau area di peta untuk menambah Work Order baru.");
 }
 
 // Handler Klik Fitur Spasial (Garis/Blok Jalan) saat Mode WO Aktif
@@ -190,7 +220,6 @@ function handleWorkOrderClick(feature) {
     const rawSta = props.STA_Akhir || props.STA_Awal || props.Station_m || props.STA || "0+000";
     const staFormatted = formatKeSTA(parseMeterSTA(rawSta));
 
-    // Ambil koordinat tengah dari feature jalan yang diklik untuk penempatan marker
     let targetLatLng = map.getCenter();
     try {
         const tempLayer = L.geoJSON(feature);
@@ -220,7 +249,6 @@ function openWoModalUI(locationName, locationDetail) {
 
     if (locInput) locInput.value = `${locationName} - ${locationDetail}`;
 
-    // Otomatis inject input nama pelapor jika belum ada di modal
     let reporterContainer = document.getElementById('woReporterWrapper');
     if (!reporterContainer && locInput) {
         reporterContainer = document.createElement('div');
@@ -235,7 +263,7 @@ function openWoModalUI(locationName, locationDetail) {
     }
 
     if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
-        if (title) title.innerText = "BUAT WORK ORDER (WO) BARU";
+        if (title) title.innerText = "BUAT / KELOLA WORK ORDER (WO)";
         if (catWrapper) catWrapper.style.display = 'block';
     } else {
         if (title) title.innerText = "SUBMIT EVIDENCE LAPANGAN";
@@ -266,12 +294,11 @@ function submitWorkOrder() {
         return;
     }
 
-    const actionType = (currentUserRole === 'admin' || currentUserRole === 'inspector') ? "CREATE WO" : "SUBMIT EVIDENCE";
+    const actionType = (currentUserRole === 'admin' || currentUserRole === 'inspector') ? "CREATE/EDIT WO" : "SUBMIT EVIDENCE";
     const detailLog = `Pelapor: ${reporter}, Lokasi: ${activeWoFeatureData.road} (${activeWoFeatureData.sta}), Kategori: ${category}, Catatan: ${notes}`;
 
     catatLogKeServer(actionType, detailLog);
 
-    // Bikin Tanda / Marker Visual di Peta setelah WO/Evidence berhasil disubmit
     if (activeWoFeatureData && activeWoFeatureData.latlng) {
         if (!map.hasLayer(workOrderMarkersLayer)) {
             workOrderMarkersLayer.addTo(map);
@@ -298,21 +325,11 @@ function submitWorkOrder() {
         workOrderMarkersLayer.addLayer(woMarker);
     }
 
-    alert(`Berhasil mengirim ${actionType} oleh ${reporter}! Pin marker lokasi telah ditambahkan ke peta.`);
+    alert(`Berhasil mengirim ${actionType} oleh ${reporter}!`);
 
     if (notesElem) notesElem.value = '';
     if (fileInput) fileInput.value = '';
     closeWoModal();
-
-    // Reset tombol floating WO ke OFF setelah submit
-    isWorkOrderModeActive = false;
-    const btn = document.getElementById('woFloatingBtn');
-    const statusTxt = document.getElementById('woStatusText');
-    if (btn) btn.classList.remove('active');
-    if (statusTxt) {
-        statusTxt.innerText = 'OFF';
-        statusTxt.style.color = '#94a3b8';
-    }
 }
 
 // 2. Timeline Animasi Intro Loading & Fetch Data
@@ -377,30 +394,26 @@ let chartInstance = null;
 let userYInterval = undefined;
 
 let rawWidthFeatures = [];
-let roadWidthLayer = null;        // Layer irisan melintang lebar
-let roadGradeLayer = null;        // Layer blok poligon kotak grade
-let gradeLabelsLayer = L.layerGroup();  // Layer label marker teks STA & Grade
+let roadWidthLayer = null;        
+let roadGradeLayer = null;        
+let gradeLabelsLayer = L.layerGroup();  
 
-// State Seleksi Range STA di Peta
 let selectedStartMeter = null;
 let selectedEndMeter = null;
 let selectedRoadTarget = "";
 
 Chart.register(ChartDataLabels);
 
-// Inisialisasi Peta Leaflet dengan Canvas Renderer
 const map = L.map('map', { 
   zoomControl: false,
   preferCanvas: true 
 }).setView([-2.169338, 115.572115], 15);
 
-// 1. Layer Satelit Global Esri
 const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
   attribution: 'Tiles &copy; Esri'
 }).addTo(map);
 
-// 2. Drone Orthophoto (PMTiles via Worker)
 const PMTILES_URL = "https://ortho-tiles.operationoverwatch001.workers.dev/Ortho_Update.pmtiles";
 let orthoLayer = null;
 
@@ -437,7 +450,6 @@ if (pmtilesLib) {
   }
 }
 
-// 3. Toggle Basemap Satelit Luar
 let isBasemapActive = true;
 function toggleBasemapSatelit() {
   const btn = document.getElementById('btnToggleBasemap');
@@ -449,7 +461,7 @@ function toggleBasemapSatelit() {
     btn.style.color = '#94a3b8';
     btn.style.borderColor = '#334155';
     isBasemapActive = false;
-    catatLogKeServer("TOGGLE MAP", "Mematikan satelit luar (hanya orthophoto drone).");
+    catatLogKeServer("TOGGLE MAP", "Mematikan satelit luar.");
   } else {
     esriSatellite.addTo(map);
     if (orthoLayer) orthoLayer.bringToFront();
@@ -457,18 +469,16 @@ function toggleBasemapSatelit() {
     btn.style.color = '#38bdf8';
     btn.style.borderColor = '#1e293b';
     isBasemapActive = true;
-    catatLogKeServer("TOGGLE MAP", "Menyalakan satelit luar global.");
+    catatLogKeServer("TOGGLE MAP", "Menyalakan satelit luar.");
   }
 }
 
-// Listener: Perbarui gaya vektor & visibilitas label saat level zoom berubah
 map.on('zoomend', () => {
   if (roadWidthLayer) roadWidthLayer.setStyle(getWidthSliceStyle);
   if (roadGradeLayer) roadGradeLayer.setStyle(getGradePolygonBlockStyle);
   updateGradeLabelsVisibility();
 });
 
-// Helper: Konversi meteran ke format STA (280 -> 0+280)
 function formatKeSTA(val) {
   if (val === undefined || val === null || val === "") return "-";
   const str = val.toString().trim();
@@ -480,7 +490,6 @@ function formatKeSTA(val) {
   return `${km}+${m}`;
 }
 
-// Helper: Parsing nilai numerik meteran dari STA ("0+280" -> 280)
 function parseMeterSTA(val) {
   if (val === undefined || val === null || val === "") return 0;
   const str = val.toString().trim();
@@ -491,10 +500,8 @@ function parseMeterSTA(val) {
   return parseFloat(str) || 0;
 }
 
-// Helper: Ambil standar lebar desain aktif untuk jalan tertentu
 function getActiveRoadStandardWidth(roadTarget) {
   const target = (roadTarget || activeRoad).trim().toLowerCase();
-  
   if (monitoringData && monitoringData.length > 0) {
     const row = monitoringData.find(d => (d["Nama Jalan"] || "").trim().toLowerCase() === target);
     if (row && row["Lebar Standar (m)"]) {
@@ -502,23 +509,9 @@ function getActiveRoadStandardWidth(roadTarget) {
       if (!isNaN(std) && std > 0) return std;
     }
   }
-
-  if (rawWidthFeatures && rawWidthFeatures.length > 0) {
-    const feat = rawWidthFeatures.find(f => {
-      const fp = f.properties || {};
-      const r = (fp.Nama_Jalan || fp["Nama Jalan"] || "").trim().toLowerCase();
-      return r === target && fp.Standar_m;
-    });
-    if (feat) {
-      const std = parseFloat(feat.properties.Standar_m);
-      if (!isNaN(std) && std > 0) return std;
-    }
-  }
-
   return 30.8;
 }
 
-// Helper: Cek apakah STA dalam rentang seleksi aktif
 function isMeterSelected(meterVal, roadName) {
   if (selectedStartMeter === null || !selectedRoadTarget) return false;
   if (roadName.toLowerCase() !== selectedRoadTarget.toLowerCase()) return false;
@@ -531,24 +524,15 @@ function isMeterSelected(meterVal, roadName) {
   return meterVal === selectedStartMeter;
 }
 
-// Helper: Hitung sudut rotasi derajat kemiringan poligon jalan
 function calculatePolygonAngle(layer) {
   try {
     const latlngs = layer.getLatLngs();
     const ring = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
     if (ring && ring.length >= 4) {
-      const mid1 = {
-        lat: (ring[0].lat + ring[3].lat) / 2,
-        lng: (ring[0].lng + ring[3].lng) / 2
-      };
-      const mid2 = {
-        lat: (ring[1].lat + ring[2].lat) / 2,
-        lng: (ring[1].lng + ring[2].lng) / 2
-      };
-
+      const mid1 = { lat: (ring[0].lat + ring[3].lat) / 2, lng: (ring[0].lng + ring[3].lng) / 2 };
+      const mid2 = { lat: (ring[1].lat + ring[2].lat) / 2, lng: (ring[1].lng + ring[2].lng) / 2 };
       const p1 = map.latLngToContainerPoint(mid1);
       const p2 = map.latLngToContainerPoint(mid2);
-
       let angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
       if (angle > 90) angle -= 180;
       if (angle < -90) angle += 180;
@@ -558,58 +542,31 @@ function calculatePolygonAngle(layer) {
   return 0;
 }
 
-// Style Poligon Blok Kotak Grade (Solid Fill + Garis Tepi Hitam)
 function getGradePolygonBlockStyle(feature) {
   const props = feature.properties || {};
   const staVal = props.STA_Akhir || props.STA_Awal || props.STA || props.Station_m || 0;
   const meterVal = parseMeterSTA(staVal);
   const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
 
-  // Seleksi aktif: Highlight Cyan Solid
   if (isMeterSelected(meterVal, roadVal)) {
-    return {
-      color: "#00f0ff",
-      weight: 3.5,
-      fillColor: "#00f0ff",
-      fillOpacity: 0.95
-    };
+    return { color: "#00f0ff", weight: 3.5, fillColor: "#00f0ff", fillOpacity: 0.95 };
   }
 
   let statusGrade = (props.Status_Gra || props["Status Grade"] || props.Status || "").toString().toUpperCase();
-
-  if (monitoringData && monitoringData.length > 0) {
-    const staFormatted = formatKeSTA(meterVal);
-    const matchedRow = monitoringData.find(d => {
-      const matchRoad = roadVal ? (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.toLowerCase() : true;
-      const dSta = (d["STA"] || "").toString().trim();
-      return matchRoad && (dSta === staFormatted || dSta === meterVal.toString());
-    });
-    if (matchedRow && matchedRow["Status Grade"]) {
-      statusGrade = matchedRow["Status Grade"].toString().toUpperCase();
-    }
-  }
-
-  let fillColor = "#22c55e"; // Aman (<8%) -> Hijau
+  let fillColor = "#22c55e"; 
   if (statusGrade.includes("OVERGRADE") || statusGrade.includes("NON COMPLIANT")) {
-    fillColor = "#e11d48";   // Overgrade (>10%) -> Merah
+    fillColor = "#e11d48";   
   } else if (statusGrade.includes("WARNING")) {
-    fillColor = "#eab308";   // Warning (>8%) -> Kuning
+    fillColor = "#eab308";   
   }
 
-  return {
-    color: "#000000",
-    weight: 1.2,
-    fillColor: fillColor,
-    fillOpacity: 0.88
-  };
+  return { color: "#000000", weight: 1.2, fillColor: fillColor, fillOpacity: 0.88 };
 }
 
-// Style Garis Irisan Melintang (Tab Lebar & Crossfall)
 function getWidthSliceStyle(feature) {
   const props = feature.properties || {};
-  const meterVal = parseMeterSTA(props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || props.sta || 0));
+  const meterVal = parseMeterSTA(props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || 0));
   const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
-
   const currentZoom = map ? map.getZoom() : 15;
   let baseWeight = currentZoom >= 18 ? 6 : (currentZoom >= 16 ? 4 : (currentZoom >= 14 ? 2.5 : 1.2));
 
@@ -620,52 +577,26 @@ function getWidthSliceStyle(feature) {
   if (currentTab === 'lebar') {
     const lebarAktual = parseFloat(props.Lebar_m !== undefined ? props.Lebar_m : (props.Shape_Leng || 0));
     const lebarStandar = props.Standar_m !== undefined ? parseFloat(props.Standar_m) : getActiveRoadStandardWidth(roadVal);
-    const rawStatus = (props.Status || "").toString().trim().toUpperCase();
-
     let color = "#22c55e";
-    if (!isNaN(lebarAktual) && lebarAktual > 0) {
-      if (lebarAktual < lebarStandar) color = "#e11d48";
-    } else if (rawStatus === "NON COMPLIANT" || rawStatus === "NONSTANDARD" || rawStatus === "SEMPIT") {
-      color = "#e11d48";
-    }
-
+    if (!isNaN(lebarAktual) && lebarAktual > 0 && lebarAktual < lebarStandar) color = "#e11d48";
     return { color: color, weight: color === "#e11d48" ? baseWeight + 1.5 : baseWeight, opacity: 0.9 };
   }
-
   return { color: "#00e5ff", weight: baseWeight, opacity: 0.85 };
 }
 
-// Kontrol Visibilitas Label agar tidak semrawut saat Zoom Out
 function updateGradeLabelsVisibility() {
   if (currentTab !== 'grade') {
     if (map.hasLayer(gradeLabelsLayer)) map.removeLayer(gradeLabelsLayer);
     return;
   }
-
   const zoom = map.getZoom();
-
   if (zoom < 16) {
     if (map.hasLayer(gradeLabelsLayer)) map.removeLayer(gradeLabelsLayer);
     return;
   }
-
   if (!map.hasLayer(gradeLabelsLayer)) map.addLayer(gradeLabelsLayer);
-
-  gradeLabelsLayer.eachLayer(layer => {
-    const isSTA = layer.options.isSTA;
-    const isProblem = layer.options.isProblem;
-
-    if (layer.getElement()) {
-      if (isSTA) {
-        layer.getElement().style.display = (zoom >= 18) ? 'block' : 'none';
-      } else if (isProblem) {
-        layer.getElement().style.display = (zoom >= 16) ? 'block' : 'none';
-      }
-    }
-  });
 }
 
-// Reset Seleksi Segmen Jalan
 function resetSegmentSelection() {
   if (selectedStartMeter === null && selectedEndMeter === null) return;
   selectedStartMeter = null;
@@ -675,7 +606,6 @@ function resetSegmentSelection() {
   renderTabContent();
 }
 
-// Switch visibility layer peta sesuai tab aktif
 function refreshVisibleLayers() {
   if (currentTab === 'grade') {
     if (roadWidthLayer && map.hasLayer(roadWidthLayer)) map.removeLayer(roadWidthLayer);
@@ -691,7 +621,6 @@ function refreshVisibleLayers() {
   }
 }
 
-// Handler Klik Fitur Spasial (Mendukung Mode WO)
 function handleFeatureClick(feature) {
   if (isWorkOrderModeActive) {
     handleWorkOrderClick(feature);
@@ -719,18 +648,9 @@ function handleFeatureClick(feature) {
     } else {
       selectedEndMeter = meterVal;
     }
-
     refreshVisibleLayers();
-
-    if (currentTab === 'lebar') {
-      renderLebarSummary();
-    } else if (currentTab === 'grade') {
-      renderGradeSummary();
-    }
-
-    const staAwal = formatKeSTA(selectedStartMeter);
-    const staAkhir = selectedEndMeter !== null ? formatKeSTA(selectedEndMeter) : "-";
-    catatLogKeServer("PILIH SEGMEN", `Inspeksi ${currentTab.toUpperCase()}: ${activeRoad} (${staAwal} s/d ${staAkhir})`);
+    if (currentTab === 'lebar') renderLebarSummary();
+    else if (currentTab === 'grade') renderGradeSummary();
   } else if (currentTab === 'crossfall') {
     const sta = formatKeSTA(meterVal);
     const staSelect = document.getElementById('select-sta-cs');
@@ -739,19 +659,16 @@ function handleFeatureClick(feature) {
   }
 }
 
-// Event Peta: Klik di area bebas (Mendukung Drop Pin jika Mode WO aktif)
 map.on('click', (e) => {
   if (isWorkOrderModeActive) {
     handleMapClickForWo(e.latlng);
     return;
   }
-
   if (selectedStartMeter !== null || selectedEndMeter !== null) {
     resetSegmentSelection();
   }
 });
 
-// Muat Kedua File GeoJSON
 async function loadAllVectorLayers() {
   try {
     const resGrade = await fetch('data/Road_Grade_Polygons.geojson');
@@ -771,9 +688,7 @@ async function loadAllVectorLayers() {
           let gVal = "";
           if (props.Grade_Pct !== undefined && props.Grade_Pct !== null && props.Grade_Pct !== "") {
             const parsedG = parseFloat(props.Grade_Pct);
-            if (!isNaN(parsedG)) {
-              gVal = parsedG.toFixed(2) + "%";
-            }
+            if (!isNaN(parsedG)) gVal = parsedG.toFixed(2) + "%";
           } else if (props.Label_Grad) {
             gVal = props.Label_Grad.toString().trim();
           }
@@ -787,36 +702,11 @@ async function loadAllVectorLayers() {
             icon: L.divIcon({
               className: 'sta-rotated-label',
               html: `<span class="sta-text-box" style="transform: rotate(${angle}deg);">${sta}</span>`,
-              iconSize: [40, 12],
-              iconAnchor: [20, 6]
+              iconSize: [40, 12], iconAnchor: [20, 6]
             }),
-            interactive: false,
-            isSTA: true
+            interactive: false, isSTA: true
           });
           gradeLabelsLayer.addLayer(staMarker);
-
-          if (gVal) {
-            let badgeType = "";
-            if (statusGrade.includes("OVERGRADE") || statusGrade.includes("NON COMPLIANT")) {
-              badgeType = "overgrade";
-            } else if (statusGrade.includes("WARNING")) {
-              badgeType = "warning";
-            }
-
-            if (badgeType) {
-              const gradeMarker = L.marker(center, {
-                icon: L.divIcon({
-                  className: 'grade-badge-label',
-                  html: `<span class="badge-grade-box ${badgeType}">${gVal}</span>`,
-                  iconSize: [44, 14],
-                  iconAnchor: [22, 18]
-                }),
-                interactive: false,
-                isProblem: true
-              });
-              gradeLabelsLayer.addLayer(gradeMarker);
-            }
-          }
 
           layer.on('click', (e) => {
             L.DomEvent.stopPropagation(e);
@@ -839,14 +729,6 @@ async function loadAllVectorLayers() {
       roadWidthLayer = L.geoJSON(geojsonWidth, {
         style: getWidthSliceStyle,
         onEachFeature: function(feature, layer) {
-          const props = feature.properties || {};
-          const sta = formatKeSTA(props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || 0));
-          const road = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
-          const lebarAktual = props.Lebar_m ? `<br>Lebar: <b>${parseFloat(props.Lebar_m).toFixed(1)} m</b>` : "";
-          const payloadInfo = props.Kelas_Jala ? `<br>Kelas: <b>${props.Kelas_Jala}</b>` : "";
-
-          layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b>${lebarAktual}${payloadInfo}`, { sticky: true });
-
           layer.on('click', (e) => {
             L.DomEvent.stopPropagation(e);
             handleFeatureClick(feature);
@@ -859,15 +741,8 @@ async function loadAllVectorLayers() {
   }
 
   refreshVisibleLayers();
-
-  if (roadGradeLayer && roadGradeLayer.getLayers().length > 0) {
-    map.fitBounds(roadGradeLayer.getBounds(), { padding: [30, 30] });
-  } else if (roadWidthLayer && roadWidthLayer.getLayers().length > 0) {
-    map.fitBounds(roadWidthLayer.getBounds(), { padding: [30, 30] });
-  }
 }
 
-// Muat File Excel Overwatch.xlsx
 async function loadExcelData() {
   try {
     const response = await fetch('data/Overwatch.xlsx');
@@ -882,57 +757,35 @@ async function loadExcelData() {
       activeRoad = roadNames[0] || "Jl Bontang";
       renderTabContent();
     }
-
     refreshVisibleLayers();
-    if (map) map.invalidateSize(true);
-
-    catatLogKeServer("BUKA APLIKASI", `User sukses masuk Dashboard WebGIS via Supabase Auth.`);
-
   } catch (error) {
     console.error("Excel load error:", error);
-    const panelBody = document.getElementById('panel-body');
-    if (panelBody) {
-      panelBody.innerHTML = `<p style="color:red; font-size:12px; text-align:center;">Gagal memuat data Excel. Pastikan file Overwatch.xlsx ada di folder data/.</p>`;
-    }
   }
 }
 
-// Navigasi Tab
 function switchTab(tabName) {
   currentTab = tabName;
   resetSegmentSelection();
-
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-  if (window.event && window.event.target) {
-    window.event.target.classList.add('active');
-  }
-
+  if (window.event && window.event.target) window.event.target.classList.add('active');
   refreshVisibleLayers();
   renderTabContent();
-  catatLogKeServer("PINDAH TAB", `Melihat tab fitur: ${tabName.toUpperCase()}`);
 }
 
-// Ubah Pilihan Nama Jalan
 function changeRoad(roadName) {
   activeRoad = roadName.trim();
   resetSegmentSelection();
-
   refreshVisibleLayers();
   renderTabContent();
-  catatLogKeServer("GANTI JALAN", `Memilih ruas jalan: ${roadName}`);
 }
 
-// Ubah Kustomisasi Interval Elevasi Sumbu Y
 function changeYInterval(val) {
   userYInterval = val === 'auto' ? undefined : parseFloat(val);
-  const roadData = getFilteredRoadData();
-  drawLongSectionChart(roadData);
+  drawLongSectionChart(getFilteredRoadData());
 }
 
-// Helper Filter Data Excel Ruas Aktif
 function getFilteredRoadData() {
   let roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
-
   if (currentTab === 'grade' && selectedStartMeter !== null) {
     if (selectedEndMeter !== null) {
       const minM = Math.min(selectedStartMeter, selectedEndMeter);
@@ -948,57 +801,19 @@ function getFilteredRoadData() {
   return roadData;
 }
 
-// Render Header Tab Grade dengan Ringkasan Segmen Terpilih
 function renderGradeSummary() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
   if (!panelBody || !panelTitle) return;
 
-  const roadSelectHtml = `
-    <select onchange="changeRoad(this.value)" style="font-size:11px; font-weight:bold; padding:2px 4px; border-radius:4px;">
-      ${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}
-    </select>
-  `;
-
-  let filterNote = "";
-  if (selectedStartMeter !== null) {
-    const staStart = formatKeSTA(selectedStartMeter);
-
-    if (selectedEndMeter !== null) {
-      const minM = Math.min(selectedStartMeter, selectedEndMeter);
-      const maxM = Math.max(selectedStartMeter, selectedEndMeter);
-      const totalLen = maxM - minM;
-      filterNote = `
-        <div style="background:#0f172a; color:#fff; padding:4px 10px; border-radius:4px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:11px;">Segmen Aktif: <b style="color:#00f0ff;">STA ${formatKeSTA(minM)} s/d ${formatKeSTA(maxM)}</b> (${totalLen} m)</span>
-          <button onclick="resetSegmentSelection()" style="background:#334155; color:#fff; border:none; padding:2px 6px; border-radius:3px; font-size:10px; cursor:pointer;">✕ Reset Peta</button>
-        </div>
-      `;
-    } else {
-      filterNote = `
-        <div style="background:#0f172a; color:#fff; padding:4px 10px; border-radius:4px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:11px;">Titik Awal: <b style="color:#00f0ff;">STA ${staStart}</b> (Klik 1 titik lagi untuk rentang)</span>
-          <button onclick="resetSegmentSelection()" style="background:#334155; color:#fff; border:none; padding:2px 6px; border-radius:3px; font-size:10px; cursor:pointer;">✕ Reset</button>
-        </div>
-      `;
-    }
-  }
-
+  const roadSelectHtml = `<select onchange="changeRoad(this.value)" style="font-size:11px; font-weight:bold; padding:2px 4px; border-radius:4px;">${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}</select>`;
   const roadData = getFilteredRoadData();
 
   panelTitle.innerHTML = `Profil Memanjang: ${roadSelectHtml}`;
   panelBody.innerHTML = `
-    ${filterNote}
     <div style="font-size:11px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
       <span style="color:#555;">Kuning: <b>Warning (>8%)</b> | Merah: <b>Overgrade (>10%)</b></span>
       <div style="display:flex; gap:4px; align-items:center;">
-        <select id="yIntervalSelect" onchange="changeYInterval(this.value)" style="font-size:10px; padding:2px; border-radius:3px;">
-          <option value="auto" ${userYInterval === undefined ? 'selected' : ''}>Interval: Auto</option>
-          <option value="1" ${userYInterval === 1 ? 'selected' : ''}>Step: 1m</option>
-          <option value="2" ${userYInterval === 2 ? 'selected' : ''}>Step: 2m</option>
-          <option value="5" ${userYInterval === 5 ? 'selected' : ''}>Step: 5m</option>
-          <option value="10" ${userYInterval === 10 ? 'selected' : ''}>Step: 10m</option>
-        </select>
         <button onclick="openPdfModal()" style="background:#1f4e79; color:#fff; border:none; padding:2px 6px; border-radius:3px; font-size:10px; cursor:pointer; font-weight:bold;">📥 PDF</button>
         <span style="font-size:11px; color:#1f4e79;"><b>${roadData.length} STA</b></span>
       </div>
@@ -1008,17 +823,12 @@ function renderGradeSummary() {
   drawLongSectionChart(roadData);
 }
 
-// Render Panel Audit Lebar Jalan
 function renderLebarSummary() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
   if (!panelBody || !panelTitle) return;
 
-  const roadSelectHtml = `
-    <select onchange="changeRoad(this.value)" style="font-size:11px; font-weight:bold; padding:2px 4px; border-radius:4px;">
-      ${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}
-    </select>
-  `;
+  const roadSelectHtml = `<select onchange="changeRoad(this.value)" style="font-size:11px; font-weight:bold; padding:2px 4px; border-radius:4px;">${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}</select>`;
   panelTitle.innerHTML = `Audit Lebar Jalan: ${roadSelectHtml}`;
 
   const activeStdLebar = getActiveRoadStandardWidth(activeRoad);
@@ -1191,7 +1001,6 @@ function renderLebarSummary() {
   `;
 }
 
-// Render Konten Tab Panel Bawah
 function renderTabContent() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
@@ -1224,7 +1033,6 @@ function renderTabContent() {
   }
 }
 
-// Grafik Profil Memanjang
 function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -1319,7 +1127,6 @@ function drawLongSectionChart(dataSubset) {
   });
 }
 
-// Grafik Cross Section 3 Titik
 function drawCrossSectionChart(staTarget) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -1413,7 +1220,6 @@ function drawCrossSectionChart(staTarget) {
   });
 }
 
-// Real-time Live GPS Tracking
 let userMarker = null;
 let userAccuracyCircle = null;
 let isTracking = false;
@@ -1465,7 +1271,6 @@ function locateUser() {
   );
 }
 
-// Panel Resizable Bawah
 document.addEventListener("DOMContentLoaded", () => {
   const bottomPanel = document.getElementById('bottom-panel');
   const panelHeader = document.querySelector('.panel-header');
@@ -1536,7 +1341,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-// Modal & Export PDF
 function openPdfModal() {
   document.getElementById('pdfModalOverlay').style.display = 'flex';
 }
