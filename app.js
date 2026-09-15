@@ -157,7 +157,7 @@ window.verifyOtp = async function() {
 // ==========================================
 let isWorkOrderModeActive = false;
 let activeWoFeatureData = null;
-let workOrderMarkersLayer = L.layerGroup(); // Layer untuk menampung pin/mark WO di peta
+let workOrderMarkersLayer = L.layerGroup(); // Layer penampung pin WO/Evidence di peta
 
 function toggleWorkOrderFloating() {
     isWorkOrderModeActive = !isWorkOrderModeActive;
@@ -325,7 +325,7 @@ function submitWorkOrder() {
         workOrderMarkersLayer.addLayer(woMarker);
     }
 
-    alert(`Berhasil mengirim ${actionType} oleh ${reporter}!`);
+    alert(`Berhasil mengirim ${actionType} oleh ${reporter}! Marker titik telah diperbarui di peta.`);
 
     if (notesElem) notesElem.value = '';
     if (fileInput) fileInput.value = '';
@@ -1001,6 +1001,7 @@ function renderLebarSummary() {
   `;
 }
 
+// Render Konten Tab Panel Bawah
 function renderTabContent() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
@@ -1033,6 +1034,7 @@ function renderTabContent() {
   }
 }
 
+// Grafik Profil Memanjang
 function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -1127,6 +1129,7 @@ function drawLongSectionChart(dataSubset) {
   });
 }
 
+// Grafik Cross Section 3 Titik
 function drawCrossSectionChart(staTarget) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -1220,6 +1223,7 @@ function drawCrossSectionChart(staTarget) {
   });
 }
 
+// Real-time Live GPS Tracking
 let userMarker = null;
 let userAccuracyCircle = null;
 let isTracking = false;
@@ -1271,6 +1275,7 @@ function locateUser() {
   );
 }
 
+// Panel Resizable Bawah
 document.addEventListener("DOMContentLoaded", () => {
   const bottomPanel = document.getElementById('bottom-panel');
   const panelHeader = document.querySelector('.panel-header');
@@ -1341,6 +1346,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
+// Modal & Export PDF
 function openPdfModal() {
   document.getElementById('pdfModalOverlay').style.display = 'flex';
 }
