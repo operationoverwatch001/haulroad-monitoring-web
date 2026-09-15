@@ -37,14 +37,20 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// Cek Role User di Tabel Whitelist Supabase
+// Cek Role User di Tabel Whitelist Supabase (Aman dari error 400 pakai maybeSingle)
 async function checkUserRole(email) {
     try {
         const { data, error } = await _supabase
             .from('Whitelist')
             .select('role')
             .eq('Email', email)
-            .single();
+            .maybeSingle();
+
+        if (error) {
+            console.warn("Info Role: Menggunakan hak akses default (Viewer).", error.message);
+            currentUserRole = "viewer";
+            return;
+        }
 
         if (data && data.role) {
             currentUserRole = data.role.toLowerCase();
@@ -153,7 +159,7 @@ window.verifyOtp = async function() {
 };
 
 // ==========================================
-// MODUL GEO-TICKETING WORK ORDER (WO) & PERMIT INSPECTOR
+// MODUL GEO-TICKETING WORK ORDER (WO) & PERMIT ADMIN/INSPECTOR
 // ==========================================
 let isWorkOrderModeActive = false;
 let activeWoFeatureData = null;
@@ -177,7 +183,7 @@ function toggleWorkOrderFloating() {
             workOrderMarkersLayer.addTo(map);
         }
 
-        // Jika role Inspector, munculkan tombol plus (+) tambahan di atas tombol utama
+        // Jika role Admin atau Inspector, munculkan tombol plus (+) tambahan di atas tombol utama
         if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
             if (plusBtn) plusBtn.style.display = 'flex';
         }
@@ -202,13 +208,13 @@ function toggleWorkOrderFloating() {
     }
 }
 
-// Handler khusus tombol plus (+) Inspector untuk Manajemen WO (Add / Edit / Delete)
+// Handler khusus tombol plus (+) Admin/Inspector untuk Manajemen WO (Add / Edit / Delete)
 function openInspectorEditorModal() {
     if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') {
-        alert("Akses ditolak: Hanya Inspector yang dapat menambah/mengedit WO.");
+        alert("Akses ditolak: Hanya Admin & Inspector yang dapat menambah/mengedit WO.");
         return;
     }
-    alert("Panel Inspector: Silakan klik ruas jalan atau area di peta untuk menambah Work Order baru.");
+    alert("Panel Manajemen WO: Silakan klik ruas jalan atau area di peta untuk menambah Work Order baru.");
 }
 
 // Handler Klik Fitur Spasial (Garis/Blok Jalan) saat Mode WO Aktif
