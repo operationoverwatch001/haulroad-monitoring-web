@@ -119,11 +119,11 @@
               </button>
           </div>
 
-          <!-- Form Masukkan OTP (Awalnya Sembunyi) -->
+          <!-- Form Masukkan OTP (Mendukung hingga 8 digit) -->
           <div id="otp-section" class="hidden">
-              <label class="block text-sm font-medium mb-2">Masukkan 6-Digit Kode OTP</label>
+              <label class="block text-sm font-medium mb-2">Masukkan Kode OTP</label>
               <p class="text-xs text-slate-400 mb-3">Cek inbox email lu untuk mengambil kode verifikasi.</p>
-              <input type="text" id="otp-input" placeholder="123456" maxlength="6"
+              <input type="text" id="otp-input" placeholder="12345678" maxlength="8"
                   class="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg mb-4 text-white text-center tracking-widest text-xl focus:outline-none focus:border-cyan-500">
               <button onclick="verifyOtp()" id="verify-btn" 
                   class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 rounded-lg transition duration-200 shadow-lg cursor-pointer">
@@ -197,119 +197,7 @@
     </div>
   </div>
 
-  <!-- SCRIPT INISIALISASI & AUTENTIKASI SUPABASE (FIX KOLOM "Email") -->
-  <script>
-      (function() {
-          const SUPABASE_URL = 'https://bjgojyazemlrwnqpxoqp.supabase.co';
-          const SUPABASE_ANON_KEY = 'sb_publishable_mUqC6rBWoHL-5IjW44uhfA_TL7YB1Zg';
-          const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-          // Cek Sesi Login Saat Web Dibuka
-          window.addEventListener('DOMContentLoaded', async () => {
-              const { data: { session } } = await _supabase.auth.getSession();
-              if (session) {
-                  document.getElementById('auth-overlay').style.display = 'none';
-                  if (typeof currentNRP !== 'undefined') currentNRP = session.user.email;
-                  if (typeof mulaiAnimasiIntroDanLoadData === 'function') {
-                      mulaiAnimasiIntroDanLoadData();
-                  }
-              } else {
-                  document.getElementById('auth-overlay').style.display = 'flex';
-              }
-          });
-
-          // Fungsi Kirim OTP & Cek Whitelist Database Supabase
-          window.requestOtp = async function() {
-              const email = document.getElementById('email-input').value.trim().toLowerCase();
-              const statusMsg = document.getElementById('auth-status');
-
-              if (!email) {
-                  statusMsg.innerText = 'Masukkan email dulu, bre!';
-                  return;
-              }
-
-              statusMsg.innerText = 'Memeriksa hak akses...';
-
-              // 1. Cek Domain Kantor
-              let isAllowed = email.endsWith('@saptaindra.co.id');
-
-              // 2. Cek Tabel Whitelist Supabase (Menggunakan kolom "Email" huruf besar)
-              if (!isAllowed) {
-                  const { data, error } = await _supabase
-                      .from('Whitelist')
-                      .select('Email')
-                      .eq('Email', email);
-
-                  if (error) {
-                      console.error("Supabase Error:", error);
-                      statusMsg.innerText = 'Error DB: ' + error.message;
-                      return;
-                  }
-
-                  if (data && data.length > 0) {
-                      isAllowed = true;
-                  }
-              }
-
-              if (!isAllowed) {
-                  statusMsg.innerText = 'Akses ditolak! Email tidak terdaftar di sistem.';
-                  return;
-              }
-
-              statusMsg.innerText = 'Mengirim kode OTP...';
-
-              const { error } = await _supabase.auth.signInWithOtp({
-                  email: email,
-                  options: { shouldCreateUser: true }
-              });
-
-              if (error) {
-                  statusMsg.innerText = 'Gagal mengirim OTP: ' + error.message;
-              } else {
-                  statusMsg.innerText = 'Kode OTP terkirim! Cek inbox email lu.';
-                  document.getElementById('email-section').classList.add('hidden');
-                  document.getElementById('otp-section').classList.remove('hidden');
-              }
-          };
-
-          // Fungsi Verifikasi Kode OTP
-          window.verifyOtp = async function() {
-              const email = document.getElementById('email-input').value.trim().toLowerCase();
-              const token = document.getElementById('otp-input').value.trim();
-              const statusMsg = document.getElementById('auth-status');
-
-              if (!token || token.length < 6) {
-                  statusMsg.innerText = 'Masukkan 6 digit kode OTP secara lengkap!';
-                  return;
-              }
-
-              statusMsg.innerText = 'Memverifikasi kode...';
-
-              const { data, error } = await _supabase.auth.verifyOtp({
-                  email: email,
-                  token: token,
-                  type: 'email'
-              });
-
-              if (error) {
-                  statusMsg.innerText = 'Kode salah atau kedaluwarsa: ' + error.message;
-              } else {
-                  statusMsg.innerText = 'Login Berhasil! Memuat peta...';
-                  setTimeout(() => {
-                      document.getElementById('auth-overlay').style.display = 'none';
-                      if (typeof currentNRP !== 'undefined') currentNRP = email;
-                      if (typeof mulaiAnimasiIntroDanLoadData === 'function') {
-                          mulaiAnimasiIntroDanLoadData();
-                      } else {
-                          location.reload();
-                      }
-                  }, 800);
-              }
-          };
-      })();
-  </script>
-
-  <!-- Script logic utama WebGIS (app.js lu yang lama) -->
+  <!-- Script Logic Utama WebGIS & Supabase Auth -->
   <script src="app.js"></script>
 </body>
 </html>
