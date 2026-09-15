@@ -49,7 +49,7 @@ async function checkUserRole(email) {
         if (data && data.role) {
             currentUserRole = data.role.toLowerCase();
         } else {
-            currentUserRole = "viewer"; // NULL / tidak diatur otomatis jadi viewer
+            currentUserRole = "viewer"; 
         }
     } catch (err) {
         currentUserRole = "viewer";
@@ -153,21 +153,33 @@ window.verifyOtp = async function() {
 };
 
 // ==========================================
-// MODUL GEO-TICKETING WORK ORDER (WO)
+// MODUL GEO-TICKETING WORK ORDER (WO) - FLOATING BUTTON
 // ==========================================
 let isWorkOrderModeActive = false;
 let activeWoFeatureData = null;
 
-function toggleWorkOrderMode(checkbox) {
-    isWorkOrderModeActive = checkbox.checked;
+function toggleWorkOrderFloating() {
+    isWorkOrderModeActive = !isWorkOrderModeActive;
+    const btn = document.getElementById('woFloatingBtn');
+    const statusTxt = document.getElementById('woStatusText');
+
     if (isWorkOrderModeActive) {
-        catatLogKeServer("WO MODE", "Mengaktifkan Mode Geo-Ticketing Work Order.");
+        if (btn) btn.classList.add('active');
+        if (statusTxt) {
+            statusTxt.innerText = 'ON';
+            statusTxt.style.color = '#000000';
+        }
+        catatLogKeServer("WO MODE", "Mengaktifkan Mode Geo-Ticketing Work Order (Floating).");
     } else {
+        if (btn) btn.classList.remove('active');
+        if (statusTxt) {
+            statusTxt.innerText = 'OFF';
+            statusTxt.style.color = '#94a3b8';
+        }
         catatLogKeServer("WO MODE", "Menonaktifkan Mode Geo-Ticketing Work Order.");
     }
 }
 
-// Handler klik fitur khusus Work Order
 function handleWorkOrderClick(feature) {
     if (!isWorkOrderModeActive) return;
 
@@ -215,16 +227,20 @@ function submitWorkOrder() {
     const detailLog = `Ruas: ${activeWoFeatureData.road}, STA: ${activeWoFeatureData.sta}, Kategori: ${category}, Catatan: ${notes}, User: ${currentNRP}`;
 
     catatLogKeServer(actionType, detailLog);
-    alert(`Berhasil mengirim ${actionType} untuk ${activeWoFeatureData.road} STA ${activeWoFeatureData.sta}! Data tercatat di sistem.`);
+    alert(`Berhasil mengirim ${actionType} untuk ${activeWoFeatureData.road} STA ${activeWoFeatureData.sta}! Data tercatat.`);
 
     document.getElementById('woNotes').value = '';
     if (fileInput) fileInput.value = '';
     closeWoModal();
 
-    const toggle = document.getElementById('woModeToggle');
-    if (toggle) {
-        toggle.checked = false;
-        isWorkOrderModeActive = false;
+    // Reset tombol floating WO ke OFF setelah submit
+    isWorkOrderModeActive = false;
+    const btn = document.getElementById('woFloatingBtn');
+    const statusTxt = document.getElementById('woStatusText');
+    if (btn) btn.classList.remove('active');
+    if (statusTxt) {
+        statusTxt.innerText = 'OFF';
+        statusTxt.style.color = '#94a3b8';
     }
 }
 
@@ -604,7 +620,7 @@ function refreshVisibleLayers() {
   }
 }
 
-// Handler Klik Fitur Spasial (Mendukung Mode WO atau Inspeksi Reguler)
+// Handler Klik Fitur Spasial (Mendukung Mode WO)
 function handleFeatureClick(feature) {
   if (isWorkOrderModeActive) {
     handleWorkOrderClick(feature);
