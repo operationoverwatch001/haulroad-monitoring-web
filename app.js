@@ -1,5 +1,5 @@
 // ==========================================
-// 1. KONFIGURASI SUPABASE & STATE UTAMA
+// 1. DEKLARASI STATE GLOBAL & INISIALISASI PETA
 // ==========================================
 const SUPABASE_URL = 'https://bjgojyazemlrwnqpxoqp.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_mUqC6rBWoHL-5IjW44uhfA_TL7YB1Zg';
@@ -16,7 +16,6 @@ const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5Lz
 let currentNRP = "SUPABASE_USER";
 let currentUserRole = "viewer"; 
 
-// State Global WebGIS & Work Order
 let currentTab = 'grade';
 let monitoringData = [];
 let crossSectionData = [];
@@ -34,12 +33,18 @@ let selectedStartMeter = null;
 let selectedEndMeter = null;
 let selectedRoadTarget = "";
 
+// State Mode Work Order & Penyimpanan Data Marker
 let isWorkOrderModeActive = false;
 let activeWoTool = null; // 'mark' atau 'draw'
 let activeWoFeatureData = null;
+let currentWoMode = 'create'; // 'create', 'edit', atau 'view'
+let currentActiveWoId = null;
+let allWorkOrders = {}; // Menyimpan seluruh data WO berdasarkan ID
+
 let workOrderMarkersLayer = L.layerGroup(); 
 let workOrderDrawingsLayer = L.layerGroup(); 
 
+// Variabel Mouse-Drag / Touch Freehand Draw
 let isDrawingActive = false;
 let currentDrawPoints = [];
 let tempDrawPolyline = null;
@@ -49,9 +54,9 @@ let userAccuracyCircle = null;
 let isTracking = false;
 let watchId = null;
 
-// ==========================================
-// 2. INISIALISASI PETA LEAFLET (DI ATAS AGAR AMAN)
-// ==========================================
+Chart.register(ChartDataLabels);
+
+// Inisialisasi Peta Leaflet di baris awal
 const map = L.map('map', { 
   zoomControl: false,
   preferCanvas: true 
@@ -99,7 +104,7 @@ if (pmtilesLib) {
 }
 
 // ==========================================
-// 3. AUTHENTICATION & SESSION HANDLING
+// 2. AUTHENTICATION & WHITELIST SUPABASE
 // ==========================================
 window.addEventListener('DOMContentLoaded', async () => {
     const { data: { session } } = await _supabase.auth.getSession();
@@ -225,7 +230,7 @@ window.verifyOtp = async function() {
 };
 
 // ==========================================
-// 4. MODUL WORK ORDER (WO), MARK & DRAW
+// 3. WORK ORDER MODE, SUB-MENU & FREEHAND DRAW
 // ==========================================
 function toggleWorkOrderFloating() {
     isWorkOrderModeActive = !isWorkOrderModeActive;
@@ -290,12 +295,13 @@ function setWoTool(toolName) {
     if (btnTarget) btnTarget.classList.add('active-tool');
 
     if (toolName === 'draw') {
-        map.dragging.disable(); 
+        map.dragging.disable(); // Peta dikunci agar bisa drag bebas membuat garis
     } else {
         map.dragging.enable();
     }
 }
 
+// Handler Klik Peta untuk Membuat Mark Baru
 function handleMapClickForWo(latlng) {
     if (!isWorkOrderModeActive) return;
     if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
@@ -304,10 +310,10 @@ function handleMapClickForWo(latlng) {
     const lat = latlng.lat.toFixed(6);
     const lng = latlng.lng.toFixed(6);
 
-    activeWoFeatureData = { type: 'mark', road: activeRoad || 'Area Tambang Umum', sta: `Lat/Lng: ${lat}, ${lng}`, latlng: latlng };
-    openWoModalUI(activeRoad || 'Area Tambang Umum', `Mark (${lat}, ${lng})`);
+    openCreateWoModal(activeRoad || 'Area Tambang Umum', `Lat/Lng: ${lat}, ${lng}`, latlng);
 }
 
+// Handler Mouse Drag / Touch Drag untuk DRAW (Tetap ON sampai dimatikan manual)
 map.on('mousedown touchstart', (e) => {
     if (!isWorkOrderModeActive || activeWoTool !== 'draw') return;
     if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
@@ -329,7 +335,7 @@ map.on('mouseup touchend', (e) => {
     if (!isDrawingActive || activeWoTool !== 'draw') return;
     isDrawingActive = false;
     tempDrawPolyline = null;
-    catatLogKeServer("DRAW WO", `Inspector menggambar sketsa garis di ${activeRoad}`);
+    catatLogKeServer("DRAW WO", `Inspector membuat sketsa garis di ${activeRoad}`);
 });
 
 function handleWorkOrderClick(feature) {
@@ -346,17 +352,95 @@ function handleWorkOrderClick(feature) {
         targetLatLng = tempLayer.getBounds().getCenter();
     } catch(e) {}
 
-    activeWoFeatureData = { type: 'road', road, sta: staFormatted, latlng: targetLatLng, rawProps: props };
-    openWoModalUI(road, `STA ${staFormatted}`);
+    openCreateWoModal(road, `STA ${staFormatted}`, targetLatLng, props);
 }
 
-function openWoModalUI(locationName, locationDetail) {
+// ==========================================
+// 4. MODAL FORM: CREATE, EDIT, VIEW & DELETE
+// ==========================================
+function openCreateWoModal(road, sta, latlng, rawProps = {}) {
+    currentWoMode = 'create';
+    currentActiveWoId = null;
+    activeWoFeatureData = { road, sta, latlng, rawProps };
+
+    setupModalUI({
+        title: "BUAT WORK ORDER BARU",
+        sub: "Tentukan temuan perbaikan infrastruktur jalan tambang.",
+        location: `${road} - ${sta}`,
+        category: "Overgrade / Tanjakan Curam",
+        notes: "",
+        notesLabel: "Catatan / Instruksi Lapangan:",
+        showCategory: (currentUserRole === 'admin' || currentUserRole === 'inspector'),
+        showDelete: false,
+        submitText: (currentUserRole === 'admin' || currentUserRole === 'inspector') ? "Kirim WO" : "Submit Evidence"
+    });
+}
+
+function openEditWoModal(woId) {
+    if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
+
+    const item = allWorkOrders[woId];
+    if (!item) return;
+
+    currentWoMode = 'edit';
+    currentActiveWoId = woId;
+    activeWoFeatureData = { ...item };
+
+    setupModalUI({
+        title: "EDIT WORK ORDER",
+        sub: "Perbarui instruksi perbaikan atau status temuan jalan tambang.",
+        location: `${item.road} - ${item.sta}`,
+        category: item.category,
+        notes: item.notes,
+        notesLabel: "Perbarui Instruksi / Catatan:",
+        showCategory: true,
+        showDelete: true,
+        submitText: "Simpan Perubahan"
+    });
+}
+
+function openViewWoModal(woId) {
+    const item = allWorkOrders[woId];
+    if (!item) return;
+
+    currentWoMode = 'view';
+    currentActiveWoId = woId;
+    activeWoFeatureData = { ...item };
+
+    setupModalUI({
+        title: "VIEW WORK ORDER & EVIDENCE",
+        sub: "Rincian Work Order dan form pengiriman bukti foto lapangan.",
+        location: `${item.road} - ${item.sta}`,
+        category: item.category,
+        notes: "",
+        notesLabel: "Keterangan / Progres Lapangan:",
+        showCategory: false,
+        showDelete: false,
+        submitText: "Kirim Evidence"
+    });
+}
+
+function setupModalUI(cfg) {
     const modal = document.getElementById('woModalOverlay');
     const title = document.getElementById('woModalTitle');
-    const catWrapper = document.getElementById('woCategoryWrapper');
+    const sub = document.getElementById('woModalSub');
     const locInput = document.getElementById('woLocationInfo');
+    const catWrapper = document.getElementById('woCategoryWrapper');
+    const catSelect = document.getElementById('woCategory');
+    const notesInput = document.getElementById('woNotes');
+    const notesLabel = document.getElementById('woNotesLabel');
+    const deleteBtn = document.getElementById('woDeleteBtn');
+    const submitBtn = document.getElementById('woSubmitBtn');
 
-    if (locInput) locInput.value = `${locationName} - ${locationDetail}`;
+    if (title) title.innerText = cfg.title;
+    if (sub) sub.innerText = cfg.sub;
+    if (locInput) locInput.value = cfg.location;
+    if (catSelect && cfg.category) catSelect.value = cfg.category;
+    if (catWrapper) catWrapper.style.display = cfg.showCategory ? 'block' : 'none';
+    if (notesInput) notesInput.value = cfg.notes;
+    if (notesLabel) notesLabel.innerText = cfg.notesLabel;
+    if (deleteBtn) deleteBtn.style.display = cfg.showDelete ? 'block' : 'none';
+    if (submitBtn) submitBtn.innerText = cfg.submitText;
 
     let reporterContainer = document.getElementById('woReporterWrapper');
     if (!reporterContainer && locInput) {
@@ -371,31 +455,27 @@ function openWoModalUI(locationName, locationDetail) {
         document.getElementById('woReporterName').value = currentNRP;
     }
 
-    if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
-        if (title) title.innerText = "BUAT / KELOLA WORK ORDER (WO)";
-        if (catWrapper) catWrapper.style.display = 'block';
-    } else {
-        if (title) title.innerText = "SUBMIT EVIDENCE LAPANGAN";
-        if (catWrapper) catWrapper.style.display = 'none';
-    }
-
     if (modal) modal.style.display = 'flex';
 }
 
 function closeWoModal() {
     const modal = document.getElementById('woModalOverlay');
     if (modal) modal.style.display = 'none';
-    activeWoFeatureData = null;
 }
 
 function submitWorkOrder() {
+    if (!activeWoFeatureData || !activeWoFeatureData.road) {
+        alert("Pilih lokasi titik WO terlebih dahulu!");
+        return;
+    }
+
     const notesElem = document.getElementById('woNotes');
     const categoryElem = document.getElementById('woCategory');
     const fileInput = document.getElementById('woEvidenceFile');
     const reporterElem = document.getElementById('woReporterName');
 
     const notes = notesElem ? notesElem.value.trim() : "";
-    const category = categoryElem ? categoryElem.value : "Evidence Lapangan";
+    const category = (categoryElem && currentWoMode !== 'view') ? categoryElem.value : (activeWoFeatureData.category || "Evidence Lapangan");
     const reporter = reporterElem ? reporterElem.value : currentNRP;
 
     if (!notes) {
@@ -403,55 +483,104 @@ function submitWorkOrder() {
         return;
     }
 
-    const actionType = (currentUserRole === 'admin' || currentUserRole === 'inspector') ? "CREATE/EDIT WO" : "SUBMIT EVIDENCE";
-    const detailLog = `Pelapor: ${reporter}, Lokasi: ${activeWoFeatureData.road} (${activeWoFeatureData.sta}), Kategori: ${category}, Catatan: ${notes}`;
+    if (currentWoMode === 'create') {
+        const woId = 'wo_' + Date.now();
+        const woItem = {
+            id: woId,
+            road: activeWoFeatureData.road,
+            sta: activeWoFeatureData.sta,
+            latlng: activeWoFeatureData.latlng,
+            category: category,
+            notes: notes,
+            reporter: reporter
+        };
+        allWorkOrders[woId] = woItem;
 
-    catatLogKeServer(actionType, detailLog);
+        createOrUpdateMarker(woItem);
+        catatLogKeServer("CREATE WO", `Pelapor: ${reporter}, Lokasi: ${woItem.road} (${woItem.sta}), Kategori: ${category}, Catatan: ${notes}`);
+        alert(`Berhasil membuat Work Order di ${woItem.road} (${woItem.sta})!`);
 
-    if (activeWoFeatureData && activeWoFeatureData.latlng) {
-        if (!map.hasLayer(workOrderMarkersLayer)) workOrderMarkersLayer.addTo(map);
+    } else if (currentWoMode === 'edit') {
+        if (!currentActiveWoId || !allWorkOrders[currentActiveWoId]) return;
 
-        const markerColor = (currentUserRole === 'admin' || currentUserRole === 'inspector') ? '#ff2b54' : '#00f0ff';
-        const customIcon = L.divIcon({
-            className: 'custom-wo-marker',
-            html: `<div style="background:${markerColor}; width:16px; height:16px; border:2px solid #ffffff; border-radius:50%; box-shadow:0 0 10px rgba(0,0,0,0.7);"></div>`,
-            iconSize: [16, 16],
-            iconAnchor: [8, 8]
-        });
+        const woItem = allWorkOrders[currentActiveWoId];
+        woItem.category = category;
+        woItem.notes = notes;
+        woItem.reporter = reporter;
 
-        const woMarker = L.marker(activeWoFeatureData.latlng, { icon: customIcon });
+        createOrUpdateMarker(woItem);
+        catatLogKeServer("EDIT WO", `Diperbarui oleh: ${reporter}, Lokasi: ${woItem.road} (${woItem.sta}), Kategori: ${category}`);
+        alert("Perubahan Work Order berhasil disimpan!");
 
-        let editBtnHtml = '';
-        if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
-            editBtnHtml = `<button onclick="openWoModalUI('${activeWoFeatureData.road}', '${activeWoFeatureData.sta}')" style="background:#e11d48; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">Edit WO</button>`;
-        }
-        let viewBtnHtml = `<button onclick="openWoModalUI('${activeWoFeatureData.road}', '${activeWoFeatureData.sta}')" style="background:#00f0ff; color:#000; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">View WO</button>`;
-
-        woMarker.bindPopup(`
-            <div style="font-size:11px; color:#0f172a; min-width:180px;">
-                <div style="display:flex; gap:6px; margin-bottom:6px; border-bottom:1px solid #cbd5e1; padding-bottom:6px;">
-                    ${editBtnHtml}
-                    ${viewBtnHtml}
-                </div>
-                <b style="color:${markerColor};">${actionType}</b><br>
-                <b>Lokasi:</b> ${activeWoFeatureData.road} (${activeWoFeatureData.sta})<br>
-                <b>Kategori:</b> ${category}<br>
-                <b>Catatan:</b> ${notes}<br>
-                <b>Pelapor:</b> ${reporter}
-            </div>
-        `);
-        workOrderMarkersLayer.addLayer(woMarker);
+    } else if (currentWoMode === 'view') {
+        catatLogKeServer("SUBMIT EVIDENCE", `Pelapor: ${reporter}, Lokasi: ${activeWoFeatureData.road} (${activeWoFeatureData.sta}), Keterangan: ${notes}`);
+        alert(`Evidence berhasil dikirim oleh ${reporter}!`);
     }
-
-    alert(`Berhasil mengirim ${actionType} oleh ${reporter}!`);
 
     if (notesElem) notesElem.value = '';
     if (fileInput) fileInput.value = '';
     closeWoModal();
 }
 
+function createOrUpdateMarker(woItem) {
+    if (!woItem || !woItem.latlng) return;
+
+    if (woItem.markerLayer) {
+        workOrderMarkersLayer.removeLayer(woItem.markerLayer);
+    }
+
+    const customIcon = L.divIcon({
+        className: 'custom-wo-marker',
+        html: `<div style="background:#ff2b54; width:16px; height:16px; border:2px solid #ffffff; border-radius:50%; box-shadow:0 0 10px rgba(0,0,0,0.7);"></div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+    });
+
+    const marker = L.marker(woItem.latlng, { icon: customIcon });
+
+    let editBtnHtml = '';
+    if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
+        editBtnHtml = `<button onclick="openEditWoModal('${woItem.id}')" style="background:#e11d48; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">Edit WO</button>`;
+    }
+    let viewBtnHtml = `<button onclick="openViewWoModal('${woItem.id}')" style="background:#00f0ff; color:#000; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">View WO</button>`;
+
+    // Pop-up bersih tanpa tulisan CREATE/EDIT WO
+    marker.bindPopup(`
+        <div style="font-size:11px; color:#0f172a; min-width:180px;">
+            <div style="display:flex; gap:6px; margin-bottom:6px; border-bottom:1px solid #cbd5e1; padding-bottom:6px;">
+                ${editBtnHtml}
+                ${viewBtnHtml}
+            </div>
+            <b>Lokasi:</b> ${woItem.road} (${woItem.sta})<br>
+            <b>Kategori:</b> ${woItem.category}<br>
+            <b>Catatan:</b> ${woItem.notes}<br>
+            <b>Pelapor:</b> ${woItem.reporter}
+        </div>
+    `);
+
+    woItem.markerLayer = marker;
+    workOrderMarkersLayer.addLayer(marker);
+}
+
+function deleteCurrentWorkOrder() {
+    if (!currentActiveWoId || !allWorkOrders[currentActiveWoId]) return;
+
+    if (!confirm("Yakin ingin menghapus Work Order ini?")) return;
+
+    const woItem = allWorkOrders[currentActiveWoId];
+    if (woItem.markerLayer) {
+        workOrderMarkersLayer.removeLayer(woItem.markerLayer);
+    }
+
+    catatLogKeServer("DELETE WO", `Dihapus oleh: ${currentNRP}, Lokasi: ${woItem.road} (${woItem.sta})`);
+    delete allWorkOrders[currentActiveWoId];
+
+    alert("Work Order berhasil dihapus!");
+    closeWoModal();
+}
+
 // ==========================================
-// 5. HELPER WEBGIS, CHART & UI UTAMA
+// 5. HELPER WEBGIS, CHART & DATA HANDLING
 // ==========================================
 function mulaiAnimasiIntroDanLoadData() {
   const splash = document.getElementById('intro-splash');
