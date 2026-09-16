@@ -151,7 +151,7 @@ let activeWoFeatureData = null;
 let workOrderMarkersLayer = L.layerGroup(); 
 let workOrderDrawingsLayer = L.layerGroup(); 
 
-// Variabel bantu untuk interaksi Mouse-Drag / Touch Draw Line
+// Variabel bantu untuk Mouse-Drag / Touch Draw Line bebas
 let isDrawingActive = false;
 let currentDrawPoints = [];
 let tempDrawPolyline = null;
@@ -191,7 +191,7 @@ function toggleWorkOrderFloating() {
         if (plusBtn) plusBtn.style.display = 'none';
         if (submenu) submenu.style.display = 'none';
         activeWoTool = null;
-        map.dragging.enable(); // Pastikan peta tidak terkunci
+        map.dragging.enable();
 
         catatLogKeServer("WO MODE", "Menonaktifkan Mode WO.");
     }
@@ -205,41 +205,42 @@ function toggleInspectorSubmenu() {
 }
 
 function setWoTool(toolName) {
+    // Jika tombol tool yang sama diklik lagi, maka mode tool dimatikan (manual off)
+    if (activeWoTool === toolName) {
+        activeWoTool = null;
+        document.querySelectorAll('.wo-sub-btn').forEach(b => b.classList.remove('active-tool'));
+        map.dragging.enable();
+        return;
+    }
+
     activeWoTool = toolName;
     document.querySelectorAll('.wo-sub-btn').forEach(b => b.classList.remove('active-tool'));
-    event.currentTarget.classList.add('active-tool');
-
-    // Tutup submenu setelah dipilih
-    const submenu = document.getElementById('woSubmenu');
-    if (submenu) submenu.style.display = 'none';
+    
+    // Cari tombol yang diklik lalu aktifkan classnya
+    const btnTarget = Array.from(document.querySelectorAll('.wo-sub-btn')).find(b => b.innerText.toLowerCase() === toolName);
+    if (btnTarget) btnTarget.classList.add('active-tool');
 
     if (toolName === 'draw') {
-        map.dragging.disable(); // Lock peta saat mode draw aktif agar bisa drag gambar garis
+        map.dragging.disable(); // Lock peta saat mode draw aktif agar bisa drag garis
     } else {
         map.dragging.enable();
     }
 }
 
-// Handler Klik Peta / Drag Peta untuk MARK dan DRAW
+// Handler Klik Peta untuk MARK
 function handleMapClickForWo(latlng) {
     if (!isWorkOrderModeActive) return;
-
-    if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') {
-        return; // Viewer tidak bisa bikin WO/Draw
-    }
-
-    if (!activeWoTool) return;
+    if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
+    if (activeWoTool !== 'mark') return;
 
     const lat = latlng.lat.toFixed(6);
     const lng = latlng.lng.toFixed(6);
 
-    if (activeWoTool === 'mark') {
-        activeWoFeatureData = { type: 'mark', road: activeRoad || 'Area Tambang Umum', sta: `Lat/Lng: ${lat}, ${lng}`, latlng: latlng };
-        openWoModalUI(activeRoad || 'Area Tambang Umum', `Mark (${lat}, ${lng})`);
-    }
+    activeWoFeatureData = { type: 'mark', road: activeRoad || 'Area Tambang Umum', sta: `Lat/Lng: ${lat}, ${lng}`, latlng: latlng };
+    openWoModalUI(activeRoad || 'Area Tambang Umum', `Mark (${lat}, ${lng})`);
 }
 
-// Logika Mouse-Drag / Touch untuk fitur DRAW Line bebas
+// Logika Mouse-Drag / Touch untuk fitur DRAW Line bebas (tetap ON sampai dimatikan manual)
 map.on('mousedown touchstart', (e) => {
     if (!isWorkOrderModeActive || activeWoTool !== 'draw') return;
     if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
@@ -261,9 +262,7 @@ map.on('mouseup touchend', (e) => {
     if (!isDrawingActive || activeWoTool !== 'draw') return;
     isDrawingActive = false;
     tempDrawPolyline = null;
-    // Catat log sketsa gambar selesai
     catatLogKeServer("DRAW WO", `Inspector menggambar sketsa garis di ${activeRoad}`);
-    // Catatan: Toggle DRAW tetap ON sesuai permintaan user sampai dimatikan manual
 });
 
 function handleWorkOrderClick(feature) {
@@ -355,15 +354,15 @@ function submitWorkOrder() {
 
         const woMarker = L.marker(activeWoFeatureData.latlng, { icon: customIcon });
 
-        // Tombol Edit WO (hanya untuk Admin/Inspector) dan View WO (untuk semua)
+        // Tombol Edit WO (kiri) & View WO (kanan)
         let editBtnHtml = '';
         if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
-            editBtnHtml = `<button onclick="alert('Membuka Panel Edit WO untuk lokasi ini');" style="background:#e11d48; color:#fff; border:none; padding:3px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">Edit WO</button>`;
+            editBtnHtml = `<button onclick="openWoModalUI('${activeWoFeatureData.road}', '${activeWoFeatureData.sta}')" style="background:#e11d48; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">Edit WO</button>`;
         }
-        let viewBtnHtml = `<button onclick="openWoModalUI('${activeWoFeatureData.road}', '${activeWoFeatureData.sta}')" style="background:#00f0ff; color:#000; border:none; padding:3px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">View WO</button>`;
+        let viewBtnHtml = `<button onclick="openWoModalUI('${activeWoFeatureData.road}', '${activeWoFeatureData.sta}')" style="background:#00f0ff; color:#000; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">View WO</button>`;
 
         woMarker.bindPopup(`
-            <div style="font-size:11px; color:#0f172a; min-width:170px;">
+            <div style="font-size:11px; color:#0f172a; min-width:180px;">
                 <div style="display:flex; gap:6px; margin-bottom:6px; border-bottom:1px solid #cbd5e1; padding-bottom:6px;">
                     ${editBtnHtml}
                     ${viewBtnHtml}
