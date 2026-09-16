@@ -30,6 +30,7 @@ let rawWidthFeatures = [];
 let roadWidthLayer = null;        
 let roadGradeLayer = null;        
 let gradeLabelsLayer = L.layerGroup();  
+let allStaMarkers = []; // Cache marker STA untuk optimasi Viewport Culling
 
 let selectedStartMeter = null;
 let selectedEndMeter = null;
@@ -411,12 +412,11 @@ function renderDrawLineOnMap(lineItem) {
   polyLine.on('click', function(e) {
     L.DomEvent.stopPropagation(e);
 
-    // Jika sedang memilih tool MARK, kunci garis ini (Ubah jadi Biru Neon) & KOSONGKAN NAMA JALAN
+    // Kunci Garis & KOSONGKAN NAMA JALAN AGAR USER KETIK SENDIRI (FOTO 2)
     if (isWorkOrderModeActive && activeWoTool === 'mark' && (currentUserRole === 'admin' || currentUserRole === 'inspector')) {
       selectedLineForWo = lineItem;
       polyLine.setStyle({ color: '#00f0ff', weight: 6 });
       const center = polyLine.getBounds().getCenter();
-      // Nama jalan dikosongkan ("") agar pengawas wajib mengisi manual!
       openCreateWoModal("", `Garis Sketsa Terkunci`, center, {}, true, lineItem.id);
       return;
     }
@@ -583,7 +583,7 @@ function openViewWoModal(woId) {
     notesValue: "",
     uploadLabel: "Upload Foto:",
     showJobsEdit: false,
-    showGlobalInputs: !isMultiJob, // HILANGKAN JIKA JOB > 1
+    showGlobalInputs: !isMultiJob,
     showStatusUpdate: !isMultiJob,
     showRefPhotos: (item.photoUrls && item.photoUrls.length > 0),
     showDelete: false,
@@ -596,7 +596,7 @@ function setupModalUI(cfg) {
   const modal = document.getElementById('woModalOverlay');
   const title = document.getElementById('woModalTitle');
   const sub = document.getElementById('woModalSub');
-  const dateInfo = document.getElementById('woCreatedDateInfo');
+  const dateInput = document.getElementById('woCreatedDateInput');
   const statusBadge = document.getElementById('woStatusBadge');
   const roadInput = document.getElementById('woRoadName');
   const locDetail = document.getElementById('woLocationDetail');
@@ -615,9 +615,16 @@ function setupModalUI(cfg) {
   if (title) title.innerText = cfg.title;
   if (sub) sub.innerText = cfg.sub;
 
-  if (dateInfo) {
-    dateInfo.style.display = cfg.createdTime ? 'block' : 'none';
-    dateInfo.innerText = `Tanggal WO: ${cfg.createdTime || '-'}`;
+  // Waktu WO Interaktif (Bisa Backdate, Anti Masa Depan - Foto 3)
+  const maxTime = getNowDateTimeLocalWita();
+  if (dateInput) {
+    dateInput.max = maxTime;
+    if (cfg.createdTime) {
+      dateInput.value = parseWitaToDateTimeLocal(cfg.createdTime);
+    } else {
+      dateInput.value = maxTime;
+    }
+    dateInput.disabled = (currentWoMode === 'view');
   }
 
   // Update Badge Status Induk
@@ -656,7 +663,7 @@ function setupModalUI(cfg) {
   // Render Kartu-kartu Job
   renderJobsUI(cfg.jobs, cfg.showJobsEdit, currentWoMode === 'view');
 
-  // Render Foto Acuan Awal (Foto 7)
+  // Render Foto Acuan Awal Direct CDN (Foto 1 & 7)
   renderRefPhotosUI(cfg.photoUrls, cfg.showRefPhotos);
 
   if (modal) modal.style.display = 'flex';
@@ -732,7 +739,6 @@ function renderJobsUI(jobsList, isEditable, isViewMode = false) {
         <textarea class="job-notes-input" rows="1" placeholder="Instruksi khusus job #${idx + 1}..." style="width:100%; background:#0f172a; border:1px solid #475569; padding:4px 6px; border-radius:4px; color:#fff; font-size:11px; resize:none;">${j.notes || ''}</textarea>
       `;
     } else {
-      // Tampilan View Mode: Ada Badge Status Job (Garis Merah) & Tombol UPDATE (Garis Pink)
       let updateBtnHtml = '';
       if (isViewMode) {
         updateBtnHtml = `
@@ -783,7 +789,18 @@ function collectJobsFromUI() {
   return list.length > 0 ? list : [{ category: "Overgrade / Tanjakan Curam", notes: "", status: "OPEN" }];
 }
 
-// Foto Acuan / Stage Plan Desain (Foto 7)
+// Konverter URL Google Drive ke Direct Stream CDN (Anti Foto Pecah - Foto 1 & 7)
+function toDirectDriveUrl(url, size = 600) {
+  if (!url) return '';
+  if (url.startsWith('data:image')) return url;
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+  if (match && match[1]) {
+    return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w${size}`;
+  }
+  return url;
+}
+
+// Render Foto Acuan / Stage Plan Desain (Foto 7)
 function renderRefPhotosUI(urls, isVisible) {
   const wrap = document.getElementById('woRefPhotosSection');
   const gallery = document.getElementById('woRefPhotosGallery');
@@ -800,7 +817,7 @@ function renderRefPhotosUI(urls, isVisible) {
 
   urls.forEach((u, i) => {
     const img = document.createElement('img');
-    img.src = u;
+    img.src = toDirectDriveUrl(u, 240); // Direct Stream CDN
     img.alt = `Stage Plan #${i + 1}`;
     img.style.width = '100%';
     img.style.height = '65px';
@@ -913,6 +930,7 @@ async function submitWorkOrder() {
   const notesElem = document.getElementById('woNotes');
   const locDetail = document.getElementById('woLocationDetail');
   const statusSelect = document.getElementById('woStatusUpdateSelect');
+  const dateInput = document.getElementById('woCreatedDateInput');
 
   const roadName = roadInput ? roadInput.value.trim() : "";
   const reporter = repInput ? repInput.value.trim() : "";
@@ -930,6 +948,17 @@ async function submitWorkOrder() {
     alert("Nama / NRP Pelapor wajib diisi manual!");
     if (repInput) repInput.focus();
     return;
+  }
+
+  // Waktu WO Fleksibel (Backdate + Anti Masa Depan)
+  let chosenTimeWita = UtilitiesFormatNowWita();
+  if (dateInput && dateInput.value) {
+    if (dateInput.value > getNowDateTimeLocalWita()) {
+      alert("Wkwk jangan milih waktu masa depan bre! Maksimal waktu saat ini.");
+      dateInput.value = getNowDateTimeLocalWita();
+      return;
+    }
+    chosenTimeWita = formatDateTimeLocalToWita(dateInput.value);
   }
 
   // Proses Unggah Gambar dari Antrean Akumulasi
@@ -951,12 +980,11 @@ async function submitWorkOrder() {
   if (currentWoMode === 'create') {
     const woId = 'wo_' + Date.now();
     const jobs = collectJobsFromUI();
-    const createdTime = UtilitiesFormatNowWita();
     const linkedLineId = (activeWoFeatureData && activeWoFeatureData.linkedLineId) ? activeWoFeatureData.linkedLineId : (selectedLineForWo ? selectedLineForWo.id : "");
 
     const woItem = {
       id: woId,
-      createdTime: createdTime,
+      createdTime: chosenTimeWita,
       road: roadName,
       sta: detailLoc,
       latlng: activeWoFeatureData.latlng,
@@ -996,6 +1024,7 @@ async function submitWorkOrder() {
     if (!currentActiveWoId || !allWorkOrders[currentActiveWoId]) return;
 
     const woItem = allWorkOrders[currentActiveWoId];
+    woItem.createdTime = chosenTimeWita;
     woItem.road = roadName;
     woItem.jobs = collectJobsFromUI();
     woItem.notes = notes;
@@ -1024,7 +1053,6 @@ async function submitWorkOrder() {
     alert("Perubahan Work Order berhasil disimpan!");
 
   } else if (currentWoMode === 'view') {
-    // Mode View Single Job
     syncWorkOrderToCloud({
       action: "SUBMIT_EVIDENCE",
       woId: currentActiveWoId,
@@ -1106,7 +1134,7 @@ async function submitJobUpdate() {
     return;
   }
 
-  // Proses Unggah Gambar Antrean Khusus Job
+  // Unggah Gambar Antrean Khusus Job
   const imagesPayload = [];
   for (let i = 0; i < jobUpdateFilesQueue.length; i++) {
     const file = jobUpdateFilesQueue[i];
@@ -1124,7 +1152,6 @@ async function submitJobUpdate() {
 
   const jobTargetName = `Job #${activeJobUpdateIndex + 1}: ${wo.jobs[activeJobUpdateIndex].category}`;
 
-  // Kirim ke Backend Spreadsheet & Drive
   syncWorkOrderToCloud({
     action: "SUBMIT_EVIDENCE",
     woId: currentActiveWoId,
@@ -1337,7 +1364,7 @@ function renderTimelineCards(historyList) {
       photosHtml = `
         <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
           ${item.photoUrls.map(u => `
-            <img src="${u}" style="width:70px; height:55px; object-fit:cover; border-radius:4px; border:1px solid #475569; cursor:pointer;" onclick="openImageLightbox('${u}')" title="Klik untuk perbesar & download">
+            <img src="${toDirectDriveUrl(u, 160)}" style="width:70px; height:55px; object-fit:cover; border-radius:4px; border:1px solid #475569; cursor:pointer;" onclick="openImageLightbox('${u}')" title="Klik untuk perbesar & download">
           `).join('')}
         </div>
       `;
@@ -1364,13 +1391,19 @@ function closeProgressTimelineModal() {
   if (modal) modal.style.display = 'none';
 }
 
-// Lightbox Modal Zoom & Download Foto (Foto 7)
+// Lightbox Modal Zoom & Download Foto (Anti Foto Pecah - Foto 1 & 7)
 function openImageLightbox(url) {
   const modal = document.getElementById('imageLightboxModal');
   const img = document.getElementById('lightboxImg');
   const dlBtn = document.getElementById('lightboxDownloadBtn');
-  if (img) img.src = url;
-  if (dlBtn) dlBtn.href = url;
+  
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+  const fileId = match ? match[1] : '';
+  const highResUrl = fileId ? `https://drive.google.com/thumbnail?id=${fileId}&sz=w1600` : url;
+  const downloadUrl = fileId ? `https://drive.google.com/uc?export=download&id=${fileId}` : url;
+
+  if (img) img.src = highResUrl;
+  if (dlBtn) dlBtn.href = downloadUrl;
   if (modal) modal.style.display = 'flex';
 }
 
@@ -1446,12 +1479,10 @@ function refreshWorkOrderMapDisplay() {
     let shouldShow = false;
 
     if (calendarFilterDate === null) {
-      // Default: Tampilkan WO hari ini ATAU backlog hari kemarin yang belum CLOSED
       if (woDateYMD === todayYMD || status !== 'CLOSED') {
         shouldShow = true;
       }
     } else {
-      // Mode History: Tampilkan semua WO yang dibuat di tanggal tersebut
       if (woDateYMD === calendarFilterDate) {
         shouldShow = true;
       }
@@ -1459,14 +1490,12 @@ function refreshWorkOrderMapDisplay() {
 
     if (shouldShow) {
       createOrUpdateMarker(wo);
-      // Tampilkan garis draw terkunci bersama titik mark WO
       if (wo.linkedLineId && allDrawLines[wo.linkedLineId]) {
         renderDrawLineOnMap(allDrawLines[wo.linkedLineId]);
       }
     }
   });
 
-  // Render Garis Sketsa Bebas yang Tidak Terkunci
   Object.values(allDrawLines).forEach(line => {
     const isLinked = Object.values(allWorkOrders).some(wo => wo.linkedLineId === line.id);
     if (!isLinked) {
@@ -1475,12 +1504,46 @@ function refreshWorkOrderMapDisplay() {
   });
 }
 
+// ==========================================
+// 6B. HELPER PARSER & FORMATTER WAKTU WITA
+// ==========================================
 function getTodayYMDWita() {
   const nowWita = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar" }));
   const y = nowWita.getFullYear();
   const m = String(nowWita.getMonth() + 1).padStart(2, '0');
   const d = String(nowWita.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+function getNowDateTimeLocalWita() {
+  const nowWita = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar" }));
+  const y = nowWita.getFullYear();
+  const m = String(nowWita.getMonth() + 1).padStart(2, '0');
+  const d = String(nowWita.getDate()).padStart(2, '0');
+  const hh = String(nowWita.getHours()).padStart(2, '0');
+  const mm = String(nowWita.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${d}T${hh}:${mm}`;
+}
+
+function formatDateTimeLocalToWita(dtLocalStr) {
+  if (!dtLocalStr) return UtilitiesFormatNowWita();
+  const parts = dtLocalStr.split('T');
+  const dateParts = parts[0].split('-');
+  const time = parts[1].length === 5 ? `${parts[1]}:00` : parts[1];
+  return `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}, ${time} WITA`;
+}
+
+function parseWitaToDateTimeLocal(ts) {
+  if (!ts) return getNowDateTimeLocalWita();
+  try {
+    const clean = ts.replace(" WITA", "").trim();
+    const parts = clean.split(', ');
+    const dateParts = parts[0].split('/');
+    const timeParts = parts[1].split(':');
+    return `${dateParts[2]}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}T${timeParts[0].padStart(2, '0')}:${timeParts[1].padStart(2, '0')}`;
+  } catch(e) {
+    return getNowDateTimeLocalWita();
+  }
 }
 
 function parseTimestampToYMD(ts) {
@@ -1614,7 +1677,7 @@ async function loadCloudWorkOrders() {
 }
 
 // ==========================================
-// 7. HELPER WEBGIS, CHART & DATA HANDLING
+// 7. HELPER WEBGIS, CHART & VIEWPORT OPTIMASI
 // ==========================================
 function mulaiAnimasiIntroDanLoadData() {
   const splash = document.getElementById('intro-splash');
@@ -1688,10 +1751,15 @@ function toggleBasemapSatelit() {
   }
 }
 
-map.on('zoomend', () => {
-  if (roadWidthLayer) roadWidthLayer.setStyle(getWidthSliceStyle);
-  if (roadGradeLayer) roadGradeLayer.setStyle(getGradePolygonBlockStyle);
-  updateGradeLabelsVisibility();
+// OPTIMASI EVENT PETA: DEBOUNCED UPDATE
+let mapUpdateTimer = null;
+map.on('zoomend moveend', () => {
+  clearTimeout(mapUpdateTimer);
+  mapUpdateTimer = setTimeout(() => {
+    if (roadWidthLayer) roadWidthLayer.setStyle(getWidthSliceStyle);
+    if (roadGradeLayer) roadGradeLayer.setStyle(getGradePolygonBlockStyle);
+    updateGradeLabelsVisibility();
+  }, 75);
 });
 
 function formatKeSTA(val) {
@@ -1799,17 +1867,23 @@ function getWidthSliceStyle(feature) {
   return { color: "#00e5ff", weight: baseWeight, opacity: 0.85 };
 }
 
+// OPTIMASI RINGAN: VIEWPORT CULLING LABEL STA
 function updateGradeLabelsVisibility() {
-  if (currentTab !== 'grade') {
-    if (map.hasLayer(gradeLabelsLayer)) map.removeLayer(gradeLabelsLayer);
-    return;
-  }
-  const zoom = map.getZoom();
-  if (zoom < 16) {
+  if (currentTab !== 'grade' || map.getZoom() < 16) {
+    gradeLabelsLayer.clearLayers();
     if (map.hasLayer(gradeLabelsLayer)) map.removeLayer(gradeLabelsLayer);
     return;
   }
   if (!map.hasLayer(gradeLabelsLayer)) map.addLayer(gradeLabelsLayer);
+
+  // Hanya render label STA yang berada dalam area pandang layar
+  const bounds = map.getBounds().pad(0.1);
+  gradeLabelsLayer.clearLayers();
+  for (let i = 0; i < allStaMarkers.length; i++) {
+    if (bounds.contains(allStaMarkers[i].getLatLng())) {
+      gradeLabelsLayer.addLayer(allStaMarkers[i]);
+    }
+  }
 }
 
 function resetSegmentSelection() {
@@ -1891,6 +1965,7 @@ async function loadAllVectorLayers() {
       const geojsonGrade = await resGrade.json();
       if (roadGradeLayer) map.removeLayer(roadGradeLayer);
       gradeLabelsLayer.clearLayers();
+      allStaMarkers = [];
 
       roadGradeLayer = L.geoJSON(geojsonGrade, {
         style: getGradePolygonBlockStyle,
@@ -1920,7 +1995,7 @@ async function loadAllVectorLayers() {
             }),
             interactive: false, isSTA: true
           });
-          gradeLabelsLayer.addLayer(staMarker);
+          allStaMarkers.push(staMarker);
 
           layer.on('click', (e) => {
             L.DomEvent.stopPropagation(e);
