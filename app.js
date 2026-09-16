@@ -12,7 +12,9 @@ const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, 
   }
 });
 
+// URL Web App Google Apps Script lu (Ganti jika ada URL baru dari deployment akun kantor)
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec";
+
 let currentNRP = "SUPABASE_USER";
 let currentUserRole = "viewer"; 
 
@@ -39,7 +41,8 @@ let activeWoTool = null; // 'mark' atau 'draw'
 let activeWoFeatureData = null;
 let currentWoMode = 'create'; // 'create', 'edit', atau 'view'
 let currentActiveWoId = null;
-let allWorkOrders = {}; // Menyimpan seluruh data WO berdasarkan ID
+let allWorkOrders = {}; 
+let allDrawLines = {};
 
 let workOrderMarkersLayer = L.layerGroup(); 
 let workOrderDrawingsLayer = L.layerGroup(); 
@@ -56,7 +59,7 @@ let watchId = null;
 
 Chart.register(ChartDataLabels);
 
-// Inisialisasi Peta Leaflet di baris awal
+// Inisialisasi Peta Leaflet
 const map = L.map('map', { 
   zoomControl: false,
   preferCanvas: true 
@@ -301,7 +304,7 @@ function setWoTool(toolName) {
     }
 }
 
-// Handler Klik Peta untuk Membuat Mark Baru
+// Handler Klik Peta untuk Membuat Mark Baru (Di Luar Segmen Jalan)
 function handleMapClickForWo(latlng) {
     if (!isWorkOrderModeActive) return;
     if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
@@ -310,10 +313,11 @@ function handleMapClickForWo(latlng) {
     const lat = latlng.lat.toFixed(6);
     const lng = latlng.lng.toFixed(6);
 
-    openCreateWoModal(activeRoad || 'Area Tambang Umum', `Lat/Lng: ${lat}, ${lng}`, latlng);
+    // Jika klik sembarang di luar jalan: nama jalan dikosongkan (wajib ketik manual)
+    openCreateWoModal("", `Lat/Lng: ${lat}, ${lng}`, latlng, {}, true);
 }
 
-// Handler Mouse Drag / Touch Drag untuk DRAW (Tetap ON sampai dimatikan manual)
+// Handler Mouse Drag / Touch Drag untuk DRAW
 map.on('mousedown touchstart', (e) => {
     if (!isWorkOrderModeActive || activeWoTool !== 'draw') return;
     if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
@@ -334,10 +338,85 @@ map.on('mousemove touchmove', (e) => {
 map.on('mouseup touchend', (e) => {
     if (!isDrawingActive || activeWoTool !== 'draw') return;
     isDrawingActive = false;
-    tempDrawPolyline = null;
-    catatLogKeServer("DRAW WO", `Inspector membuat sketsa garis di ${activeRoad}`);
+
+    if (currentDrawPoints.length > 1) {
+        const lineId = 'draw_' + Date.now();
+        const lineItem = {
+            id: lineId,
+            road: activeRoad || 'Area Tambang',
+            points: currentDrawPoints,
+            reporter: currentNRP
+        };
+        allDrawLines[lineId] = lineItem;
+        renderDrawLineOnMap(lineItem);
+
+        // Sync simpan garis ke Google Cloud
+        syncDrawLineToCloud(lineItem);
+        catatLogKeServer("DRAW WO", `Inspector membuat garis sketsa di ${lineItem.road}`);
+    }
+
+    if (tempDrawPolyline) {
+        workOrderDrawingsLayer.removeLayer(tempDrawPolyline);
+        tempDrawPolyline = null;
+    }
+    currentDrawPoints = [];
 });
 
+// Render garis draw di peta dengan event listener hapus untuk Admin/Inspector
+function renderDrawLineOnMap(lineItem) {
+    const polyLine = L.polyline(lineItem.points, { color: '#ff2b54', weight: 4 });
+
+    polyLine.on('click', function(e) {
+        if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
+            L.DomEvent.stopPropagation(e);
+            const popupContent = `
+                <div style="font-size:11px; text-align:center; padding:4px; min-width:110px;">
+                    <b>Garis Sketsa WO</b><br>
+                    <button onclick="hapusGarisDraw('${lineItem.id}')" style="background:#e11d48; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-weight:bold; cursor:pointer; margin-top:6px;">Hapus Garis</button>
+                </div>
+            `;
+            polyLine.bindPopup(popupContent).openPopup(e.latlng);
+        }
+    });
+
+    lineItem.layer = polyLine;
+    workOrderDrawingsLayer.addLayer(polyLine);
+}
+
+// Hapus Garis Draw (Lokal & Cloud)
+function hapusGarisDraw(lineId) {
+    if (!confirm("Yakin ingin menghapus garis sketsa ini?")) return;
+    const lineItem = allDrawLines[lineId];
+    if (lineItem && lineItem.layer) {
+        workOrderDrawingsLayer.removeLayer(lineItem.layer);
+    }
+    delete allDrawLines[lineId];
+
+    // Sync Hapus ke Cloud
+    fetch(WEB_APP_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify({ action: "DELETE_DRAW_LINE", id: lineId })
+    });
+
+    catatLogKeServer("DELETE DRAW", `Menghapus sketsa garis ID: ${lineId}`);
+}
+
+function syncDrawLineToCloud(lineItem) {
+    fetch(WEB_APP_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify({
+            action: "SAVE_DRAW_LINE",
+            id: lineItem.id,
+            road: lineItem.road,
+            points: lineItem.points,
+            reporter: lineItem.reporter
+        })
+    });
+}
+
+// Klik pada poligon jalan saat mode WO aktif
 function handleWorkOrderClick(feature) {
     if (!isWorkOrderModeActive) return;
 
@@ -352,21 +431,24 @@ function handleWorkOrderClick(feature) {
         targetLatLng = tempLayer.getBounds().getCenter();
     } catch(e) {}
 
-    openCreateWoModal(road, `STA ${staFormatted}`, targetLatLng, props);
+    // Klik di jalan: nama jalan otomatis terisi dari layer
+    openCreateWoModal(road, `STA ${staFormatted}`, targetLatLng, props, false);
 }
 
 // ==========================================
 // 4. MODAL FORM: CREATE, EDIT, VIEW & DELETE
 // ==========================================
-function openCreateWoModal(road, sta, latlng, rawProps = {}) {
+function openCreateWoModal(road, locationDetail, latlng, rawProps = {}, isManualRoad = false) {
     currentWoMode = 'create';
     currentActiveWoId = null;
-    activeWoFeatureData = { road, sta, latlng, rawProps };
+    activeWoFeatureData = { road, locationDetail, latlng, rawProps, isManualRoad };
 
     setupModalUI({
-        title: "BUAT WORK ORDER BARU",
+        title: "BUAT WORK ORDER (WO)",
         sub: "Tentukan temuan perbaikan infrastruktur jalan tambang.",
-        location: `${road} - ${sta}`,
+        roadName: road,
+        locationDetail: locationDetail,
+        reporter: "", // Kosong, pelapor wajib ketik manual
         category: "Overgrade / Tanjakan Curam",
         notes: "",
         notesLabel: "Catatan / Instruksi Lapangan:",
@@ -389,10 +471,12 @@ function openEditWoModal(woId) {
     setupModalUI({
         title: "EDIT WORK ORDER",
         sub: "Perbarui instruksi perbaikan atau status temuan jalan tambang.",
-        location: `${item.road} - ${item.sta}`,
+        roadName: item.road,
+        locationDetail: item.sta || `Lat/Lng: ${item.latlng.lat.toFixed(6)}, ${item.latlng.lng.toFixed(6)}`,
+        reporter: item.reporter || "",
         category: item.category,
         notes: item.notes,
-        notesLabel: "Perbarui Instruksi / Catatan:",
+        notesLabel: "Perbarui Catatan / Instruksi:",
         showCategory: true,
         showDelete: true,
         submitText: "Simpan Perubahan"
@@ -410,7 +494,9 @@ function openViewWoModal(woId) {
     setupModalUI({
         title: "VIEW WORK ORDER & EVIDENCE",
         sub: "Rincian Work Order dan form pengiriman bukti foto lapangan.",
-        location: `${item.road} - ${item.sta}`,
+        roadName: item.road,
+        locationDetail: item.sta || `Lat/Lng: ${item.latlng.lat.toFixed(6)}, ${item.latlng.lng.toFixed(6)}`,
+        reporter: "", // Kosong, pengirim evidence wajib ketik manual
         category: item.category,
         notes: "",
         notesLabel: "Keterangan / Progres Lapangan:",
@@ -424,7 +510,9 @@ function setupModalUI(cfg) {
     const modal = document.getElementById('woModalOverlay');
     const title = document.getElementById('woModalTitle');
     const sub = document.getElementById('woModalSub');
-    const locInput = document.getElementById('woLocationInfo');
+    const roadInput = document.getElementById('woRoadName');
+    const locDetail = document.getElementById('woLocationDetail');
+    const repInput = document.getElementById('woReporterName');
     const catWrapper = document.getElementById('woCategoryWrapper');
     const catSelect = document.getElementById('woCategory');
     const notesInput = document.getElementById('woNotes');
@@ -434,26 +522,15 @@ function setupModalUI(cfg) {
 
     if (title) title.innerText = cfg.title;
     if (sub) sub.innerText = cfg.sub;
-    if (locInput) locInput.value = cfg.location;
+    if (roadInput) roadInput.value = cfg.roadName || "";
+    if (locDetail) locDetail.value = cfg.locationDetail || "";
+    if (repInput) repInput.value = cfg.reporter || "";
     if (catSelect && cfg.category) catSelect.value = cfg.category;
     if (catWrapper) catWrapper.style.display = cfg.showCategory ? 'block' : 'none';
-    if (notesInput) notesInput.value = cfg.notes;
+    if (notesInput) notesInput.value = cfg.notes || "";
     if (notesLabel) notesLabel.innerText = cfg.notesLabel;
     if (deleteBtn) deleteBtn.style.display = cfg.showDelete ? 'block' : 'none';
     if (submitBtn) submitBtn.innerText = cfg.submitText;
-
-    let reporterContainer = document.getElementById('woReporterWrapper');
-    if (!reporterContainer && locInput) {
-        reporterContainer = document.createElement('div');
-        reporterContainer.id = 'woReporterWrapper';
-        reporterContainer.innerHTML = `
-            <label style="color:#cbd5e1; font-size:11px;">Pelapor (Terekam Otomatis):</label>
-            <input type="text" id="woReporterName" value="${currentNRP}" readonly style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#38bdf8; font-size:11px; margin-top:2px;">
-        `;
-        locInput.parentNode.parentNode.insertBefore(reporterContainer, locInput.parentNode.nextSibling);
-    } else if (document.getElementById('woReporterName')) {
-        document.getElementById('woReporterName').value = currentNRP;
-    }
 
     if (modal) modal.style.display = 'flex';
 }
@@ -463,63 +540,189 @@ function closeWoModal() {
     if (modal) modal.style.display = 'none';
 }
 
-function submitWorkOrder() {
-    if (!activeWoFeatureData || !activeWoFeatureData.road) {
-        alert("Pilih lokasi titik WO terlebih dahulu!");
-        return;
-    }
+// Helper kompresi gambar sebelum kirim ke Google Drive
+function compressImage(file, maxDimension = 1280, quality = 0.75) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                let width = img.width;
+                let height = img.height;
 
+                if (width > height) {
+                    if (width > maxDimension) {
+                        height = Math.round((height * maxDimension) / width);
+                        width = maxDimension;
+                    }
+                } else {
+                    if (height > maxDimension) {
+                        width = Math.round((width * maxDimension) / height);
+                        height = maxDimension;
+                    }
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                const dataUrl = canvas.toDataURL('image/jpeg', quality);
+                resolve(dataUrl);
+            };
+            img.onerror = (e) => reject(e);
+        };
+        reader.onerror = (e) => reject(e);
+    });
+}
+
+async function submitWorkOrder() {
+    const roadInput = document.getElementById('woRoadName');
+    const repInput = document.getElementById('woReporterName');
     const notesElem = document.getElementById('woNotes');
     const categoryElem = document.getElementById('woCategory');
     const fileInput = document.getElementById('woEvidenceFile');
-    const reporterElem = document.getElementById('woReporterName');
+    const locDetail = document.getElementById('woLocationDetail');
 
+    const roadName = roadInput ? roadInput.value.trim() : "";
+    const reporter = repInput ? repInput.value.trim() : "";
     const notes = notesElem ? notesElem.value.trim() : "";
     const category = (categoryElem && currentWoMode !== 'view') ? categoryElem.value : (activeWoFeatureData.category || "Evidence Lapangan");
-    const reporter = reporterElem ? reporterElem.value : currentNRP;
+    const detailLoc = locDetail ? locDetail.value : "";
+
+    if (!roadName) {
+        alert("Nama Ruas Jalan wajib diisi, bre!");
+        return;
+    }
+
+    if (!reporter) {
+        alert("Nama / NRP Pelapor wajib diisi manual!");
+        return;
+    }
 
     if (!notes) {
         alert("Catatan atau instruksi lapangan wajib diisi!");
         return;
     }
 
+    // Tangani Foto Bukti Evidence jika ada
+    let imageBase64 = null;
+    let imageName = null;
+    let imageMime = "image/jpeg";
+
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+        const rawFile = fileInput.files[0];
+        imageName = `EV_${roadName.replace(/\s+/g, '_')}_${Date.now()}.jpg`;
+        try {
+            imageBase64 = await compressImage(rawFile);
+        } catch (e) {
+            console.warn("Kompresi gagal, pakai file asli:", e);
+            imageBase64 = await toBase64(rawFile);
+        }
+    }
+
     if (currentWoMode === 'create') {
         const woId = 'wo_' + Date.now();
         const woItem = {
             id: woId,
-            road: activeWoFeatureData.road,
-            sta: activeWoFeatureData.sta,
+            road: roadName,
+            sta: detailLoc,
             latlng: activeWoFeatureData.latlng,
             category: category,
             notes: notes,
-            reporter: reporter
+            reporter: reporter,
+            photoUrl: ""
         };
         allWorkOrders[woId] = woItem;
-
         createOrUpdateMarker(woItem);
-        catatLogKeServer("CREATE WO", `Pelapor: ${reporter}, Lokasi: ${woItem.road} (${woItem.sta}), Kategori: ${category}, Catatan: ${notes}`);
-        alert(`Berhasil membuat Work Order di ${woItem.road} (${woItem.sta})!`);
+
+        // Kirim ke Google Apps Script (Drive & Sheet)
+        syncWorkOrderToCloud({
+            action: "SAVE_WORK_ORDER",
+            id: woItem.id,
+            road: woItem.road,
+            sta: woItem.sta,
+            latlng: woItem.latlng,
+            category: woItem.category,
+            notes: woItem.notes,
+            reporter: woItem.reporter,
+            imageBase64: imageBase64,
+            imageName: imageName,
+            imageMime: imageMime
+        });
+
+        catatLogKeServer("CREATE WO", `Pelapor: ${reporter}, Lokasi: ${woItem.road} (${woItem.sta})`);
+        alert(`Berhasil membuat Work Order di ${woItem.road}!`);
 
     } else if (currentWoMode === 'edit') {
         if (!currentActiveWoId || !allWorkOrders[currentActiveWoId]) return;
 
         const woItem = allWorkOrders[currentActiveWoId];
+        woItem.road = roadName;
         woItem.category = category;
         woItem.notes = notes;
         woItem.reporter = reporter;
 
         createOrUpdateMarker(woItem);
-        catatLogKeServer("EDIT WO", `Diperbarui oleh: ${reporter}, Lokasi: ${woItem.road} (${woItem.sta}), Kategori: ${category}`);
+
+        syncWorkOrderToCloud({
+            action: "SAVE_WORK_ORDER",
+            id: woItem.id,
+            road: woItem.road,
+            sta: woItem.sta,
+            latlng: woItem.latlng,
+            category: woItem.category,
+            notes: woItem.notes,
+            reporter: woItem.reporter,
+            photoUrl: woItem.photoUrl,
+            imageBase64: imageBase64,
+            imageName: imageName,
+            imageMime: imageMime
+        });
+
+        catatLogKeServer("EDIT WO", `Diperbarui oleh: ${reporter}, Lokasi: ${woItem.road}`);
         alert("Perubahan Work Order berhasil disimpan!");
 
     } else if (currentWoMode === 'view') {
-        catatLogKeServer("SUBMIT EVIDENCE", `Pelapor: ${reporter}, Lokasi: ${activeWoFeatureData.road} (${activeWoFeatureData.sta}), Keterangan: ${notes}`);
-        alert(`Evidence berhasil dikirim oleh ${reporter}!`);
+        // Submit Evidence dari Viewer / Inspector ke Tab Evidence di Sheet & Drive
+        syncWorkOrderToCloud({
+            action: "SUBMIT_EVIDENCE",
+            road: roadName, // Murni nama jalan saja
+            notes: notes,
+            reporter: reporter,
+            imageBase64: imageBase64,
+            imageName: imageName,
+            imageMime: imageMime
+        });
+
+        catatLogKeServer("SUBMIT EVIDENCE", `Pelapor: ${reporter}, Lokasi: ${roadName}, Keterangan: ${notes}`);
+        alert(`Evidence foto berhasil dikirim oleh ${reporter}!`);
     }
 
     if (notesElem) notesElem.value = '';
     if (fileInput) fileInput.value = '';
+    if (repInput) repInput.value = '';
     closeWoModal();
+}
+
+function toBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+    });
+}
+
+function syncWorkOrderToCloud(payload) {
+    fetch(WEB_APP_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify(payload)
+    }).catch(err => console.error("Sync error:", err));
 }
 
 function createOrUpdateMarker(woItem) {
@@ -544,7 +747,9 @@ function createOrUpdateMarker(woItem) {
     }
     let viewBtnHtml = `<button onclick="openViewWoModal('${woItem.id}')" style="background:#00f0ff; color:#000; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">View WO</button>`;
 
-    // Pop-up bersih tanpa tulisan CREATE/EDIT WO
+    let photoPreview = woItem.photoUrl ? `<br><a href="${woItem.photoUrl}" target="_blank" style="color:#0078d4; font-weight:bold; text-decoration:underline; display:inline-block; margin-top:4px;">📷 Lihat Foto Evidence</a>` : '';
+
+    // Pop-up bersih tanpa label CREATE/EDIT WO
     marker.bindPopup(`
         <div style="font-size:11px; color:#0f172a; min-width:180px;">
             <div style="display:flex; gap:6px; margin-bottom:6px; border-bottom:1px solid #cbd5e1; padding-bottom:6px;">
@@ -554,7 +759,7 @@ function createOrUpdateMarker(woItem) {
             <b>Lokasi:</b> ${woItem.road} (${woItem.sta})<br>
             <b>Kategori:</b> ${woItem.category}<br>
             <b>Catatan:</b> ${woItem.notes}<br>
-            <b>Pelapor:</b> ${woItem.reporter}
+            <b>Pelapor:</b> ${woItem.reporter}${photoPreview}
         </div>
     `);
 
@@ -572,11 +777,42 @@ function deleteCurrentWorkOrder() {
         workOrderMarkersLayer.removeLayer(woItem.markerLayer);
     }
 
-    catatLogKeServer("DELETE WO", `Dihapus oleh: ${currentNRP}, Lokasi: ${woItem.road} (${woItem.sta})`);
+    // Sync Hapus ke Cloud Sheets
+    fetch(WEB_APP_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify({ action: "DELETE_WORK_ORDER", id: currentActiveWoId })
+    });
+
+    catatLogKeServer("DELETE WO", `Dihapus oleh: ${currentNRP}, Lokasi: ${woItem.road}`);
     delete allWorkOrders[currentActiveWoId];
 
     alert("Work Order berhasil dihapus!");
     closeWoModal();
+}
+
+// Tarik data WO & Garis Draw dari Cloud saat pertama kali aplikasi dibuka (Multi-User Sync)
+async function loadCloudWorkOrders() {
+    try {
+        const res = await fetch(`${WEB_APP_URL}?action=GET_CLOUD_WO`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.workOrders && data.workOrders.length > 0) {
+                data.workOrders.forEach(wo => {
+                    allWorkOrders[wo.id] = wo;
+                    createOrUpdateMarker(wo);
+                });
+            }
+            if (data.drawLines && data.drawLines.length > 0) {
+                data.drawLines.forEach(line => {
+                    allDrawLines[line.id] = line;
+                    renderDrawLineOnMap(line);
+                });
+            }
+        }
+    } catch (e) {
+        console.warn("Gagal sinkronisasi data cloud:", e);
+    }
 }
 
 // ==========================================
@@ -605,6 +841,7 @@ function mulaiAnimasiIntroDanLoadData() {
 
   loadExcelData();
   loadAllVectorLayers();
+  loadCloudWorkOrders(); // Muat data WO & Garis yang tersimpan di Google Sheets
 
   setTimeout(() => {
     if (bar) bar.style.width = '100%';
