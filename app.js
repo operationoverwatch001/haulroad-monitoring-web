@@ -51,10 +51,16 @@ let workOrderDrawingsLayer = L.layerGroup();
 let isDrawingActive = false;
 let currentDrawPoints = [];
 let tempDrawPolyline = null;
-let selectedLineForWo = null; // Garis yang dikunci saat marking
+let selectedLineForWo = null; 
 
 // State Filter Tanggal Kalender (Default: null = Real-time Hari Ini)
 let calendarFilterDate = null; 
+
+// State Antrean Akumulasi Multi-Foto & Update Per-Job
+let mainUploadFilesQueue = [];
+let jobUpdateFilesQueue = [];
+let activeJobUpdateIndex = null;
+let currentTimelineHistory = [];
 
 let userMarker = null;
 let userAccuracyCircle = null;
@@ -114,6 +120,9 @@ if (pmtilesLib) {
 // 2. AUTHENTICATION, DEV BACKDOOR & WHITELIST
 // ==========================================
 window.addEventListener('DOMContentLoaded', async () => {
+  initDatePickersMax();
+  initMultiPhotoQueueListeners();
+
   const { data: { session } } = await _supabase.auth.getSession();
   if (session) {
     const authOverlay = document.getElementById('auth-overlay');
@@ -128,6 +137,16 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (authOverlay) authOverlay.style.display = 'flex';
   }
 });
+
+function initDatePickersMax() {
+  const todayYMD = getTodayYMDWita();
+  const mapDate = document.getElementById('mapCalendarDateInput');
+  const expStart = document.getElementById('exportStartDate');
+  const expEnd = document.getElementById('exportEndDate');
+  if (mapDate) mapDate.max = todayYMD;
+  if (expStart) expStart.max = todayYMD;
+  if (expEnd) expEnd.max = todayYMD;
+}
 
 async function checkUserRole(email) {
   try {
@@ -282,7 +301,10 @@ function toggleWorkOrderFloating() {
 
     if (plusBtn) plusBtn.style.display = 'none';
     if (submenu) submenu.style.display = 'none';
+
+    // AUTO-RESET TOOL MARK & DRAW JADI NONAKTIF
     activeWoTool = null;
+    document.querySelectorAll('.wo-sub-btn').forEach(b => b.classList.remove('active-tool'));
     selectedLineForWo = null;
     map.dragging.enable();
 
@@ -318,7 +340,7 @@ function setWoTool(toolName) {
   }
 }
 
-// Handler Klik Peta untuk Titik Mark WO
+// Handler Klik Peta untuk Titik Mark WO Bebas
 function handleMapClickForWo(latlng) {
   if (!isWorkOrderModeActive) return;
   if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
@@ -389,12 +411,13 @@ function renderDrawLineOnMap(lineItem) {
   polyLine.on('click', function(e) {
     L.DomEvent.stopPropagation(e);
 
-    // Jika sedang memilih tool MARK, kunci garis ini (Ubah jadi Biru Neon)
+    // Jika sedang memilih tool MARK, kunci garis ini (Ubah jadi Biru Neon) & KOSONGKAN NAMA JALAN
     if (isWorkOrderModeActive && activeWoTool === 'mark' && (currentUserRole === 'admin' || currentUserRole === 'inspector')) {
       selectedLineForWo = lineItem;
       polyLine.setStyle({ color: '#00f0ff', weight: 6 });
       const center = polyLine.getBounds().getCenter();
-      openCreateWoModal(lineItem.road, `Garis Sketsa Terkunci`, center, {}, false, lineItem.id);
+      // Nama jalan dikosongkan ("") agar pengawas wajib mengisi manual!
+      openCreateWoModal("", `Garis Sketsa Terkunci`, center, {}, true, lineItem.id);
       return;
     }
 
@@ -468,6 +491,7 @@ function openCreateWoModal(road, locationDetail, latlng, rawProps = {}, isManual
   currentWoMode = 'create';
   currentActiveWoId = null;
   activeWoFeatureData = { road, locationDetail, latlng, rawProps, isManualRoad, linkedLineId };
+  mainUploadFilesQueue = [];
 
   setupModalUI({
     title: "BUAT WORK ORDER (WO)",
@@ -477,13 +501,14 @@ function openCreateWoModal(road, locationDetail, latlng, rawProps = {}, isManual
     roadName: road,
     locationDetail: locationDetail,
     reporter: "",
-    jobs: [{ category: "Overgrade / Tanjakan Curam", notes: "" }],
+    jobs: [{ category: "Overgrade / Tanjakan Curam", notes: "", status: "OPEN" }],
     photoUrls: [],
     notesLabel: "Catatan Tambahan / Instruksi Umum:",
     notesPlaceholder: "Catatan opsional...",
     notesValue: "",
     uploadLabel: "Upload Foto (Acuan / Stage Plan Desain):",
     showJobsEdit: true,
+    showGlobalInputs: true,
     showStatusUpdate: false,
     showRefPhotos: false,
     showDelete: false,
@@ -501,22 +526,27 @@ function openEditWoModal(woId) {
   currentWoMode = 'edit';
   currentActiveWoId = woId;
   activeWoFeatureData = { ...item };
+  mainUploadFilesQueue = [];
+
+  const rawJobs = (item.jobs && item.jobs.length > 0) ? item.jobs : [{ category: "Overgrade / Tanjakan Curam", notes: item.notes || "", status: "OPEN" }];
+  const calculatedStatus = calculateParentStatus(rawJobs);
 
   setupModalUI({
     title: "EDIT WORK ORDER",
     sub: "Perbarui instruksi perbaikan atau status temuan jalan tambang.",
     createdTime: item.createdTime,
-    status: item.status || "OPEN",
+    status: calculatedStatus,
     roadName: item.road,
     locationDetail: item.sta,
     reporter: item.reporter,
-    jobs: (item.jobs && item.jobs.length > 0) ? item.jobs : [{ category: "Overgrade / Tanjakan Curam", notes: item.notes || "" }],
+    jobs: rawJobs,
     photoUrls: item.photoUrls || [],
     notesLabel: "Perbarui Catatan Umum:",
     notesPlaceholder: "Catatan perbaikan...",
     notesValue: item.notes || "",
     uploadLabel: "Tambah Foto Acuan Desain:",
     showJobsEdit: true,
+    showGlobalInputs: true,
     showStatusUpdate: true,
     showRefPhotos: (item.photoUrls && item.photoUrls.length > 0),
     showDelete: true,
@@ -532,27 +562,33 @@ function openViewWoModal(woId) {
   currentWoMode = 'view';
   currentActiveWoId = woId;
   activeWoFeatureData = { ...item };
+  mainUploadFilesQueue = [];
+
+  const rawJobs = (item.jobs && item.jobs.length > 0) ? item.jobs : [{ category: "Overgrade / Tanjakan Curam", notes: item.notes || "", status: "OPEN" }];
+  const calculatedStatus = calculateParentStatus(rawJobs);
+  const isMultiJob = rawJobs.length > 1;
 
   setupModalUI({
     title: "VIEW WORK ORDER & EVIDENCE",
     sub: "Rincian Work Order dan form pengiriman bukti progres lapangan.",
     createdTime: item.createdTime,
-    status: item.status || "OPEN",
+    status: calculatedStatus,
     roadName: item.road,
     locationDetail: item.sta,
     reporter: "",
-    jobs: (item.jobs && item.jobs.length > 0) ? item.jobs : [{ category: "Overgrade / Tanjakan Curam", notes: item.notes || "" }],
+    jobs: rawJobs,
     photoUrls: item.photoUrls || [],
     notesLabel: "Keterangan / Progress Lapangan:",
     notesPlaceholder: "Contoh : progress regrade",
     notesValue: "",
     uploadLabel: "Upload Foto:",
     showJobsEdit: false,
-    showStatusUpdate: true,
+    showGlobalInputs: !isMultiJob, // HILANGKAN JIKA JOB > 1
+    showStatusUpdate: !isMultiJob,
     showRefPhotos: (item.photoUrls && item.photoUrls.length > 0),
     showDelete: false,
     showViewProgress: true,
-    submitText: "Kirim Evidence"
+    submitText: isMultiJob ? "" : "Kirim Evidence"
   });
 }
 
@@ -565,6 +601,7 @@ function setupModalUI(cfg) {
   const roadInput = document.getElementById('woRoadName');
   const locDetail = document.getElementById('woLocationDetail');
   const repInput = document.getElementById('woReporterName');
+  const globalWrapper = document.getElementById('woGlobalInputsWrapper');
   const statusSelect = document.getElementById('woStatusUpdateSelect');
   const statusWrap = document.getElementById('woStatusUpdateWrapper');
   const notesLabel = document.getElementById('woNotesLabel');
@@ -573,36 +610,24 @@ function setupModalUI(cfg) {
   const deleteBtn = document.getElementById('woDeleteBtn');
   const viewProgBtn = document.getElementById('woViewProgressBtn');
   const submitBtn = document.getElementById('woSubmitBtn');
-  const previewBox = document.getElementById('woImagePreviewContainer');
   const fileInput = document.getElementById('woEvidenceFile');
 
   if (title) title.innerText = cfg.title;
   if (sub) sub.innerText = cfg.sub;
 
-  // Tanggal WO & Badge Status (Kotak Pink Foto 5)
   if (dateInfo) {
     dateInfo.style.display = cfg.createdTime ? 'block' : 'none';
     dateInfo.innerText = `Tanggal WO: ${cfg.createdTime || '-'}`;
   }
-  if (statusBadge) {
-    statusBadge.innerText = (cfg.status || "OPEN").toUpperCase();
-    const st = (cfg.status || "OPEN").toUpperCase();
-    if (st === "CLOSED") {
-      statusBadge.style.background = "#22c55e";
-      statusBadge.style.color = "#ffffff";
-    } else if (st === "PROGRESS") {
-      statusBadge.style.background = "#eab308";
-      statusBadge.style.color = "#000000";
-    } else {
-      statusBadge.style.background = "#e11d48";
-      statusBadge.style.color = "#ffffff";
-    }
-  }
+
+  // Update Badge Status Induk
+  updateStatusBadgeElement(statusBadge, cfg.status);
 
   if (roadInput) roadInput.value = cfg.roadName || "";
   if (locDetail) locDetail.value = cfg.locationDetail || "";
   if (repInput) repInput.value = cfg.reporter || "";
 
+  if (globalWrapper) globalWrapper.style.display = cfg.showGlobalInputs ? 'flex' : 'none';
   if (statusWrap) statusWrap.style.display = cfg.showStatusUpdate ? 'block' : 'none';
   if (statusSelect && cfg.status) statusSelect.value = cfg.status;
 
@@ -615,28 +640,62 @@ function setupModalUI(cfg) {
 
   if (deleteBtn) deleteBtn.style.display = cfg.showDelete ? 'block' : 'none';
   if (viewProgBtn) viewProgBtn.style.display = cfg.showViewProgress ? 'block' : 'none';
-  if (submitBtn) submitBtn.innerText = cfg.submitText;
+  
+  if (submitBtn) {
+    if (cfg.submitText) {
+      submitBtn.style.display = 'block';
+      submitBtn.innerText = cfg.submitText;
+    } else {
+      submitBtn.style.display = 'none';
+    }
+  }
 
   if (fileInput) fileInput.value = '';
-  if (previewBox) previewBox.innerHTML = '';
+  renderQueueThumbnails(mainUploadFilesQueue, 'woImagePreviewContainer', 'removeMainQueueFile');
 
-  // Setup Multi-Job Task Cards
-  renderJobsUI(cfg.jobs, cfg.showJobsEdit);
+  // Render Kartu-kartu Job
+  renderJobsUI(cfg.jobs, cfg.showJobsEdit, currentWoMode === 'view');
 
-  // Setup Foto Acuan / Stage Plan (View & Zoom)
+  // Render Foto Acuan Awal (Foto 7)
   renderRefPhotosUI(cfg.photoUrls, cfg.showRefPhotos);
 
   if (modal) modal.style.display = 'flex';
+}
+
+function updateStatusBadgeElement(badgeElem, statusText) {
+  if (!badgeElem) return;
+  const st = (statusText || "OPEN").toUpperCase();
+  badgeElem.innerText = st;
+  if (st === "CLOSED") {
+    badgeElem.style.background = "#22c55e";
+    badgeElem.style.color = "#ffffff";
+  } else if (st === "PROGRESS") {
+    badgeElem.style.background = "#eab308";
+    badgeElem.style.color = "#000000";
+  } else {
+    badgeElem.style.background = "#e11d48";
+    badgeElem.style.color = "#ffffff";
+  }
+}
+
+function calculateParentStatus(jobsList) {
+  if (!jobsList || jobsList.length === 0) return "OPEN";
+  const allClosed = jobsList.every(j => (j.status || "").toUpperCase() === "CLOSED");
+  const allOpen = jobsList.every(j => !(j.status) || (j.status || "").toUpperCase() === "OPEN");
+  if (allClosed) return "CLOSED";
+  if (allOpen) return "OPEN";
+  return "PROGRESS";
 }
 
 function closeWoModal() {
   const modal = document.getElementById('woModalOverlay');
   if (modal) modal.style.display = 'none';
   selectedLineForWo = null;
+  mainUploadFilesQueue = [];
 }
 
-// Multi-Job Dynamic DOM Handler
-function renderJobsUI(jobsList, isEditable) {
+// Multi-Job Dynamic DOM Handler (Foto 5)
+function renderJobsUI(jobsList, isEditable, isViewMode = false) {
   const container = document.getElementById('woJobsContainer');
   const addBtn = document.getElementById('btnAddJobBtn');
   if (!container) return;
@@ -644,7 +703,7 @@ function renderJobsUI(jobsList, isEditable) {
   if (addBtn) addBtn.style.display = isEditable ? 'block' : 'none';
   container.innerHTML = '';
 
-  const jobs = (jobsList && jobsList.length > 0) ? jobsList : [{ category: "Overgrade / Tanjakan Curam", notes: "" }];
+  const jobs = (jobsList && jobsList.length > 0) ? jobsList : [{ category: "Overgrade / Tanjakan Curam", notes: "", status: "OPEN" }];
 
   jobs.forEach((j, idx) => {
     const card = document.createElement('div');
@@ -653,6 +712,9 @@ function renderJobsUI(jobsList, isEditable) {
     card.style.border = '1px solid #334155';
     card.style.borderRadius = '6px';
     card.style.padding = '8px 10px';
+
+    const jobSt = (j.status || "OPEN").toUpperCase();
+    let stColor = jobSt === 'CLOSED' ? '#22c55e' : (jobSt === 'PROGRESS' ? '#eab308' : '#e11d48');
 
     if (isEditable) {
       card.innerHTML = `
@@ -670,9 +732,23 @@ function renderJobsUI(jobsList, isEditable) {
         <textarea class="job-notes-input" rows="1" placeholder="Instruksi khusus job #${idx + 1}..." style="width:100%; background:#0f172a; border:1px solid #475569; padding:4px 6px; border-radius:4px; color:#fff; font-size:11px; resize:none;">${j.notes || ''}</textarea>
       `;
     } else {
+      // Tampilan View Mode: Ada Badge Status Job (Garis Merah) & Tombol UPDATE (Garis Pink)
+      let updateBtnHtml = '';
+      if (isViewMode) {
+        updateBtnHtml = `
+          <button type="button" onclick="openJobUpdateModal(${idx})" style="background:#ec4899; color:#fff; border:none; padding:4px 10px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer; box-shadow:0 2px 6px rgba(236,72,153,0.4);">UPDATE</button>
+        `;
+      }
+
       card.innerHTML = `
-        <div style="font-size:10px; font-weight:bold; color:#38bdf8; margin-bottom:2px;">JOB #${idx + 1}: ${j.category}</div>
-        <div style="font-size:11px; color:#cbd5e1;">${j.notes || 'Tidak ada instruksi khusus.'}</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <div>
+            <span style="font-size:11px; font-weight:bold; color:#38bdf8;">JOB #${idx + 1}: ${j.category}</span>
+            <span style="font-size:9px; font-weight:bold; padding:1px 5px; border-radius:3px; background:${stColor}; color:#000; margin-left:6px;">${jobSt}</span>
+          </div>
+          ${updateBtnHtml}
+        </div>
+        <div style="font-size:11px; color:#cbd5e1; margin-top:2px;">${j.notes || 'Tidak ada instruksi khusus.'}</div>
       `;
     }
     container.appendChild(card);
@@ -681,7 +757,7 @@ function renderJobsUI(jobsList, isEditable) {
 
 function addNewJobItem() {
   const currentJobs = collectJobsFromUI();
-  currentJobs.push({ category: "Overgrade / Tanjakan Curam", notes: "" });
+  currentJobs.push({ category: "Overgrade / Tanjakan Curam", notes: "", status: "OPEN" });
   renderJobsUI(currentJobs, true);
 }
 
@@ -696,17 +772,18 @@ function collectJobsFromUI() {
   if (!container) return [];
   const cards = container.querySelectorAll('.job-item-card');
   const list = [];
-  cards.forEach(c => {
+  cards.forEach((c, idx) => {
     const sel = c.querySelector('.job-category-select');
     const txt = c.querySelector('.job-notes-input');
+    const existingStatus = (activeWoFeatureData && activeWoFeatureData.jobs && activeWoFeatureData.jobs[idx]) ? activeWoFeatureData.jobs[idx].status : "OPEN";
     if (sel && txt) {
-      list.push({ category: sel.value, notes: txt.value.trim() });
+      list.push({ category: sel.value, notes: txt.value.trim(), status: existingStatus });
     }
   });
-  return list.length > 0 ? list : [{ category: "Overgrade / Tanjakan Curam", notes: "" }];
+  return list.length > 0 ? list : [{ category: "Overgrade / Tanjakan Curam", notes: "", status: "OPEN" }];
 }
 
-// Foto Acuan / Stage Plan Desain Lightbox UI
+// Foto Acuan / Stage Plan Desain (Foto 7)
 function renderRefPhotosUI(urls, isVisible) {
   const wrap = document.getElementById('woRefPhotosSection');
   const gallery = document.getElementById('woRefPhotosGallery');
@@ -736,31 +813,60 @@ function renderRefPhotosUI(urls, isVisible) {
   });
 }
 
-// Pratinjau Pemilihan Multi-Foto
-document.addEventListener("DOMContentLoaded", () => {
-  const fileInput = document.getElementById('woEvidenceFile');
-  const previewBox = document.getElementById('woImagePreviewContainer');
-  if (fileInput && previewBox) {
-    fileInput.addEventListener('change', () => {
-      previewBox.innerHTML = '';
-      if (!fileInput.files) return;
-      Array.from(fileInput.files).forEach(f => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const thumb = document.createElement('img');
-          thumb.src = e.target.result;
-          thumb.style.width = '45px';
-          thumb.style.height = '45px';
-          thumb.style.objectFit = 'cover';
-          thumb.style.borderRadius = '4px';
-          thumb.style.border = '1px solid #38bdf8';
-          previewBox.appendChild(thumb);
-        };
-        reader.readAsDataURL(f);
-      });
+// ==========================================
+// 4B. ANTRIAN MULTI-FOTO DENGAN TOMBOL HAPUS (X)
+// ==========================================
+function initMultiPhotoQueueListeners() {
+  const mainInput = document.getElementById('woEvidenceFile');
+  if (mainInput) {
+    mainInput.addEventListener('change', (e) => {
+      if (e.target.files) {
+        Array.from(e.target.files).forEach(f => mainUploadFilesQueue.push(f));
+        renderQueueThumbnails(mainUploadFilesQueue, 'woImagePreviewContainer', 'removeMainQueueFile');
+      }
     });
   }
-});
+
+  const jobInput = document.getElementById('jobUpdateFile');
+  if (jobInput) {
+    jobInput.addEventListener('change', (e) => {
+      if (e.target.files) {
+        Array.from(e.target.files).forEach(f => jobUpdateFilesQueue.push(f));
+        renderQueueThumbnails(jobUpdateFilesQueue, 'jobUpdatePreviewContainer', 'removeJobQueueFile');
+      }
+    });
+  }
+}
+
+function renderQueueThumbnails(queueArray, containerId, deleteFnName) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+
+  queueArray.forEach((file, index) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'preview-thumb-wrap';
+      wrap.innerHTML = `
+        <img src="${e.target.result}" class="preview-thumb-img">
+        <button type="button" class="preview-thumb-del" onclick="${deleteFnName}(${index})" title="Hapus Foto">✕</button>
+      `;
+      container.appendChild(wrap);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function removeMainQueueFile(index) {
+  mainUploadFilesQueue.splice(index, 1);
+  renderQueueThumbnails(mainUploadFilesQueue, 'woImagePreviewContainer', 'removeMainQueueFile');
+}
+
+function removeJobQueueFile(index) {
+  jobUpdateFilesQueue.splice(index, 1);
+  renderQueueThumbnails(jobUpdateFilesQueue, 'jobUpdatePreviewContainer', 'removeJobQueueFile');
+}
 
 // Helper Kompresi Gambar
 function compressImage(file, maxDimension = 1280, quality = 0.75) {
@@ -800,12 +906,11 @@ function compressImage(file, maxDimension = 1280, quality = 0.75) {
   });
 }
 
-// Eksekusi Submit Form WO & Evidence
+// Eksekusi Submit Form WO Utama
 async function submitWorkOrder() {
   const roadInput = document.getElementById('woRoadName');
   const repInput = document.getElementById('woReporterName');
   const notesElem = document.getElementById('woNotes');
-  const fileInput = document.getElementById('woEvidenceFile');
   const locDetail = document.getElementById('woLocationDetail');
   const statusSelect = document.getElementById('woStatusUpdateSelect');
 
@@ -815,34 +920,31 @@ async function submitWorkOrder() {
   const detailLoc = locDetail ? locDetail.value : "";
   const statusBaru = statusSelect ? statusSelect.value : "PROGRESS";
 
+  // VALIDASI KETAT NAMA RUAS JALAN (FOTO 2)
   if (!roadName) {
     alert("Nama Ruas Jalan wajib diisi, bre!");
+    if (roadInput) roadInput.focus();
     return;
   }
   if (!reporter) {
     alert("Nama / NRP Pelapor wajib diisi manual!");
-    return;
-  }
-  if (!notes) {
-    alert("Catatan atau keterangan lapangan wajib diisi!");
+    if (repInput) repInput.focus();
     return;
   }
 
-  // Proses Unggah Banyak Foto
+  // Proses Unggah Gambar dari Antrean Akumulasi
   const imagesPayload = [];
-  if (fileInput && fileInput.files && fileInput.files.length > 0) {
-    for (let i = 0; i < fileInput.files.length; i++) {
-      const file = fileInput.files[i];
-      try {
-        const base64 = await compressImage(file);
-        imagesPayload.push({
-          imageBase64: base64,
-          imageName: `IMG_${roadName.replace(/\s+/g, '_')}_${Date.now()}_${i + 1}.jpg`,
-          imageMime: "image/jpeg"
-        });
-      } catch (e) {
-        console.warn("Gagal kompres foto:", e);
-      }
+  for (let i = 0; i < mainUploadFilesQueue.length; i++) {
+    const file = mainUploadFilesQueue[i];
+    try {
+      const base64 = await compressImage(file);
+      imagesPayload.push({
+        imageBase64: base64,
+        imageName: `IMG_${roadName.replace(/\s+/g, '_')}_${Date.now()}_${i + 1}.jpg`,
+        imageMime: "image/jpeg"
+      });
+    } catch (e) {
+      console.warn("Gagal kompres foto:", e);
     }
   }
 
@@ -868,7 +970,6 @@ async function submitWorkOrder() {
     allWorkOrders[woId] = woItem;
     createOrUpdateMarker(woItem);
 
-    // Refresh garis sketsa draw yang dikunci
     if (linkedLineId && allDrawLines[linkedLineId]) {
       renderDrawLineOnMap(allDrawLines[linkedLineId]);
     }
@@ -923,7 +1024,7 @@ async function submitWorkOrder() {
     alert("Perubahan Work Order berhasil disimpan!");
 
   } else if (currentWoMode === 'view') {
-    // Pengawas / Viewer Mengirim Progres Evidence
+    // Mode View Single Job
     syncWorkOrderToCloud({
       action: "SUBMIT_EVIDENCE",
       woId: currentActiveWoId,
@@ -934,9 +1035,11 @@ async function submitWorkOrder() {
       images: imagesPayload
     });
 
-    // Update status lokal tiket WO
     if (allWorkOrders[currentActiveWoId]) {
       allWorkOrders[currentActiveWoId].status = statusBaru;
+      if (allWorkOrders[currentActiveWoId].jobs && allWorkOrders[currentActiveWoId].jobs[0]) {
+        allWorkOrders[currentActiveWoId].jobs[0].status = statusBaru;
+      }
       createOrUpdateMarker(allWorkOrders[currentActiveWoId]);
     }
 
@@ -945,6 +1048,109 @@ async function submitWorkOrder() {
   }
 
   closeWoModal();
+}
+
+// ==========================================
+// 4C. MODAL UPDATE PROGRESS KHUSUS PER-JOB (FOTO 5)
+// ==========================================
+function openJobUpdateModal(jobIndex) {
+  if (!currentActiveWoId || !allWorkOrders[currentActiveWoId]) return;
+  const wo = allWorkOrders[currentActiveWoId];
+  if (!wo.jobs || !wo.jobs[jobIndex]) return;
+
+  activeJobUpdateIndex = jobIndex;
+  jobUpdateFilesQueue = [];
+
+  const targetJob = wo.jobs[jobIndex];
+  const modal = document.getElementById('jobUpdateModalOverlay');
+  const jobInfo = document.getElementById('jobUpdateJobInfo');
+  const repInput = document.getElementById('jobUpdateReporter');
+  const statusSelect = document.getElementById('jobUpdateStatus');
+  const notesInput = document.getElementById('jobUpdateNotes');
+  const fileInput = document.getElementById('jobUpdateFile');
+
+  if (jobInfo) jobInfo.innerText = `Job #${jobIndex + 1}: ${targetJob.category}`;
+  if (repInput) repInput.value = '';
+  if (statusSelect) statusSelect.value = (targetJob.status || "PROGRESS").toUpperCase();
+  if (notesInput) notesInput.value = '';
+  if (fileInput) fileInput.value = '';
+
+  renderQueueThumbnails(jobUpdateFilesQueue, 'jobUpdatePreviewContainer', 'removeJobQueueFile');
+
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeJobUpdateModal() {
+  const modal = document.getElementById('jobUpdateModalOverlay');
+  if (modal) modal.style.display = 'none';
+  activeJobUpdateIndex = null;
+  jobUpdateFilesQueue = [];
+}
+
+async function submitJobUpdate() {
+  if (!currentActiveWoId || activeJobUpdateIndex === null) return;
+  const wo = allWorkOrders[currentActiveWoId];
+  if (!wo) return;
+
+  const repInput = document.getElementById('jobUpdateReporter');
+  const statusSelect = document.getElementById('jobUpdateStatus');
+  const notesInput = document.getElementById('jobUpdateNotes');
+
+  const reporter = repInput ? repInput.value.trim() : "";
+  const statusBaru = statusSelect ? statusSelect.value : "PROGRESS";
+  const notes = notesInput ? notesInput.value.trim() : "";
+
+  if (!reporter) {
+    alert("Nama / NRP Pengawas wajib diisi!");
+    if (repInput) repInput.focus();
+    return;
+  }
+
+  // Proses Unggah Gambar Antrean Khusus Job
+  const imagesPayload = [];
+  for (let i = 0; i < jobUpdateFilesQueue.length; i++) {
+    const file = jobUpdateFilesQueue[i];
+    try {
+      const base64 = await compressImage(file);
+      imagesPayload.push({
+        imageBase64: base64,
+        imageName: `IMG_JOB${activeJobUpdateIndex + 1}_${wo.road.replace(/\s+/g, '_')}_${Date.now()}_${i + 1}.jpg`,
+        imageMime: "image/jpeg"
+      });
+    } catch (e) {
+      console.warn("Gagal kompres foto job:", e);
+    }
+  }
+
+  const jobTargetName = `Job #${activeJobUpdateIndex + 1}: ${wo.jobs[activeJobUpdateIndex].category}`;
+
+  // Kirim ke Backend Spreadsheet & Drive
+  syncWorkOrderToCloud({
+    action: "SUBMIT_EVIDENCE",
+    woId: currentActiveWoId,
+    jobIndex: activeJobUpdateIndex,
+    jobTarget: jobTargetName,
+    road: wo.road,
+    status: statusBaru,
+    notes: notes,
+    reporter: reporter,
+    images: imagesPayload
+  });
+
+  // Update State Lokal
+  wo.jobs[activeJobUpdateIndex].status = statusBaru;
+  const newParentStatus = calculateParentStatus(wo.jobs);
+  wo.status = newParentStatus;
+
+  // Refresh Tampilan Modal & Peta
+  createOrUpdateMarker(wo);
+  updateStatusBadgeElement(document.getElementById('woStatusBadge'), newParentStatus);
+  renderJobsUI(wo.jobs, false, true);
+
+  catatLogKeServer("SUBMIT JOB EVIDENCE", `Pelapor: ${reporter}, Lokasi: ${wo.road}, ${jobTargetName}, Status: ${statusBaru}`);
+  alert(`Berhasil mengupdate progress ${jobTargetName} menjadi: ${statusBaru}!`);
+
+  closeJobUpdateModal();
 }
 
 function syncWorkOrderToCloud(payload) {
@@ -981,11 +1187,10 @@ function createOrUpdateMarker(woItem) {
   if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
     editBtnHtml = `<button onclick="openEditWoModal('${woItem.id}')" style="background:#e11d48; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">Edit WO</button>`;
   }
-  // Tombol Biru Cyan Bertuliskan "View"
   let viewBtnHtml = `<button onclick="openViewWoModal('${woItem.id}')" style="background:#00f0ff; color:#000; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">View</button>`;
 
   let jobsListText = (woItem.jobs && woItem.jobs.length > 0)
-    ? woItem.jobs.map((j, i) => `${i + 1}. ${j.category}`).join(', ')
+    ? woItem.jobs.map((j, i) => `${i + 1}. ${j.category} [${j.status || 'OPEN'}]`).join('<br>')
     : (woItem.category || '-');
 
   marker.bindPopup(`
@@ -995,9 +1200,9 @@ function createOrUpdateMarker(woItem) {
         ${viewBtnHtml}
       </div>
       <b>Tanggal WO:</b> ${woItem.createdTime || '-'}<br>
-      <b>Status:</b> <span style="font-weight:bold; color:${pinColor};">${status}</span><br>
+      <b>Status Induk:</b> <span style="font-weight:bold; color:${pinColor};">${status}</span><br>
       <b>Lokasi:</b> ${woItem.road} (${woItem.sta})<br>
-      <b>Pekerjaan:</b> ${jobsListText}<br>
+      <b>Daftar Pekerjaan:</b><br>${jobsListText}<br>
       <b>Pelapor:</b> ${woItem.reporter}
     </div>
   `);
@@ -1029,7 +1234,7 @@ function deleteCurrentWorkOrder() {
 }
 
 // ==========================================
-// 5. MODAL RIWAYAT PROGRESS TIMELINE
+// 5. MODAL RIWAYAT PROGRESS TIMELINE & TAB FILTER
 // ==========================================
 async function openProgressTimelineModal() {
   if (!currentActiveWoId) return;
@@ -1038,6 +1243,7 @@ async function openProgressTimelineModal() {
   const titleInfo = document.getElementById('timelineRoadInfo');
   const listContainer = document.getElementById('progressTimelineList');
   const emptyNotice = document.getElementById('emptyProgressNotice');
+  const filterTabs = document.getElementById('timelineJobFilterTabs');
 
   const wo = allWorkOrders[currentActiveWoId];
   if (titleInfo && wo) {
@@ -1045,10 +1251,25 @@ async function openProgressTimelineModal() {
   }
 
   if (listContainer && emptyNotice) {
-    // Bersihkan kartu sebelumnya kecuali notif kosong
     const cards = listContainer.querySelectorAll('.timeline-history-card');
     cards.forEach(c => c.remove());
     emptyNotice.style.display = 'none';
+  }
+
+  // Setup Tombol Tab Filter Job (Foto 5)
+  if (filterTabs && wo && wo.jobs && wo.jobs.length > 1) {
+    filterTabs.style.display = 'flex';
+    filterTabs.innerHTML = `
+      <button onclick="filterTimelineByJob('ALL')" id="tabJobAll" style="background:#00f0ff; color:#000; border:none; padding:3px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">Semua Job</button>
+    `;
+    wo.jobs.forEach((j, i) => {
+      filterTabs.innerHTML += `
+        <button onclick="filterTimelineByJob('Job #${i + 1}')" style="background:#1e293b; color:#cbd5e1; border:1px solid #475569; padding:3px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">Job #${i + 1}</button>
+      `;
+    });
+  } else if (filterTabs) {
+    filterTabs.style.display = 'none';
+    filterTabs.innerHTML = '';
   }
 
   if (modal) modal.style.display = 'flex';
@@ -1057,50 +1278,85 @@ async function openProgressTimelineModal() {
     const res = await fetch(`${WEB_APP_URL}?action=GET_WO_HISTORY&wo_id=${encodeURIComponent(currentActiveWoId)}`);
     if (res.ok) {
       const result = await res.json();
-      const history = result.history || [];
-
-      if (history.length === 0) {
-        if (emptyNotice) emptyNotice.style.display = 'block';
-      } else {
-        if (emptyNotice) emptyNotice.style.display = 'none';
-        history.forEach(item => {
-          const card = document.createElement('div');
-          card.className = 'timeline-history-card';
-          card.style.background = '#1e293b';
-          card.style.border = '1px solid #334155';
-          card.style.borderRadius = '8px';
-          card.style.padding = '10px 12px';
-
-          const st = (item.status || "PROGRESS").toUpperCase();
-          let stColor = st === 'CLOSED' ? '#22c55e' : '#eab308';
-
-          let photosHtml = '';
-          if (item.photoUrls && item.photoUrls.length > 0) {
-            photosHtml = `
-              <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
-                ${item.photoUrls.map(u => `
-                  <img src="${u}" style="width:70px; height:55px; object-fit:cover; border-radius:4px; border:1px solid #475569; cursor:pointer;" onclick="openImageLightbox('${u}')" title="Klik untuk perbesar & download">
-                `).join('')}
-              </div>
-            `;
-          }
-
-          card.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-              <span style="font-size:10px; color:#38bdf8; font-family:monospace;">${item.timestamp}</span>
-              <span style="font-size:9px; font-weight:bold; padding:2px 6px; border-radius:4px; background:${stColor}; color:#000;">${st}</span>
-            </div>
-            <div style="font-size:11px; font-weight:bold; color:#fff;">Pengawas: ${item.reporter}</div>
-            <div style="font-size:11px; color:#cbd5e1; margin-top:2px;">${item.notes}</div>
-            ${photosHtml}
-          `;
-          listContainer.appendChild(card);
-        });
-      }
+      currentTimelineHistory = result.history || [];
+      renderTimelineCards(currentTimelineHistory);
     }
   } catch (err) {
     if (emptyNotice) emptyNotice.style.display = 'block';
   }
+}
+
+function filterTimelineByJob(targetTag) {
+  const tabs = document.querySelectorAll('#timelineJobFilterTabs button');
+  tabs.forEach(t => {
+    t.style.background = '#1e293b';
+    t.style.color = '#cbd5e1';
+    t.style.border = '1px solid #475569';
+  });
+  if (window.event && window.event.target) {
+    window.event.target.style.background = '#00f0ff';
+    window.event.target.style.color = '#000000';
+    window.event.target.style.border = 'none';
+  }
+
+  if (targetTag === 'ALL') {
+    renderTimelineCards(currentTimelineHistory);
+  } else {
+    const filtered = currentTimelineHistory.filter(h => (h.jobTarget || '').includes(targetTag));
+    renderTimelineCards(filtered);
+  }
+}
+
+function renderTimelineCards(historyList) {
+  const listContainer = document.getElementById('progressTimelineList');
+  const emptyNotice = document.getElementById('emptyProgressNotice');
+  if (!listContainer || !emptyNotice) return;
+
+  const cards = listContainer.querySelectorAll('.timeline-history-card');
+  cards.forEach(c => c.remove());
+
+  if (!historyList || historyList.length === 0) {
+    emptyNotice.style.display = 'block';
+    return;
+  }
+  emptyNotice.style.display = 'none';
+
+  historyList.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'timeline-history-card';
+    card.style.background = '#1e293b';
+    card.style.border = '1px solid #334155';
+    card.style.borderRadius = '8px';
+    card.style.padding = '10px 12px';
+
+    const st = (item.status || "PROGRESS").toUpperCase();
+    let stColor = st === 'CLOSED' ? '#22c55e' : (st === 'PROGRESS' ? '#eab308' : '#e11d48');
+
+    let photosHtml = '';
+    if (item.photoUrls && item.photoUrls.length > 0) {
+      photosHtml = `
+        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+          ${item.photoUrls.map(u => `
+            <img src="${u}" style="width:70px; height:55px; object-fit:cover; border-radius:4px; border:1px solid #475569; cursor:pointer;" onclick="openImageLightbox('${u}')" title="Klik untuk perbesar & download">
+          `).join('')}
+        </div>
+      `;
+    }
+
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <div>
+          <span style="font-size:10px; color:#38bdf8; font-family:monospace;">${item.timestamp}</span>
+          ${item.jobTarget ? `<span style="font-size:9px; font-weight:bold; color:#ec4899; margin-left:6px;">[${item.jobTarget}]</span>` : ''}
+        </div>
+        <span style="font-size:9px; font-weight:bold; padding:2px 6px; border-radius:4px; background:${stColor}; color:#000;">${st}</span>
+      </div>
+      <div style="font-size:11px; font-weight:bold; color:#fff;">Pengawas: ${item.reporter}</div>
+      <div style="font-size:11px; color:#cbd5e1; margin-top:2px;">${item.notes || '-'}</div>
+      ${photosHtml}
+    `;
+    listContainer.appendChild(card);
+  });
 }
 
 function closeProgressTimelineModal() {
@@ -1108,7 +1364,7 @@ function closeProgressTimelineModal() {
   if (modal) modal.style.display = 'none';
 }
 
-// Lightbox Modal Zoom & Download Foto
+// Lightbox Modal Zoom & Download Foto (Foto 7)
 function openImageLightbox(url) {
   const modal = document.getElementById('imageLightboxModal');
   const img = document.getElementById('lightboxImg');
@@ -1131,8 +1387,11 @@ function closeImageLightbox() {
 function openCalendarFilterModal() {
   const modal = document.getElementById('calendarFilterModal');
   const dateInput = document.getElementById('mapCalendarDateInput');
-  const nowStr = new Date().toISOString().split('T')[0];
-  if (dateInput) dateInput.value = calendarFilterDate || nowStr;
+  const todayYMD = getTodayYMDWita();
+  if (dateInput) {
+    dateInput.max = todayYMD; // Anti-Masa Depan
+    dateInput.value = calendarFilterDate || todayYMD;
+  }
   if (modal) modal.style.display = 'flex';
 }
 
@@ -1144,6 +1403,13 @@ function closeCalendarFilterModal() {
 function applyCalendarDateFilter() {
   const dateInput = document.getElementById('mapCalendarDateInput');
   if (!dateInput || !dateInput.value) return;
+
+  const todayYMD = getTodayYMDWita();
+  if (dateInput.value > todayYMD) {
+    alert("Wkwk gak bisa milih tanggal masa depan bre! Maksimal hari ini.");
+    dateInput.value = todayYMD;
+    return;
+  }
 
   calendarFilterDate = dateInput.value;
   closeCalendarFilterModal();
@@ -1171,8 +1437,7 @@ function refreshWorkOrderMapDisplay() {
   workOrderMarkersLayer.clearLayers();
   workOrderDrawingsLayer.clearLayers();
 
-  const nowWita = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar" }));
-  const todayYMD = nowWita.toISOString().split('T')[0];
+  const todayYMD = getTodayYMDWita();
 
   Object.values(allWorkOrders).forEach(wo => {
     const woDateYMD = parseTimestampToYMD(wo.createdTime);
@@ -1181,13 +1446,12 @@ function refreshWorkOrderMapDisplay() {
     let shouldShow = false;
 
     if (calendarFilterDate === null) {
-      // Tampilan Default Hari Ini:
-      // Tampilkan WO hari ini ATAU WO hari kemarin yang belum CLOSED (OPEN / PROGRESS)
+      // Default: Tampilkan WO hari ini ATAU backlog hari kemarin yang belum CLOSED
       if (woDateYMD === todayYMD || status !== 'CLOSED') {
         shouldShow = true;
       }
     } else {
-      // Mode History: Tampilkan semua WO yang lahir di tanggal tersebut
+      // Mode History: Tampilkan semua WO yang dibuat di tanggal tersebut
       if (woDateYMD === calendarFilterDate) {
         shouldShow = true;
       }
@@ -1195,7 +1459,7 @@ function refreshWorkOrderMapDisplay() {
 
     if (shouldShow) {
       createOrUpdateMarker(wo);
-      // Tampilkan garis draw yang terkunci dengan WO ini
+      // Tampilkan garis draw terkunci bersama titik mark WO
       if (wo.linkedLineId && allDrawLines[wo.linkedLineId]) {
         renderDrawLineOnMap(allDrawLines[wo.linkedLineId]);
       }
@@ -1211,9 +1475,16 @@ function refreshWorkOrderMapDisplay() {
   });
 }
 
+function getTodayYMDWita() {
+  const nowWita = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar" }));
+  const y = nowWita.getFullYear();
+  const m = String(nowWita.getMonth() + 1).padStart(2, '0');
+  const d = String(nowWita.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function parseTimestampToYMD(ts) {
   if (!ts) return "";
-  // Format contoh: "16/09/2026, 12:19:53 WITA"
   if (ts.includes('/')) {
     const parts = ts.split(',')[0].split('/');
     if (parts.length === 3) {
@@ -1264,7 +1535,6 @@ async function executeExportRekapRange() {
     const json = await res.json();
     const allData = json.data || [];
 
-    // Filter tanggal
     const filtered = allData.filter(wo => {
       const d = parseTimestampToYMD(wo.createdTime);
       return d >= sDate && d <= eDate;
@@ -1294,18 +1564,16 @@ async function executeExportRekapRange() {
       doc.text(`${idx + 1}. [${(wo.status || 'OPEN').toUpperCase()}] ${wo.road} (${wo.sta}) - Tgl: ${wo.createdTime || '-'} (Oleh: ${wo.reporter})`, 14, yPos);
       yPos += 5;
 
-      // Jobs List
       doc.setFont("helvetica", "normal");
-      const jobText = (wo.jobs && wo.jobs.length > 0) ? wo.jobs.map(j => `${j.category}: ${j.notes}`).join(' | ') : (wo.notes || '-');
+      const jobText = (wo.jobs && wo.jobs.length > 0) ? wo.jobs.map(j => `${j.category} [${j.status || 'OPEN'}]: ${j.notes}`).join(' | ') : (wo.notes || '-');
       doc.text(`   Instruksi Pekerjaan: ${jobText}`, 14, yPos);
       yPos += 5;
 
-      // Timeline Progress
       const hist = wo.progressHistory || [];
       if (hist.length > 0) {
         doc.setFont("helvetica", "italic");
         hist.forEach(h => {
-          doc.text(`   - ${h.timestamp} [${h.status}] Oleh ${h.reporter}: ${h.notes} (${h.photoUrls.length} Foto)`, 18, yPos);
+          doc.text(`   - ${h.timestamp} [${h.status}] ${h.jobTarget ? '(' + h.jobTarget + ')' : ''} Oleh ${h.reporter}: ${h.notes} (${h.photoUrls.length} Foto)`, 18, yPos);
           yPos += 4;
         });
       } else {
