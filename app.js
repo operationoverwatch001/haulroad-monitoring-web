@@ -4,7 +4,6 @@
 const SUPABASE_URL = 'https://bjgojyazemlrwnqpxoqp.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_mUqC6rBWoHL-5IjW44uhfA_TL7YB1Zg';
 
-// Inisialisasi client Supabase dengan persistensi sesi agar tahan lama (1 bulan)
 const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
@@ -18,9 +17,8 @@ const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, 
 // ==========================================
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec";
 let currentNRP = "SUPABASE_USER";
-let currentUserRole = "viewer"; // Default viewer jika role null/kosong
+let currentUserRole = "viewer"; 
 
-// Cek Sesi Login Saat Web Dibuka (Auto-Bypass jika sesi aktif)
 window.addEventListener('DOMContentLoaded', async () => {
     const { data: { session } } = await _supabase.auth.getSession();
     if (session) {
@@ -37,7 +35,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// Cek Role User di Tabel Whitelist Supabase (Aman dari error 400 pakai maybeSingle)
 async function checkUserRole(email) {
     try {
         const { data, error } = await _supabase
@@ -47,7 +44,6 @@ async function checkUserRole(email) {
             .maybeSingle();
 
         if (error) {
-            console.warn("Info Role: Menggunakan hak akses default (Viewer).", error.message);
             currentUserRole = "viewer";
             return;
         }
@@ -62,25 +58,20 @@ async function checkUserRole(email) {
     }
 }
 
-// Fungsi Kirim OTP & Cek Whitelist Database Supabase
 window.requestOtp = async function() {
     const emailInput = document.getElementById('email-input');
     const statusMsg = document.getElementById('auth-status');
     if (!emailInput || !statusMsg) return;
 
     const email = emailInput.value.trim().toLowerCase();
-
     if (!email) {
         statusMsg.innerText = 'Masukkan email dulu, bre!';
         return;
     }
 
     statusMsg.innerText = 'Memeriksa hak akses...';
-
-    // 1. Cek Domain Kantor
     let isAllowed = email.endsWith('@saptaindra.co.id');
 
-    // 2. Cek Tabel Whitelist Supabase
     if (!isAllowed) {
         const { data, error } = await _supabase
             .from('Whitelist')
@@ -88,14 +79,10 @@ window.requestOtp = async function() {
             .eq('Email', email);
 
         if (error) {
-            console.error("Supabase Error:", error);
             statusMsg.innerText = 'Error DB: ' + error.message;
             return;
         }
-
-        if (data && data.length > 0) {
-            isAllowed = true;
-        }
+        if (data && data.length > 0) isAllowed = true;
     }
 
     if (!isAllowed) {
@@ -104,7 +91,6 @@ window.requestOtp = async function() {
     }
 
     statusMsg.innerText = 'Mengirim kode OTP...';
-
     const { error } = await _supabase.auth.signInWithOtp({
         email: email,
         options: { shouldCreateUser: true }
@@ -121,7 +107,6 @@ window.requestOtp = async function() {
     }
 };
 
-// Fungsi Verifikasi Kode OTP (Mendukung token 8 digit)
 window.verifyOtp = async function() {
     const emailInput = document.getElementById('email-input');
     const otpInput = document.getElementById('otp-input');
@@ -137,7 +122,6 @@ window.verifyOtp = async function() {
     }
 
     statusMsg.innerText = 'Memverifikasi kode...';
-
     const { data, error } = await _supabase.auth.verifyOtp({
         email: email,
         token: token,
@@ -159,17 +143,21 @@ window.verifyOtp = async function() {
 };
 
 // ==========================================
-// MODUL GEO-TICKETING WORK ORDER (WO) & PERMIT ADMIN/INSPECTOR
+// MODUL WORK ORDER (WO), SUB-MENU MARK/DRAW & ROLE PERMIT
 // ==========================================
 let isWorkOrderModeActive = false;
+let activeWoTool = null; // 'mark' atau 'draw'
 let activeWoFeatureData = null;
-let workOrderMarkersLayer = L.layerGroup(); // Layer penampung pin WO/Evidence di peta
+let workOrderMarkersLayer = L.layerGroup(); 
+let workOrderDrawingsLayer = L.layerGroup(); 
 
+// Toggle Tombol Utama WO Mode
 function toggleWorkOrderFloating() {
     isWorkOrderModeActive = !isWorkOrderModeActive;
     const btn = document.getElementById('woFloatingBtn');
     const statusTxt = document.getElementById('woStatusText');
     const plusBtn = document.getElementById('woPlusBtn');
+    const submenu = document.getElementById('woSubmenu');
 
     if (isWorkOrderModeActive) {
         if (btn) btn.classList.add('active');
@@ -178,17 +166,16 @@ function toggleWorkOrderFloating() {
             statusTxt.style.color = '#000000';
         }
 
-        // Tampilkan titik-titik WO ke peta saat mode ON untuk semua user
-        if (!map.hasLayer(workOrderMarkersLayer)) {
-            workOrderMarkersLayer.addTo(map);
-        }
+        // Tampilkan layer marker & gambar WO ke peta untuk semua user
+        if (!map.hasLayer(workOrderMarkersLayer)) workOrderMarkersLayer.addTo(map);
+        if (!map.hasLayer(workOrderDrawingsLayer)) workOrderDrawingsLayer.addTo(map);
 
-        // Jika role Admin atau Inspector, munculkan tombol plus (+) tambahan di atas tombol utama
+        // Munculkan tombol plus (+) khusus Admin/Inspector
         if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
             if (plusBtn) plusBtn.style.display = 'flex';
         }
 
-        catatLogKeServer("WO MODE", "Mengaktifkan Mode WO (Marker Ditampilkan).");
+        catatLogKeServer("WO MODE", "Mengaktifkan Mode WO.");
     } else {
         if (btn) btn.classList.remove('active');
         if (statusTxt) {
@@ -196,28 +183,72 @@ function toggleWorkOrderFloating() {
             statusTxt.style.color = '#94a3b8';
         }
 
-        // Sembunyikan titik-titik WO dari peta saat mode OFF
-        if (map.hasLayer(workOrderMarkersLayer)) {
-            map.removeLayer(workOrderMarkersLayer);
-        }
+        // Sembunyikan layer WO saat OFF
+        if (map.hasLayer(workOrderMarkersLayer)) map.removeLayer(workOrderMarkersLayer);
+        if (map.hasLayer(workOrderDrawingsLayer)) map.removeLayer(workOrderDrawingsLayer);
 
-        // Sembunyikan tombol plus (+)
+        // Sembunyikan tombol plus & submenu
         if (plusBtn) plusBtn.style.display = 'none';
+        if (submenu) submenu.style.display = 'none';
+        activeWoTool = null;
 
-        catatLogKeServer("WO MODE", "Menonaktifkan Mode WO (Marker Disembunyikan).");
+        catatLogKeServer("WO MODE", "Menonaktifkan Mode WO.");
     }
 }
 
-// Handler khusus tombol plus (+) Admin/Inspector untuk Manajemen WO (Add / Edit / Delete)
-function openInspectorEditorModal() {
+// Munculkan / Sembunyikan sub-menu (Mark & Draw) saat tombol (+) diklik
+function toggleInspectorSubmenu() {
+    if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
+    const submenu = document.getElementById('woSubmenu');
+    if (!submenu) return;
+    submenu.style.display = submenu.style.display === 'flex' ? 'none' : 'flex';
+}
+
+// Pilih Tool aktif: MARK atau DRAW
+function setWoTool(toolName) {
+    activeWoTool = toolName;
+    document.querySelectorAll('.wo-sub-btn').forEach(b => b.classList.remove('active-tool'));
+    event.currentTarget.classList.add('active-tool');
+
+    if (toolName === 'mark') {
+        alert("Tool MARK Aktif: Silakan klik di layar/peta untuk menandai titik lokasi WO.");
+    } else if (toolName === 'draw') {
+        alert("Tool DRAW Aktif: Fitur sketsa garis area siap digunakan di peta.");
+    }
+}
+
+// Handler Klik Peta saat Mode WO Aktif
+function handleMapClickForWo(latlng) {
+    if (!isWorkOrderModeActive) return;
+
+    // Jika user BUKAN Admin/Inspector, mereka TIDAK BISA membuat/menggambar WO baru
     if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') {
-        alert("Akses ditolak: Hanya Admin & Inspector yang dapat menambah/mengedit WO.");
+        alert("Akses Terbatas: Viewer hanya dapat melihat dan memberi evidence pada titik WO yang sudah ada.");
         return;
     }
-    alert("Panel Manajemen WO: Silakan klik ruas jalan atau area di peta untuk menambah Work Order baru.");
+
+    if (!activeWoTool) {
+        alert("Silakan klik tombol plus (+) dan pilih tool MARK atau DRAW terlebih dahulu.");
+        return;
+    }
+
+    const lat = latlng.lat.toFixed(6);
+    const lng = latlng.lng.toFixed(6);
+
+    if (activeWoTool === 'mark') {
+        activeWoFeatureData = { type: 'mark', road: activeRoad || 'Area Tambang Umum', sta: `Lat/Lng: ${lat}, ${lng}`, latlng: latlng };
+        openWoModalUI(activeRoad || 'Area Tambang Umum', `Mark (${lat}, ${lng})`);
+    } else if (activeWoTool === 'draw') {
+        // Simulasi membuat sketsa garis sederhana di peta
+        const polyLine = L.polyline([latlng, [latlng.lat + 0.001, latlng.lng + 0.001]], { color: '#ff2b54', weight: 4 });
+        workOrderDrawingsLayer.addLayer(polyLine);
+        alert("Sketsa garis (Draw) berhasil ditambahkan ke peta!");
+        activeWoTool = null;
+        document.querySelectorAll('.wo-sub-btn').forEach(b => b.classList.remove('active-tool'));
+    }
 }
 
-// Handler Klik Fitur Spasial (Garis/Blok Jalan) saat Mode WO Aktif
+// Handler klik fitur jalan existing
 function handleWorkOrderClick(feature) {
     if (!isWorkOrderModeActive) return;
 
@@ -232,19 +263,9 @@ function handleWorkOrderClick(feature) {
         targetLatLng = tempLayer.getBounds().getCenter();
     } catch(e) {}
 
+    // Viewer maupun Admin/Inspector bisa klik segmen jalan untuk membuat/mengisi laporan evidence
     activeWoFeatureData = { type: 'road', road, sta: staFormatted, latlng: targetLatLng, rawProps: props };
     openWoModalUI(road, `STA ${staFormatted}`);
-}
-
-// Handler Klik di Area Bebas Peta saat Mode WO Aktif (Drop Pin Koordinat Darurat)
-function handleMapClickForWo(latlng) {
-    if (!isWorkOrderModeActive) return;
-
-    const lat = latlng.lat.toFixed(6);
-    const lng = latlng.lng.toFixed(6);
-
-    activeWoFeatureData = { type: 'coord', road: activeRoad || 'Area Tambang Umum', sta: `Lat/Lng: ${lat}, ${lng}`, latlng: latlng };
-    openWoModalUI(activeRoad || 'Area Tambang Umum', `Koordinat (${lat}, ${lng})`);
 }
 
 function openWoModalUI(locationName, locationDetail) {
@@ -306,9 +327,7 @@ function submitWorkOrder() {
     catatLogKeServer(actionType, detailLog);
 
     if (activeWoFeatureData && activeWoFeatureData.latlng) {
-        if (!map.hasLayer(workOrderMarkersLayer)) {
-            workOrderMarkersLayer.addTo(map);
-        }
+        if (!map.hasLayer(workOrderMarkersLayer)) workOrderMarkersLayer.addTo(map);
 
         const markerColor = (currentUserRole === 'admin' || currentUserRole === 'inspector') ? '#ff2b54' : '#00f0ff';
         const customIcon = L.divIcon({
@@ -331,7 +350,7 @@ function submitWorkOrder() {
         workOrderMarkersLayer.addLayer(woMarker);
     }
 
-    alert(`Berhasil mengirim ${actionType} oleh ${reporter}! Marker titik telah diperbarui di peta.`);
+    alert(`Berhasil mengirim ${actionType} oleh ${reporter}!`);
 
     if (notesElem) notesElem.value = '';
     if (fileInput) fileInput.value = '';
