@@ -237,7 +237,7 @@
       object-fit: contain;
     }
 
-    /* KUSTOM SCROLLBAR MODAL */
+    /* KUSTOM SCROLLBAR */
     .custom-scrollbar::-webkit-scrollbar {
       width: 6px;
     }
@@ -250,6 +250,44 @@
     }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
       background: #475569;
+    }
+
+    /* PRATINJAU FOTO & TOMBOL HAPUS (X) */
+    .preview-thumb-wrap {
+      position: relative;
+      display: inline-block;
+      width: 58px;
+      height: 58px;
+    }
+    .preview-thumb-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 4px;
+      border: 1px solid #38bdf8;
+    }
+    .preview-thumb-del {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      background: #ef4444;
+      color: #ffffff;
+      border: 1px solid #ffffff;
+      border-radius: 50%;
+      width: 18px;
+      height: 18px;
+      font-size: 10px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    }
+    .preview-thumb-del:hover {
+      background: #dc2626;
+      transform: scale(1.1);
     }
   </style>
 </head>
@@ -361,9 +399,9 @@
       
       <div style="display:flex; flex-direction:column; gap:10px; font-size:12px;">
         
-        <!-- NAMA RUAS JALAN (AUTO JIKA DI JALAN, MANUAL JIKA DI LUAR) -->
+        <!-- NAMA RUAS JALAN -->
         <div>
-          <label style="color:#cbd5e1; font-size:11px;">Nama Ruas Jalan:</label>
+          <label style="color:#cbd5e1; font-size:11px;">Nama Ruas Jalan: <span style="color:#ef4444;">*</span></label>
           <input type="text" id="woRoadName" placeholder="Ketik nama ruas jalan..." style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#38bdf8; font-weight:bold; font-size:12px; margin-top:2px;">
         </div>
 
@@ -373,19 +411,19 @@
           <input type="text" id="woLocationDetail" readonly style="width:100%; background:#1e293b; border:1px solid #334155; padding:6px 10px; border-radius:6px; color:#94a3b8; font-size:11px; margin-top:2px;">
         </div>
 
-        <!-- PELAPOR (MANUAL KETIK SENDIRI) -->
+        <!-- PELAPOR -->
         <div>
-          <label style="color:#cbd5e1; font-size:11px;">Nama / NRP Pelapor:</label>
+          <label style="color:#cbd5e1; font-size:11px;">Nama / NRP Pelapor: <span style="color:#ef4444;">*</span></label>
           <input type="text" id="woReporterName" placeholder="Ketik nama atau NRP pelapor..." style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; font-size:12px; margin-top:2px;">
         </div>
 
-        <!-- FOTO ACUAN / STAGE PLAN DARI PEMBUAT WO (VIEW MODE ONLY DENGAN ZOOM) -->
+        <!-- FOTO ACUAN / STAGE PLAN DARI PEMBUAT WO (VIEW MODE - FOTO 7) -->
         <div id="woRefPhotosSection" style="display:none; background:#1e293b; padding:10px; border-radius:8px; border:1px solid #334155;">
           <label style="color:#38bdf8; font-size:11px; font-weight:bold; display:block; margin-bottom:6px;">📸 Foto Acuan / Stage Plan Desain (Klik untuk Zoom):</label>
           <div id="woRefPhotosGallery" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap:6px;"></div>
         </div>
 
-        <!-- MULTI-JOB TASK LIST (KHUSUS PEMBUATAN / EDIT WO OLEH INSPECTOR/ADMIN) -->
+        <!-- MULTI-JOB TASK LIST (FOTO 5) -->
         <div id="woJobsSection">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
             <label style="color:#cbd5e1; font-size:11px; font-weight:bold;">Daftar Pekerjaan (Jobs):</label>
@@ -396,37 +434,39 @@
           </div>
         </div>
 
-        <!-- DROPDOWN UPDATE STATUS PEKERJAAN (FOTO 5 - GARIS MERAH) -->
-        <div id="woStatusUpdateWrapper" style="display:none;">
-          <label style="color:#cbd5e1; font-size:11px; font-weight:bold;">Update Status WO:</label>
-          <select id="woStatusUpdateSelect" style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; margin-top:2px; font-size:12px;">
-            <option value="PROGRESS" style="color:#eab308; font-weight:bold;">PROGRESS (Dalam Pengerjaan)</option>
-            <option value="CLOSED" style="color:#22c55e; font-weight:bold;">CLOSED (Pekerjaan Selesai)</option>
-            <option value="OPEN" style="color:#e11d48; font-weight:bold;">OPEN (Belum Dikerjakan)</option>
-          </select>
+        <!-- SECTION KHUSUS UPDATE GLOBAL (HANYA MUNCUL SAAT BUAT WO / SINGLE JOB) -->
+        <div id="woGlobalInputsWrapper" style="display:flex; flex-direction:column; gap:10px;">
+          <!-- DROPDOWN UPDATE STATUS PEKERJAAN -->
+          <div id="woStatusUpdateWrapper" style="display:none;">
+            <label style="color:#cbd5e1; font-size:11px; font-weight:bold;">Update Status WO:</label>
+            <select id="woStatusUpdateSelect" style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; margin-top:2px; font-size:12px;">
+              <option value="PROGRESS" style="color:#eab308; font-weight:bold;">PROGRESS (Dalam Pengerjaan)</option>
+              <option value="CLOSED" style="color:#22c55e; font-weight:bold;">CLOSED (Pekerjaan Selesai)</option>
+              <option value="OPEN" style="color:#e11d48; font-weight:bold;">OPEN (Belum Dikerjakan)</option>
+            </select>
+          </div>
+
+          <!-- KETERANGAN / PROGRESS LAPANGAN -->
+          <div>
+            <label id="woNotesLabel" style="color:#cbd5e1; font-size:11px;">Keterangan / Progress Lapangan:</label>
+            <textarea id="woNotes" rows="2" placeholder="Contoh : progress regrade" style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; margin-top:2px; resize:none;"></textarea>
+          </div>
+
+          <!-- UPLOAD FOTO DENGAN PREVIEW AKUMULATIF & TOMBOL (X) -->
+          <div id="woEvidenceWrapper">
+            <label id="woUploadPhotoLabel" style="color:#cbd5e1; font-size:11px;">Upload Foto:</label>
+            <input type="file" id="woEvidenceFile" accept="image/*" multiple style="width:100%; font-size:11px; color:#94a3b8; margin-top:2px; background:#1e293b; padding:6px; border-radius:6px; border:1px solid #475569;">
+            <!-- Pratinjau Gambar Pilihan + Tombol X Hapus -->
+            <div id="woImagePreviewContainer" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;"></div>
+          </div>
         </div>
 
-        <!-- KETERANGAN / PROGRESS LAPANGAN (FOTO 4) -->
-        <div>
-          <label id="woNotesLabel" style="color:#cbd5e1; font-size:11px;">Keterangan / Progress Lapangan:</label>
-          <textarea id="woNotes" rows="2" placeholder="Contoh : progress regrade" style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; margin-top:2px; resize:none;"></textarea>
-        </div>
-
-        <!-- UPLOAD FOTO (BISA MULTI-FOTO) -->
-        <div id="woEvidenceWrapper">
-          <label id="woUploadPhotoLabel" style="color:#cbd5e1; font-size:11px;">Upload Foto:</label>
-          <input type="file" id="woEvidenceFile" accept="image/*" multiple style="width:100%; font-size:11px; color:#94a3b8; margin-top:2px; background:#1e293b; padding:6px; border-radius:6px; border:1px solid #475569;">
-          <!-- Pratinjau Gambar Pilihan -->
-          <div id="woImagePreviewContainer" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;"></div>
-        </div>
       </div>
 
-      <!-- FOOTER MODAL DENGAN TOMBOL VIEW PROGRESS, HAPUS, BATAL & SUBMIT -->
+      <!-- FOOTER MODAL UTAMA -->
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid #1e293b; padding-top:12px;">
         <div style="display:flex; gap:6px; align-items:center;">
-          <!-- TOMBOL HAPUS WO (KHUSUS ADMIN/INSPECTOR) -->
           <button id="woDeleteBtn" onclick="deleteCurrentWorkOrder()" style="display:none; background:#e11d48; color:#fff; border:none; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Hapus WO</button>
-          <!-- TOMBOL VIEW PROGRESS (FOTO 5 - GARIS KUNING) -->
           <button id="woViewProgressBtn" onclick="openProgressTimelineModal()" style="display:none; background:#eab308; color:#000; border:none; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">View Progress</button>
         </div>
         <div style="display:flex; gap:8px;">
@@ -437,18 +477,67 @@
     </div>
   </div>
 
-  <!-- 6. MODAL POPUP RIWAYAT PROGRESS (TIMELINE CARD SCROLLABLE) -->
+  <!-- 5B. MODAL POPUP UPDATE PROGRESS KHUSUS PER-JOB (FOTO 5) -->
+  <div id="jobUpdateModalOverlay" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.82); z-index:100002; justify-content:center; align-items:center; padding: 12px;">
+    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:400px; max-height:90vh; overflow-y:auto; border:1px solid #38bdf8; box-shadow:0 10px 30px rgba(0,0,0,0.8);" class="custom-scrollbar">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:10px;">
+        <div>
+          <h3 id="jobUpdateModalTitle" style="margin:0; font-size:13px; color:#00f0ff; font-family:monospace; letter-spacing:1px;">UPDATE PROGRESS PEKERJAAN</h3>
+          <p id="jobUpdateJobInfo" style="font-size:11px; color:#38bdf8; margin:3px 0 0; font-weight:bold;">Job #1: Overgrade</p>
+        </div>
+        <button onclick="closeJobUpdateModal()" style="background:#1e293b; color:#cbd5e1; border:none; width:26px; height:26px; border-radius:50%; font-size:11px; cursor:pointer;">✕</button>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px; font-size:12px;">
+        <div>
+          <label style="color:#cbd5e1; font-size:11px;">Nama / NRP Pengawas: <span style="color:#ef4444;">*</span></label>
+          <input type="text" id="jobUpdateReporter" placeholder="Ketik nama atau NRP pengawas..." style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; font-size:12px; margin-top:2px;">
+        </div>
+
+        <div>
+          <label style="color:#cbd5e1; font-size:11px; font-weight:bold;">Update Status Job:</label>
+          <select id="jobUpdateStatus" style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; font-size:12px; margin-top:2px;">
+            <option value="PROGRESS" style="color:#eab308; font-weight:bold;">PROGRESS (Dalam Pengerjaan)</option>
+            <option value="CLOSED" style="color:#22c55e; font-weight:bold;">CLOSED (Pekerjaan Selesai)</option>
+            <option value="OPEN" style="color:#e11d48; font-weight:bold;">OPEN (Belum Dikerjakan)</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="color:#cbd5e1; font-size:11px;">Keterangan Progres:</label>
+          <textarea id="jobUpdateNotes" rows="2" placeholder="Contoh : Grader sedang meratakan tanjakan..." style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; margin-top:2px; font-size:12px; resize:none;"></textarea>
+        </div>
+
+        <div>
+          <label style="color:#cbd5e1; font-size:11px;">Upload Bukti Foto Progres:</label>
+          <input type="file" id="jobUpdateFile" accept="image/*" multiple style="width:100%; font-size:11px; color:#94a3b8; margin-top:2px; background:#1e293b; padding:6px; border-radius:6px; border:1px solid #475569;">
+          <!-- Pratinjau Gambar Khusus Per-Job + Tombol X -->
+          <div id="jobUpdatePreviewContainer" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;"></div>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px; border-top:1px solid #1e293b; padding-top:10px;">
+        <button onclick="closeJobUpdateModal()" style="background:#1e293b; color:#cbd5e1; border:none; padding:6px 12px; border-radius:6px; font-size:11px; cursor:pointer;">Batal</button>
+        <button onclick="submitJobUpdate()" id="jobUpdateSubmitBtn" style="background:#ec4899; color:#fff; border:none; padding:6px 16px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Simpan Update</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. MODAL POPUP RIWAYAT PROGRESS (TIMELINE CARD SCROLLABLE + TAB FILTER JOB) -->
   <div id="progressTimelineModal" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); z-index:100000; justify-content:center; align-items:center; padding: 12px;">
     <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:480px; max-height:85vh; display:flex; flex-direction:column; border:1px solid #334155; box-shadow:0 10px 30px rgba(0,0,0,0.8);">
       
       <!-- HEADER RIWAYAT -->
-      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:10px; margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:10px; margin-bottom:8px;">
         <div>
           <h3 style="margin:0; font-size:14px; color:#00f0ff; font-family:monospace; letter-spacing:1px;">RIWAYAT PROGRESS WORK ORDER</h3>
           <p id="timelineRoadInfo" style="margin:2px 0 0; font-size:11px; color:#94a3b8;">Ruas Jalan & STA</p>
         </div>
         <button onclick="closeProgressTimelineModal()" style="background:#1e293b; color:#cbd5e1; border:none; width:28px; height:28px; border-radius:50%; font-weight:bold; cursor:pointer;">✕</button>
       </div>
+
+      <!-- TAB FILTER KHUSUS JOB (FOTO 5) -->
+      <div id="timelineJobFilterTabs" style="display:none; gap:6px; margin-bottom:10px; flex-wrap:wrap; border-bottom:1px solid #1e293b; padding-bottom:8px;"></div>
 
       <!-- KONTEN TIMELINE SCROLLABLE ATAS BAWAH -->
       <div id="progressTimelineList" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:12px; padding-right:4px;" class="custom-scrollbar">
@@ -466,7 +555,7 @@
     </div>
   </div>
 
-  <!-- 7. MODAL FILTER KALENDER & EXPORT REKAP WO -->
+  <!-- 7. MODAL FILTER KALENDER & EXPORT REKAP WO (FOTO 1: ANTI MASA DEPAN) -->
   <div id="calendarFilterModal" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:100000; justify-content:center; align-items:center; padding:12px;">
     <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:380px; border:1px solid #334155; box-shadow:0 10px 25px rgba(0,0,0,0.7);">
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:12px;">
@@ -478,6 +567,7 @@
       <div style="font-size:12px; margin-bottom:16px;">
         <label style="color:#cbd5e1; font-size:11px; display:block; margin-bottom:4px;">Tampilkan Data WO Tanggal:</label>
         <div style="display:flex; gap:6px;">
+          <!-- max akan di-set otomatis oleh app.js agar anti-masa depan -->
           <input type="date" id="mapCalendarDateInput" style="flex:1; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; font-size:12px;">
           <button onclick="applyCalendarDateFilter()" style="background:#00f0ff; color:#000; border:none; padding:6px 12px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">Terapkan</button>
         </div>
@@ -502,7 +592,7 @@
     </div>
   </div>
 
-  <!-- 8. MODAL LIGHTBOX FOTO PENUH / ZOOM & DOWNLOAD -->
+  <!-- 8. MODAL LIGHTBOX FOTO PENUH / ZOOM & DOWNLOAD (FOTO 7) -->
   <div id="imageLightboxModal" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.92); z-index:100005; justify-content:center; align-items:center; padding:16px;">
     <div style="position:relative; max-width:90vw; max-height:90vh; display:flex; flex-direction:column; align-items:center;">
       <div style="position:absolute; top:-36px; right:0; display:flex; gap:10px;">
