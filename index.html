@@ -265,6 +265,7 @@
       object-fit: cover;
       border-radius: 4px;
       border: 1px solid #38bdf8;
+      background: #090d16;
     }
     .preview-thumb-del {
       position: absolute;
@@ -288,6 +289,12 @@
     .preview-thumb-del:hover {
       background: #dc2626;
       transform: scale(1.1);
+    }
+
+    /* INPUT DATETIME-LOCAL GELAP */
+    input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+      filter: invert(0.8) sepia(100%) saturate(500%) hue-rotate(150deg);
+      cursor: pointer;
     }
   </style>
 </head>
@@ -386,13 +393,19 @@
       
       <!-- HEADER MODAL & STATUS BADGE (KOTAK PINK FOTO 5) -->
       <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:8px;">
-        <div>
+        <div style="flex:1;">
           <h3 id="woModalTitle" style="margin:0; font-size:14px; color:#00f0ff; letter-spacing:1px; font-family:monospace;">BUAT WORK ORDER (WO)</h3>
           <p id="woModalSub" style="font-size:11px; color:#94a3b8; margin:4px 0 0;">Tentukan temuan perbaikan infrastruktur jalan tambang.</p>
-          <div id="woCreatedDateInfo" style="font-size:10px; color:#38bdf8; font-family:monospace; margin-top:3px; display:none;">Tanggal WO: -</div>
+          
+          <!-- TANGGAL & JAM BISA DIKLIK / DIEDIT OPSIONAL (FOTO 3) -->
+          <div id="woCreatedDateWrapper" style="display:flex; align-items:center; gap:6px; margin-top:6px;">
+            <label style="font-size:10px; color:#94a3b8; font-family:monospace;">Waktu WO:</label>
+            <input type="datetime-local" id="woCreatedDateInput" style="background:#1e293b; border:1px solid #475569; padding:2px 8px; border-radius:4px; color:#38bdf8; font-size:11px; font-family:monospace; outline:none; cursor:pointer;" title="Klik untuk ubah tanggal/jam jika perlu backdate">
+          </div>
         </div>
+
         <!-- STATUS BADGE DINAMIS (KOTAK PINK) -->
-        <div id="woStatusBadge" style="padding:4px 10px; border-radius:6px; font-size:10px; font-weight:bold; letter-spacing:1px; font-family:monospace; text-transform:uppercase; background:#e11d48; color:#fff; box-shadow:0 2px 8px rgba(0,0,0,0.4);">
+        <div id="woStatusBadge" style="padding:4px 10px; border-radius:6px; font-size:10px; font-weight:bold; letter-spacing:1px; font-family:monospace; text-transform:uppercase; background:#e11d48; color:#fff; box-shadow:0 2px 8px rgba(0,0,0,0.4); margin-left:8px;">
           OPEN
         </div>
       </div>
@@ -430,7 +443,7 @@
             <button type="button" id="btnAddJobBtn" onclick="addNewJobItem()" style="background:#0284c7; color:#fff; border:none; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">+ Tambah Job</button>
           </div>
           <div id="woJobsContainer" style="display:flex; flex-direction:column; gap:8px;">
-            <!-- Kartu Job akan di-generate via app.js -->
+            <!-- Kartu Job di-generate via app.js -->
           </div>
         </div>
 
@@ -555,7 +568,7 @@
     </div>
   </div>
 
-  <!-- 7. MODAL FILTER KALENDER & EXPORT REKAP WO (FOTO 1: ANTI MASA DEPAN) -->
+  <!-- 7. MODAL FILTER KALENDER & EXPORT REKAP WO -->
   <div id="calendarFilterModal" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:100000; justify-content:center; align-items:center; padding:12px;">
     <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:380px; border:1px solid #334155; box-shadow:0 10px 25px rgba(0,0,0,0.7);">
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:12px;">
@@ -567,7 +580,6 @@
       <div style="font-size:12px; margin-bottom:16px;">
         <label style="color:#cbd5e1; font-size:11px; display:block; margin-bottom:4px;">Tampilkan Data WO Tanggal:</label>
         <div style="display:flex; gap:6px;">
-          <!-- max akan di-set otomatis oleh app.js agar anti-masa depan -->
           <input type="date" id="mapCalendarDateInput" style="flex:1; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; font-size:12px;">
           <button onclick="applyCalendarDateFilter()" style="background:#00f0ff; color:#000; border:none; padding:6px 12px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">Terapkan</button>
         </div>
@@ -592,14 +604,14 @@
     </div>
   </div>
 
-  <!-- 8. MODAL LIGHTBOX FOTO PENUH / ZOOM & DOWNLOAD (FOTO 7) -->
+  <!-- 8. MODAL LIGHTBOX FOTO PENUH / ZOOM & DOWNLOAD -->
   <div id="imageLightboxModal" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.92); z-index:100005; justify-content:center; align-items:center; padding:16px;">
     <div style="position:relative; max-width:90vw; max-height:90vh; display:flex; flex-direction:column; align-items:center;">
       <div style="position:absolute; top:-36px; right:0; display:flex; gap:10px;">
         <a id="lightboxDownloadBtn" href="#" target="_blank" download style="background:#0284c7; color:#fff; padding:4px 12px; border-radius:4px; font-size:11px; font-weight:bold; text-decoration:none;">Download Asli</a>
         <button onclick="closeImageLightbox()" style="background:#e11d48; color:#fff; border:none; width:28px; height:28px; border-radius:50%; font-size:12px; font-weight:bold; cursor:pointer;">✕</button>
       </div>
-      <img id="lightboxImg" src="" alt="Pratinjau Foto" style="max-width:100%; max-height:85vh; object-fit:contain; border-radius:6px; box-shadow:0 0 25px rgba(0,0,0,0.8);">
+      <img id="lightboxImg" src="" alt="Pratinjau Foto" style="max-width:100%; max-height:85vh; object-fit:contain; border-radius:6px; box-shadow:0 0 25px rgba(0,0,0,0.8); background:#040508;">
     </div>
   </div>
 
