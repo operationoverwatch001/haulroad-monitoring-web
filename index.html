@@ -85,7 +85,50 @@
       gap: 8px;
     }
 
-    /* TOMBOL TAMBAH/EDIT WO KHUSUS INSPECTOR (+) */
+    /* SUB-MENU TOMBOL (MARK & DRAW) YANG MUNCUL KETIKA (+) DIKLIK */
+    .wo-submenu-container {
+      display: none; /* Default tersembunyi */
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 2px;
+      animation: fadeInSub 0.2s ease forwards;
+    }
+    @keyframes fadeInSub {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .wo-sub-btn {
+      width: 36px;
+      height: 36px;
+      background: #0f172a;
+      color: #00f0ff;
+      border: 2px solid #334155;
+      border-radius: 50%;
+      font-size: 9px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      transition: all 0.2s ease;
+      font-family: monospace;
+    }
+    .wo-sub-btn:hover {
+      background: #1e293b;
+      border-color: #00f0ff;
+      transform: scale(1.1);
+    }
+    .wo-sub-btn.active-tool {
+      background: #00f0ff;
+      color: #000000;
+      border-color: #ffffff;
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.7);
+    }
+
+    /* TOMBOL UTAMA PLUS (+) INSPECTOR / ADMIN */
     .wo-plus-floating-btn {
       width: 38px;
       height: 38px;
@@ -96,7 +139,7 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.5);
       font-size: 20px;
       font-weight: bold;
-      display: none; /* Otomatis dimunculkan via JS jika role inspector */
+      display: none; /* Otomatis dimunculkan via JS untuk Inspector/Admin */
       align-items: center;
       justify-content: center;
       cursor: pointer;
@@ -226,14 +269,21 @@
     </nav>
   </header>
 
-  <!-- 3. PETA, GPS, TOMBOL FLOATING WO & INSPECTOR (+), TOMBOL SATELIT -->
+  <!-- 3. PETA, GPS, TOMBOL FLOATING WO & SUB-MENU MARK/DRAW, TOMBOL SATELIT -->
   <div id="map"></div>
   
   <!-- GROUP TOMBOL FLOATING DI KANAN BAWAH -->
   <div class="floating-action-group">
-    <button id="woPlusBtn" class="wo-plus-floating-btn" onclick="openInspectorEditorModal()" title="Tambah / Edit / Hapus Work Order">
-      +
-    </button>
+    <!-- Sub-menu Mark & Draw yang muncul saat tombol (+) diklik -->
+    <div id="woSubmenu" class="wo-submenu-container">
+      <button class="wo-sub-btn" onclick="setWoTool('mark')" title="Tandai Titik Mark di Peta">MARK</button>
+      <button class="wo-sub-btn" onclick="setWoTool('draw')" title="Gambar Garis / Sketsa di Peta">DRAW</button>
+    </div>
+
+    <!-- Tombol (+) khusus Admin/Inspector -->
+    <button id="woPlusBtn" class="wo-plus-floating-btn" onclick="toggleInspectorSubmenu()" title="Opsi Work Order">+</button>
+
+    <!-- Tombol Utama WO Mode -->
     <button id="woFloatingBtn" class="wo-floating-btn" onclick="toggleWorkOrderFloating()" title="Aktifkan Mode Work Order / Evidence">
       <span>WO</span>
       <span id="woStatusText" style="font-size: 7px; color: #94a3b8;">OFF</span>
