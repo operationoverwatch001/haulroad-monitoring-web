@@ -1,5 +1,5 @@
 // ==========================================
-// KONFIGURASI SUPABASE & AUTHENTICATION
+// 1. KONFIGURASI SUPABASE & STATE UTAMA
 // ==========================================
 const SUPABASE_URL = 'https://bjgojyazemlrwnqpxoqp.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_mUqC6rBWoHL-5IjW44uhfA_TL7YB1Zg';
@@ -12,13 +12,95 @@ const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, 
   }
 });
 
-// ==========================================
-// KONFIGURASI BACKEND GOOGLE SHEETS (LOG & WHITELIST)
-// ==========================================
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyI2mHJu7uy3_hUd5LzMKURS4daDQ_aYGI--abSquAHINiW3XGf07VN5BpRlCYVSCxe5w/exec";
 let currentNRP = "SUPABASE_USER";
 let currentUserRole = "viewer"; 
 
+// State Global WebGIS & Work Order
+let currentTab = 'grade';
+let monitoringData = [];
+let crossSectionData = [];
+let roadNames = [];
+let activeRoad = "";
+let chartInstance = null;
+let userYInterval = undefined;
+
+let rawWidthFeatures = [];
+let roadWidthLayer = null;        
+let roadGradeLayer = null;        
+let gradeLabelsLayer = L.layerGroup();  
+
+let selectedStartMeter = null;
+let selectedEndMeter = null;
+let selectedRoadTarget = "";
+
+let isWorkOrderModeActive = false;
+let activeWoTool = null; // 'mark' atau 'draw'
+let activeWoFeatureData = null;
+let workOrderMarkersLayer = L.layerGroup(); 
+let workOrderDrawingsLayer = L.layerGroup(); 
+
+let isDrawingActive = false;
+let currentDrawPoints = [];
+let tempDrawPolyline = null;
+
+let userMarker = null;
+let userAccuracyCircle = null;
+let isTracking = false;
+let watchId = null;
+
+// ==========================================
+// 2. INISIALISASI PETA LEAFLET (DI ATAS AGAR AMAN)
+// ==========================================
+const map = L.map('map', { 
+  zoomControl: false,
+  preferCanvas: true 
+}).setView([-2.169338, 115.572115], 15);
+
+const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 19,
+  attribution: 'Tiles &copy; Esri'
+}).addTo(map);
+
+const PMTILES_URL = "https://ortho-tiles.operationoverwatch001.workers.dev/Ortho_Update.pmtiles";
+let orthoLayer = null;
+
+const pmtilesLib = window.pmtiles;
+if (pmtilesLib) {
+  try {
+    const protocol = new pmtilesLib.Protocol();
+    if (L.TileLayer.addInitHook) {
+      L.TileLayer.addInitHook(function() {
+        this.options.pmtilesProtocol = protocol;
+      });
+    }
+
+    const p = new pmtilesLib.PMTiles(PMTILES_URL);
+    protocol.add(p);
+
+    orthoLayer = pmtilesLib.leafletRasterLayer(p, {
+      maxZoom: 22,
+      maxNativeZoom: 20,
+      attribution: 'Drone Orthophoto'
+    }).addTo(map);
+
+    p.getHeader().then(header => {
+      if (header && header.minLon && header.minLat) {
+        map.fitBounds([
+          [header.minLat, header.minLon],
+          [header.maxLat, header.maxLon]
+        ]);
+      }
+    }).catch(e => console.warn("Tidak dapat membaca header PMTiles:", e));
+
+  } catch (err) {
+    console.error("Gagal mounting layer PMTiles:", err);
+  }
+}
+
+// ==========================================
+// 3. AUTHENTICATION & SESSION HANDLING
+// ==========================================
 window.addEventListener('DOMContentLoaded', async () => {
     const { data: { session } } = await _supabase.auth.getSession();
     if (session) {
@@ -143,19 +225,8 @@ window.verifyOtp = async function() {
 };
 
 // ==========================================
-// MODUL WORK ORDER (WO), MARK & MOUSE-DRAG DRAW
+// 4. MODUL WORK ORDER (WO), MARK & DRAW
 // ==========================================
-let isWorkOrderModeActive = false;
-let activeWoTool = null; // 'mark' atau 'draw'
-let activeWoFeatureData = null;
-let workOrderMarkersLayer = L.layerGroup(); 
-let workOrderDrawingsLayer = L.layerGroup(); 
-
-// Variabel bantu untuk Mouse-Drag / Touch Draw Line bebas
-let isDrawingActive = false;
-let currentDrawPoints = [];
-let tempDrawPolyline = null;
-
 function toggleWorkOrderFloating() {
     isWorkOrderModeActive = !isWorkOrderModeActive;
     const btn = document.getElementById('woFloatingBtn');
@@ -205,7 +276,6 @@ function toggleInspectorSubmenu() {
 }
 
 function setWoTool(toolName) {
-    // Jika tombol tool yang sama diklik lagi, maka mode tool dimatikan (manual off)
     if (activeWoTool === toolName) {
         activeWoTool = null;
         document.querySelectorAll('.wo-sub-btn').forEach(b => b.classList.remove('active-tool'));
@@ -216,18 +286,16 @@ function setWoTool(toolName) {
     activeWoTool = toolName;
     document.querySelectorAll('.wo-sub-btn').forEach(b => b.classList.remove('active-tool'));
     
-    // Cari tombol yang diklik lalu aktifkan classnya
     const btnTarget = Array.from(document.querySelectorAll('.wo-sub-btn')).find(b => b.innerText.toLowerCase() === toolName);
     if (btnTarget) btnTarget.classList.add('active-tool');
 
     if (toolName === 'draw') {
-        map.dragging.disable(); // Lock peta saat mode draw aktif agar bisa drag garis
+        map.dragging.disable(); 
     } else {
         map.dragging.enable();
     }
 }
 
-// Handler Klik Peta untuk MARK
 function handleMapClickForWo(latlng) {
     if (!isWorkOrderModeActive) return;
     if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
@@ -240,7 +308,6 @@ function handleMapClickForWo(latlng) {
     openWoModalUI(activeRoad || 'Area Tambang Umum', `Mark (${lat}, ${lng})`);
 }
 
-// Logika Mouse-Drag / Touch untuk fitur DRAW Line bebas (tetap ON sampai dimatikan manual)
 map.on('mousedown touchstart', (e) => {
     if (!isWorkOrderModeActive || activeWoTool !== 'draw') return;
     if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
@@ -354,7 +421,6 @@ function submitWorkOrder() {
 
         const woMarker = L.marker(activeWoFeatureData.latlng, { icon: customIcon });
 
-        // Tombol Edit WO (kiri) & View WO (kanan)
         let editBtnHtml = '';
         if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
             editBtnHtml = `<button onclick="openWoModalUI('${activeWoFeatureData.road}', '${activeWoFeatureData.sta}')" style="background:#e11d48; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">Edit WO</button>`;
@@ -384,7 +450,9 @@ function submitWorkOrder() {
     closeWoModal();
 }
 
-// 2. Timeline Animasi Intro Loading & Fetch Data
+// ==========================================
+// 5. HELPER WEBGIS, CHART & UI UTAMA
+// ==========================================
 function mulaiAnimasiIntroDanLoadData() {
   const splash = document.getElementById('intro-splash');
   const bar = document.getElementById('loading-bar');
@@ -428,78 +496,9 @@ function mulaiAnimasiIntroDanLoadData() {
   }, 3200);
 }
 
-// 3. Catat Log ke Server
 function catatLogKeServer(kegiatan, detailAktivitas) {
   const targetUrl = `${WEB_APP_URL}?action=LOG_AKTIVITAS&nrp=${encodeURIComponent(currentNRP)}&kegiatan=${encodeURIComponent(kegiatan)}&detail=${encodeURIComponent(detailAktivitas)}`;
   fetch(targetUrl, { mode: "no-cors" }).catch(err => console.error("Log error:", err));
-}
-
-// ==========================================
-// KODE UTAMA WEBGIS (PETA, PMTILES, GEOJSON)
-// ==========================================
-let currentTab = 'grade';
-let monitoringData = [];
-let crossSectionData = [];
-let roadNames = [];
-let activeRoad = "";
-let chartInstance = null;
-let userYInterval = undefined;
-
-let rawWidthFeatures = [];
-let roadWidthLayer = null;        
-let roadGradeLayer = null;        
-let gradeLabelsLayer = L.layerGroup();  
-
-let selectedStartMeter = null;
-let selectedEndMeter = null;
-let selectedRoadTarget = "";
-
-Chart.register(ChartDataLabels);
-
-const map = L.map('map', { 
-  zoomControl: false,
-  preferCanvas: true 
-}).setView([-2.169338, 115.572115], 15);
-
-const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-  maxZoom: 19,
-  attribution: 'Tiles &copy; Esri'
-}).addTo(map);
-
-const PMTILES_URL = "https://ortho-tiles.operationoverwatch001.workers.dev/Ortho_Update.pmtiles";
-let orthoLayer = null;
-
-const pmtilesLib = window.pmtiles;
-if (pmtilesLib) {
-  try {
-    const protocol = new pmtilesLib.Protocol();
-    if (L.TileLayer.addInitHook) {
-      L.TileLayer.addInitHook(function() {
-        this.options.pmtilesProtocol = protocol;
-      });
-    }
-
-    const p = new pmtilesLib.PMTiles(PMTILES_URL);
-    protocol.add(p);
-
-    orthoLayer = pmtilesLib.leafletRasterLayer(p, {
-      maxZoom: 22,
-      maxNativeZoom: 20,
-      attribution: 'Drone Orthophoto'
-    }).addTo(map);
-
-    p.getHeader().then(header => {
-      if (header && header.minLon && header.minLat) {
-        map.fitBounds([
-          [header.minLat, header.minLon],
-          [header.maxLat, header.maxLon]
-        ]);
-      }
-    }).catch(e => console.warn("Tidak dapat membaca header PMTiles:", e));
-
-  } catch (err) {
-    console.error("Gagal mounting layer PMTiles:", err);
-  }
 }
 
 let isBasemapActive = true;
@@ -1053,7 +1052,6 @@ function renderLebarSummary() {
   `;
 }
 
-// Render Konten Tab Panel Bawah
 function renderTabContent() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
@@ -1086,7 +1084,6 @@ function renderTabContent() {
   }
 }
 
-// Grafik Profil Memanjang
 function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -1181,7 +1178,6 @@ function drawLongSectionChart(dataSubset) {
   });
 }
 
-// Grafik Cross Section 3 Titik
 function drawCrossSectionChart(staTarget) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -1275,12 +1271,6 @@ function drawCrossSectionChart(staTarget) {
   });
 }
 
-// Real-time Live GPS Tracking
-let userMarker = null;
-let userAccuracyCircle = null;
-let isTracking = false;
-let watchId = null;
-
 function locateUser() {
   const gpsBtn = document.querySelector('.gps-btn');
   if (isTracking) {
@@ -1327,7 +1317,6 @@ function locateUser() {
   );
 }
 
-// Panel Resizable Bawah
 document.addEventListener("DOMContentLoaded", () => {
   const bottomPanel = document.getElementById('bottom-panel');
   const panelHeader = document.querySelector('.panel-header');
@@ -1398,7 +1387,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-// Modal & Export PDF
 function openPdfModal() {
   document.getElementById('pdfModalOverlay').style.display = 'flex';
 }
