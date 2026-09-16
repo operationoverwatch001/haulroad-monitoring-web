@@ -87,7 +87,7 @@
 
     /* SUB-MENU TOMBOL (MARK & DRAW) YANG MUNCUL KETIKA (+) DIKLIK */
     .wo-submenu-container {
-      display: none; /* Default tersembunyi */
+      display: none;
       flex-direction: column;
       gap: 6px;
       align-items: center;
@@ -139,7 +139,7 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.5);
       font-size: 20px;
       font-weight: bold;
-      display: none; /* Otomatis dimunculkan via JS untuk Inspector/Admin */
+      display: none;
       align-items: center;
       justify-content: center;
       cursor: pointer;
@@ -274,16 +274,13 @@
   
   <!-- GROUP TOMBOL FLOATING DI KANAN BAWAH -->
   <div class="floating-action-group">
-    <!-- Sub-menu Mark & Draw yang muncul saat tombol (+) diklik -->
     <div id="woSubmenu" class="wo-submenu-container">
       <button class="wo-sub-btn" onclick="setWoTool('mark')" title="Tandai Titik Mark di Peta">MARK</button>
       <button class="wo-sub-btn" onclick="setWoTool('draw')" title="Gambar Garis / Sketsa di Peta">DRAW</button>
     </div>
 
-    <!-- Tombol (+) khusus Admin/Inspector -->
     <button id="woPlusBtn" class="wo-plus-floating-btn" onclick="toggleInspectorSubmenu()" title="Opsi Work Order">+</button>
 
-    <!-- Tombol Utama WO Mode -->
     <button id="woFloatingBtn" class="wo-floating-btn" onclick="toggleWorkOrderFloating()" title="Aktifkan Mode Work Order / Evidence">
       <span>WO</span>
       <span id="woStatusText" style="font-size: 7px; color: #94a3b8;">OFF</span>
@@ -326,19 +323,25 @@
         </div>
 
         <div>
-          <label style="color:#cbd5e1; font-size:11px;">Catatan / Instruksi Lapangan:</label>
+          <label id="woNotesLabel" style="color:#cbd5e1; font-size:11px;">Catatan / Instruksi Lapangan:</label>
           <textarea id="woNotes" rows="2" placeholder="Contoh: Perlu Grader untuk meratakan permukaan jalan..." style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; margin-top:2px; resize:none;"></textarea>
         </div>
 
-        <div>
+        <div id="woEvidenceWrapper">
           <label style="color:#cbd5e1; font-size:11px;">Upload Bukti Foto / Evidence:</label>
           <input type="file" id="woEvidenceFile" accept="image/*" style="width:100%; font-size:11px; color:#94a3b8; margin-top:2px; background:#1e293b; padding:4px; border-radius:6px; border:1px solid #475569;">
         </div>
       </div>
 
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
-        <button onclick="closeWoModal()" style="background:#1e293b; color:#cbd5e1; border:none; padding:6px 14px; border-radius:6px; font-size:11px; cursor:pointer;">Batal</button>
-        <button onclick="submitWorkOrder()" id="woSubmitBtn" style="background:#00f0ff; color:#000; border:none; padding:6px 16px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Kirim WO</button>
+      <!-- FOOTER MODAL DENGAN TOMBOL HAPUS WO DI SEBELAH KIRI BATAL -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px;">
+        <div>
+          <button id="woDeleteBtn" onclick="deleteCurrentWorkOrder()" style="display:none; background:#e11d48; color:#fff; border:none; padding:6px 14px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Hapus WO</button>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button onclick="closeWoModal()" style="background:#1e293b; color:#cbd5e1; border:none; padding:6px 14px; border-radius:6px; font-size:11px; cursor:pointer;">Batal</button>
+          <button onclick="submitWorkOrder()" id="woSubmitBtn" style="background:#00f0ff; color:#000; border:none; padding:6px 16px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Kirim WO</button>
+        </div>
       </div>
     </div>
   </div>
