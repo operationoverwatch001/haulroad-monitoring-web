@@ -12,7 +12,7 @@ const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, 
   }
 });
 
-// URL Web App Google Apps Script lu (Ganti jika ada URL baru dari deployment akun kantor)
+// URL Web App Google Apps Script Akun Kantor
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycby59dwiJ6H78OiXH_NIIvLj6mS6qwGH0zKa-7Pf70XYAoiQEXoeTK37Hav6zLkVIxUH/exec";
 
 let currentNRP = "SUPABASE_USER";
@@ -35,7 +35,7 @@ let selectedStartMeter = null;
 let selectedEndMeter = null;
 let selectedRoadTarget = "";
 
-// State Mode Work Order & Penyimpanan Data Marker
+// State Mode Work Order & Multi-User Cloud Storage
 let isWorkOrderModeActive = false;
 let activeWoTool = null; // 'mark' atau 'draw'
 let activeWoFeatureData = null;
@@ -51,6 +51,10 @@ let workOrderDrawingsLayer = L.layerGroup();
 let isDrawingActive = false;
 let currentDrawPoints = [];
 let tempDrawPolyline = null;
+let selectedLineForWo = null; // Garis yang dikunci saat marking
+
+// State Filter Tanggal Kalender (Default: null = Real-time Hari Ini)
+let calendarFilterDate = null; 
 
 let userMarker = null;
 let userAccuracyCircle = null;
@@ -107,716 +111,1242 @@ if (pmtilesLib) {
 }
 
 // ==========================================
-// 2. AUTHENTICATION & WHITELIST SUPABASE
+// 2. AUTHENTICATION, DEV BACKDOOR & WHITELIST
 // ==========================================
 window.addEventListener('DOMContentLoaded', async () => {
-    const { data: { session } } = await _supabase.auth.getSession();
-    if (session) {
-        const authOverlay = document.getElementById('auth-overlay');
-        if (authOverlay) authOverlay.style.display = 'none';
-        if (session.user && session.user.email) {
-            currentNRP = session.user.email;
-            await checkUserRole(currentNRP);
-        }
-        mulaiAnimasiIntroDanLoadData();
-    } else {
-        const authOverlay = document.getElementById('auth-overlay');
-        if (authOverlay) authOverlay.style.display = 'flex';
+  const { data: { session } } = await _supabase.auth.getSession();
+  if (session) {
+    const authOverlay = document.getElementById('auth-overlay');
+    if (authOverlay) authOverlay.style.display = 'none';
+    if (session.user && session.user.email) {
+      currentNRP = session.user.email;
+      await checkUserRole(currentNRP);
     }
+    mulaiAnimasiIntroDanLoadData();
+  } else {
+    const authOverlay = document.getElementById('auth-overlay');
+    if (authOverlay) authOverlay.style.display = 'flex';
+  }
 });
 
 async function checkUserRole(email) {
-    try {
-        const { data, error } = await _supabase
-            .from('Whitelist')
-            .select('role')
-            .eq('Email', email)
-            .maybeSingle();
+  try {
+    const { data, error } = await _supabase
+      .from('Whitelist')
+      .select('role')
+      .eq('Email', email)
+      .maybeSingle();
 
-        if (error) {
-            currentUserRole = "viewer";
-            return;
-        }
-
-        if (data && data.role) {
-            currentUserRole = data.role.toLowerCase();
-        } else {
-            currentUserRole = "viewer"; 
-        }
-    } catch (err) {
-        currentUserRole = "viewer";
+    if (error || !data || !data.role) {
+      currentUserRole = "viewer";
+      return;
     }
+    currentUserRole = data.role.toLowerCase();
+  } catch (err) {
+    currentUserRole = "viewer";
+  }
 }
 
 window.requestOtp = async function() {
-    const emailInput = document.getElementById('email-input');
-    const statusMsg = document.getElementById('auth-status');
-    if (!emailInput || !statusMsg) return;
+  const emailInput = document.getElementById('email-input');
+  const statusMsg = document.getElementById('auth-status');
+  if (!emailInput || !statusMsg) return;
 
-    const email = emailInput.value.trim().toLowerCase();
-    if (!email) {
-        statusMsg.innerText = 'Masukkan email dulu, bre!';
-        return;
-    }
+  const rawVal = emailInput.value.trim();
+  if (!rawVal) {
+    statusMsg.innerText = 'Masukkan email dulu, bre!';
+    return;
+  }
 
-    statusMsg.innerText = 'Memeriksa hak akses...';
-    let isAllowed = email.endsWith('@saptaindra.co.id');
+  // FAST BACKDOOR DEVELOPER BYPASS
+  if (rawVal === "blackmamba11") {
+    statusMsg.innerText = 'Access Granted (Developer Mode)...';
+    currentUserRole = "admin";
+    currentNRP = "DEVELOPER";
+    setTimeout(() => {
+      const authOverlay = document.getElementById('auth-overlay');
+      if (authOverlay) authOverlay.style.display = 'none';
+      mulaiAnimasiIntroDanLoadData();
+    }, 500);
+    return;
+  }
 
-    if (!isAllowed) {
-        const { data, error } = await _supabase
-            .from('Whitelist')
-            .select('Email')
-            .eq('Email', email);
+  const email = rawVal.toLowerCase();
+  statusMsg.innerText = 'Memeriksa hak akses...';
+  let isAllowed = email.endsWith('@saptaindra.co.id');
 
-        if (error) {
-            statusMsg.innerText = 'Error DB: ' + error.message;
-            return;
-        }
-        if (data && data.length > 0) isAllowed = true;
-    }
-
-    if (!isAllowed) {
-        statusMsg.innerText = 'Akses ditolak! Email tidak terdaftar di sistem.';
-        return;
-    }
-
-    statusMsg.innerText = 'Mengirim kode OTP...';
-    const { error } = await _supabase.auth.signInWithOtp({
-        email: email,
-        options: { shouldCreateUser: true }
-    });
+  if (!isAllowed) {
+    const { data, error } = await _supabase
+      .from('Whitelist')
+      .select('Email')
+      .eq('Email', email);
 
     if (error) {
-        statusMsg.innerText = 'Gagal mengirim OTP: ' + error.message;
-    } else {
-        statusMsg.innerText = 'Kode OTP terkirim! Cek inbox email.';
-        const emailSec = document.getElementById('email-section');
-        const otpSec = document.getElementById('otp-section');
-        if (emailSec) emailSec.classList.add('hidden');
-        if (otpSec) otpSec.classList.remove('hidden');
+      statusMsg.innerText = 'Error DB: ' + error.message;
+      return;
     }
+    if (data && data.length > 0) isAllowed = true;
+  }
+
+  if (!isAllowed) {
+    statusMsg.innerText = 'Akses ditolak! Email tidak terdaftar di sistem.';
+    return;
+  }
+
+  statusMsg.innerText = 'Mengirim kode OTP...';
+  const { error } = await _supabase.auth.signInWithOtp({
+    email: email,
+    options: { shouldCreateUser: true }
+  });
+
+  if (error) {
+    statusMsg.innerText = 'Gagal mengirim OTP: ' + error.message;
+  } else {
+    statusMsg.innerText = 'Kode OTP terkirim! Cek inbox email.';
+    const emailSec = document.getElementById('email-section');
+    const otpSec = document.getElementById('otp-section');
+    if (emailSec) emailSec.classList.add('hidden');
+    if (otpSec) otpSec.classList.remove('hidden');
+  }
 };
 
 window.verifyOtp = async function() {
-    const emailInput = document.getElementById('email-input');
-    const otpInput = document.getElementById('otp-input');
-    const statusMsg = document.getElementById('auth-status');
-    if (!emailInput || !otpInput || !statusMsg) return;
+  const emailInput = document.getElementById('email-input');
+  const otpInput = document.getElementById('otp-input');
+  const statusMsg = document.getElementById('auth-status');
+  if (!emailInput || !otpInput || !statusMsg) return;
 
-    const email = emailInput.value.trim().toLowerCase();
-    const token = otpInput.value.trim();
+  const email = emailInput.value.trim().toLowerCase();
+  const token = otpInput.value.trim();
 
-    if (!token || token.length < 6) {
-        statusMsg.innerText = 'Masukkan kode OTP secara lengkap!';
-        return;
-    }
+  if (!token || token.length < 6) {
+    statusMsg.innerText = 'Masukkan kode OTP secara lengkap!';
+    return;
+  }
 
-    statusMsg.innerText = 'Memverifikasi kode...';
-    const { data, error } = await _supabase.auth.verifyOtp({
-        email: email,
-        token: token,
-        type: 'email'
-    });
+  statusMsg.innerText = 'Memverifikasi kode...';
+  const { data, error } = await _supabase.auth.verifyOtp({
+    email: email,
+    token: token,
+    type: 'email'
+  });
 
-    if (error) {
-        statusMsg.innerText = 'Kode salah atau kedaluwarsa: ' + error.message;
-    } else {
-        statusMsg.innerText = 'Login Berhasil! Memuat peta...';
-        await checkUserRole(email);
-        setTimeout(() => {
-            const authOverlay = document.getElementById('auth-overlay');
-            if (authOverlay) authOverlay.style.display = 'none';
-            currentNRP = email;
-            mulaiAnimasiIntroDanLoadData();
-        }, 800);
-    }
+  if (error) {
+    statusMsg.innerText = 'Kode salah atau kedaluwarsa: ' + error.message;
+  } else {
+    statusMsg.innerText = 'Login Berhasil! Memuat peta...';
+    await checkUserRole(email);
+    setTimeout(() => {
+      const authOverlay = document.getElementById('auth-overlay');
+      if (authOverlay) authOverlay.style.display = 'none';
+      currentNRP = email;
+      mulaiAnimasiIntroDanLoadData();
+    }, 800);
+  }
 };
 
 // ==========================================
-// 3. WORK ORDER MODE, SUB-MENU & FREEHAND DRAW
+// 3. WORK ORDER MODE, DRAW & HIGHLIGHT LOCK
 // ==========================================
 function toggleWorkOrderFloating() {
-    isWorkOrderModeActive = !isWorkOrderModeActive;
-    const btn = document.getElementById('woFloatingBtn');
-    const statusTxt = document.getElementById('woStatusText');
-    const plusBtn = document.getElementById('woPlusBtn');
-    const submenu = document.getElementById('woSubmenu');
+  isWorkOrderModeActive = !isWorkOrderModeActive;
+  const btn = document.getElementById('woFloatingBtn');
+  const statusTxt = document.getElementById('woStatusText');
+  const plusBtn = document.getElementById('woPlusBtn');
+  const submenu = document.getElementById('woSubmenu');
 
-    if (isWorkOrderModeActive) {
-        if (btn) btn.classList.add('active');
-        if (statusTxt) {
-            statusTxt.innerText = 'ON';
-            statusTxt.style.color = '#000000';
-        }
-
-        if (!map.hasLayer(workOrderMarkersLayer)) workOrderMarkersLayer.addTo(map);
-        if (!map.hasLayer(workOrderDrawingsLayer)) workOrderDrawingsLayer.addTo(map);
-
-        if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
-            if (plusBtn) plusBtn.style.display = 'flex';
-        }
-
-        catatLogKeServer("WO MODE", "Mengaktifkan Mode WO.");
-    } else {
-        if (btn) btn.classList.remove('active');
-        if (statusTxt) {
-            statusTxt.innerText = 'OFF';
-            statusTxt.style.color = '#94a3b8';
-        }
-
-        if (map.hasLayer(workOrderMarkersLayer)) map.removeLayer(workOrderMarkersLayer);
-        if (map.hasLayer(workOrderDrawingsLayer)) map.removeLayer(workOrderDrawingsLayer);
-
-        if (plusBtn) plusBtn.style.display = 'none';
-        if (submenu) submenu.style.display = 'none';
-        activeWoTool = null;
-        map.dragging.enable();
-
-        catatLogKeServer("WO MODE", "Menonaktifkan Mode WO.");
+  if (isWorkOrderModeActive) {
+    if (btn) btn.classList.add('active');
+    if (statusTxt) {
+      statusTxt.innerText = 'ON';
+      statusTxt.style.color = '#000000';
     }
+
+    if (!map.hasLayer(workOrderMarkersLayer)) workOrderMarkersLayer.addTo(map);
+    if (!map.hasLayer(workOrderDrawingsLayer)) workOrderDrawingsLayer.addTo(map);
+
+    if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
+      if (plusBtn) plusBtn.style.display = 'flex';
+    }
+    refreshWorkOrderMapDisplay();
+    catatLogKeServer("WO MODE", "Mengaktifkan Mode WO.");
+  } else {
+    if (btn) btn.classList.remove('active');
+    if (statusTxt) {
+      statusTxt.innerText = 'OFF';
+      statusTxt.style.color = '#94a3b8';
+    }
+
+    if (map.hasLayer(workOrderMarkersLayer)) map.removeLayer(workOrderMarkersLayer);
+    if (map.hasLayer(workOrderDrawingsLayer)) map.removeLayer(workOrderDrawingsLayer);
+
+    if (plusBtn) plusBtn.style.display = 'none';
+    if (submenu) submenu.style.display = 'none';
+    activeWoTool = null;
+    selectedLineForWo = null;
+    map.dragging.enable();
+
+    catatLogKeServer("WO MODE", "Menonaktifkan Mode WO.");
+  }
 }
 
 function toggleInspectorSubmenu() {
-    if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
-    const submenu = document.getElementById('woSubmenu');
-    if (!submenu) return;
-    submenu.style.display = submenu.style.display === 'flex' ? 'none' : 'flex';
+  if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
+  const submenu = document.getElementById('woSubmenu');
+  if (!submenu) return;
+  submenu.style.display = submenu.style.display === 'flex' ? 'none' : 'flex';
 }
 
 function setWoTool(toolName) {
-    if (activeWoTool === toolName) {
-        activeWoTool = null;
-        document.querySelectorAll('.wo-sub-btn').forEach(b => b.classList.remove('active-tool'));
-        map.dragging.enable();
-        return;
-    }
-
-    activeWoTool = toolName;
+  if (activeWoTool === toolName) {
+    activeWoTool = null;
     document.querySelectorAll('.wo-sub-btn').forEach(b => b.classList.remove('active-tool'));
-    
-    const btnTarget = Array.from(document.querySelectorAll('.wo-sub-btn')).find(b => b.innerText.toLowerCase() === toolName);
-    if (btnTarget) btnTarget.classList.add('active-tool');
+    map.dragging.enable();
+    return;
+  }
 
-    if (toolName === 'draw') {
-        map.dragging.disable(); // Peta dikunci agar bisa drag bebas membuat garis
-    } else {
-        map.dragging.enable();
-    }
+  activeWoTool = toolName;
+  document.querySelectorAll('.wo-sub-btn').forEach(b => b.classList.remove('active-tool'));
+  
+  const btnTarget = Array.from(document.querySelectorAll('.wo-sub-btn')).find(b => b.innerText.toLowerCase() === toolName);
+  if (btnTarget) btnTarget.classList.add('active-tool');
+
+  if (toolName === 'draw') {
+    map.dragging.disable();
+  } else {
+    map.dragging.enable();
+  }
 }
 
-// Handler Klik Peta untuk Membuat Mark Baru (Di Luar Segmen Jalan)
+// Handler Klik Peta untuk Titik Mark WO
 function handleMapClickForWo(latlng) {
-    if (!isWorkOrderModeActive) return;
-    if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
-    if (activeWoTool !== 'mark') return;
+  if (!isWorkOrderModeActive) return;
+  if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
+  if (activeWoTool !== 'mark') return;
 
-    const lat = latlng.lat.toFixed(6);
-    const lng = latlng.lng.toFixed(6);
+  const lat = latlng.lat.toFixed(6);
+  const lng = latlng.lng.toFixed(6);
 
-    // Jika klik sembarang di luar jalan: nama jalan dikosongkan (wajib ketik manual)
-    openCreateWoModal("", `Lat/Lng: ${lat}, ${lng}`, latlng, {}, true);
+  openCreateWoModal("", `Lat/Lng: ${lat}, ${lng}`, latlng, {}, true);
 }
 
-// Handler Mouse Drag / Touch Drag untuk DRAW
+// Freehand Drawing Event Listeners
 map.on('mousedown touchstart', (e) => {
-    if (!isWorkOrderModeActive || activeWoTool !== 'draw') return;
-    if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
+  if (!isWorkOrderModeActive || activeWoTool !== 'draw') return;
+  if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
 
-    isDrawingActive = true;
-    currentDrawPoints = [e.latlng];
-    tempDrawPolyline = L.polyline(currentDrawPoints, { color: '#ff2b54', weight: 4 }).addTo(workOrderDrawingsLayer);
+  isDrawingActive = true;
+  currentDrawPoints = [e.latlng];
+  tempDrawPolyline = L.polyline(currentDrawPoints, { color: '#ff2b54', weight: 4 }).addTo(workOrderDrawingsLayer);
 });
 
 map.on('mousemove touchmove', (e) => {
-    if (!isDrawingActive || activeWoTool !== 'draw') return;
-    currentDrawPoints.push(e.latlng);
-    if (tempDrawPolyline) {
-        tempDrawPolyline.setLatLngs(currentDrawPoints);
-    }
+  if (!isDrawingActive || activeWoTool !== 'draw') return;
+  currentDrawPoints.push(e.latlng);
+  if (tempDrawPolyline) {
+    tempDrawPolyline.setLatLngs(currentDrawPoints);
+  }
 });
 
 map.on('mouseup touchend', (e) => {
-    if (!isDrawingActive || activeWoTool !== 'draw') return;
-    isDrawingActive = false;
+  if (!isDrawingActive || activeWoTool !== 'draw') return;
+  isDrawingActive = false;
 
-    if (currentDrawPoints.length > 1) {
-        const lineId = 'draw_' + Date.now();
-        const lineItem = {
-            id: lineId,
-            road: activeRoad || 'Area Tambang',
-            points: currentDrawPoints,
-            reporter: currentNRP
-        };
-        allDrawLines[lineId] = lineItem;
-        renderDrawLineOnMap(lineItem);
+  if (currentDrawPoints.length > 1) {
+    const lineId = 'draw_' + Date.now();
+    const lineItem = {
+      id: lineId,
+      road: activeRoad || 'Area Tambang',
+      points: currentDrawPoints,
+      reporter: currentNRP
+    };
+    allDrawLines[lineId] = lineItem;
+    renderDrawLineOnMap(lineItem);
 
-        // Sync simpan garis ke Google Cloud
-        syncDrawLineToCloud(lineItem);
-        catatLogKeServer("DRAW WO", `Inspector membuat garis sketsa di ${lineItem.road}`);
-    }
+    syncDrawLineToCloud(lineItem);
+    catatLogKeServer("DRAW WO", `Inspector membuat sketsa garis di ${lineItem.road}`);
+  }
 
-    if (tempDrawPolyline) {
-        workOrderDrawingsLayer.removeLayer(tempDrawPolyline);
-        tempDrawPolyline = null;
-    }
-    currentDrawPoints = [];
+  if (tempDrawPolyline) {
+    workOrderDrawingsLayer.removeLayer(tempDrawPolyline);
+    tempDrawPolyline = null;
+  }
+  currentDrawPoints = [];
 });
 
-// Render garis draw di peta dengan event listener hapus untuk Admin/Inspector
+// Render Garis Sketsa dengan Fitur Kunci Biru Neon saat di-Mark
 function renderDrawLineOnMap(lineItem) {
-    const polyLine = L.polyline(lineItem.points, { color: '#ff2b54', weight: 4 });
+  const isLocked = Object.values(allWorkOrders).some(wo => wo.linkedLineId === lineItem.id);
+  const strokeColor = isLocked ? '#00f0ff' : '#ff2b54';
+  const strokeWeight = isLocked ? 5 : 4;
 
-    polyLine.on('click', function(e) {
-        if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
-            L.DomEvent.stopPropagation(e);
-            const popupContent = `
-                <div style="font-size:11px; text-align:center; padding:4px; min-width:110px;">
-                    <b>Garis Sketsa WO</b><br>
-                    <button onclick="hapusGarisDraw('${lineItem.id}')" style="background:#e11d48; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-weight:bold; cursor:pointer; margin-top:6px;">Hapus Garis</button>
-                </div>
-            `;
-            polyLine.bindPopup(popupContent).openPopup(e.latlng);
-        }
-    });
+  if (lineItem.layer && workOrderDrawingsLayer.hasLayer(lineItem.layer)) {
+    workOrderDrawingsLayer.removeLayer(lineItem.layer);
+  }
 
-    lineItem.layer = polyLine;
-    workOrderDrawingsLayer.addLayer(polyLine);
+  const polyLine = L.polyline(lineItem.points, { color: strokeColor, weight: strokeWeight });
+
+  polyLine.on('click', function(e) {
+    L.DomEvent.stopPropagation(e);
+
+    // Jika sedang memilih tool MARK, kunci garis ini (Ubah jadi Biru Neon)
+    if (isWorkOrderModeActive && activeWoTool === 'mark' && (currentUserRole === 'admin' || currentUserRole === 'inspector')) {
+      selectedLineForWo = lineItem;
+      polyLine.setStyle({ color: '#00f0ff', weight: 6 });
+      const center = polyLine.getBounds().getCenter();
+      openCreateWoModal(lineItem.road, `Garis Sketsa Terkunci`, center, {}, false, lineItem.id);
+      return;
+    }
+
+    // Opsi Hapus Garis untuk Inspector / Admin
+    if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
+      const popupContent = `
+        <div style="font-size:11px; text-align:center; padding:4px; min-width:110px;">
+          <b>Garis Sketsa WO</b><br>
+          <button onclick="hapusGarisDraw('${lineItem.id}')" style="background:#e11d48; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-weight:bold; cursor:pointer; margin-top:6px;">Hapus Garis</button>
+        </div>
+      `;
+      polyLine.bindPopup(popupContent).openPopup(e.latlng);
+    }
+  });
+
+  lineItem.layer = polyLine;
+  workOrderDrawingsLayer.addLayer(polyLine);
 }
 
-// Hapus Garis Draw (Lokal & Cloud)
 function hapusGarisDraw(lineId) {
-    if (!confirm("Yakin ingin menghapus garis sketsa ini?")) return;
-    const lineItem = allDrawLines[lineId];
-    if (lineItem && lineItem.layer) {
-        workOrderDrawingsLayer.removeLayer(lineItem.layer);
-    }
-    delete allDrawLines[lineId];
+  if (!confirm("Yakin ingin menghapus garis sketsa ini?")) return;
+  const lineItem = allDrawLines[lineId];
+  if (lineItem && lineItem.layer) {
+    workOrderDrawingsLayer.removeLayer(lineItem.layer);
+  }
+  delete allDrawLines[lineId];
 
-    // Sync Hapus ke Cloud
-    fetch(WEB_APP_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        body: JSON.stringify({ action: "DELETE_DRAW_LINE", id: lineId })
-    });
-
-    catatLogKeServer("DELETE DRAW", `Menghapus sketsa garis ID: ${lineId}`);
+  fetch(WEB_APP_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    body: JSON.stringify({ action: "DELETE_DRAW_LINE", id: lineId })
+  });
+  catatLogKeServer("DELETE DRAW", `Menghapus sketsa garis ID: ${lineId}`);
 }
 
 function syncDrawLineToCloud(lineItem) {
-    fetch(WEB_APP_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        body: JSON.stringify({
-            action: "SAVE_DRAW_LINE",
-            id: lineItem.id,
-            road: lineItem.road,
-            points: lineItem.points,
-            reporter: lineItem.reporter
-        })
-    });
+  fetch(WEB_APP_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    body: JSON.stringify({
+      action: "SAVE_DRAW_LINE",
+      id: lineItem.id,
+      road: lineItem.road,
+      points: lineItem.points,
+      reporter: lineItem.reporter
+    })
+  });
 }
 
-// Klik pada poligon jalan saat mode WO aktif
 function handleWorkOrderClick(feature) {
-    if (!isWorkOrderModeActive) return;
+  if (!isWorkOrderModeActive) return;
 
-    const props = feature.properties || {};
-    const road = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
-    const rawSta = props.STA_Akhir || props.STA_Awal || props.Station_m || props.STA || "0+000";
-    const staFormatted = formatKeSTA(parseMeterSTA(rawSta));
+  const props = feature.properties || {};
+  const road = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
+  const rawSta = props.STA_Akhir || props.STA_Awal || props.Station_m || props.STA || "0+000";
+  const staFormatted = formatKeSTA(parseMeterSTA(rawSta));
 
-    let targetLatLng = map.getCenter();
-    try {
-        const tempLayer = L.geoJSON(feature);
-        targetLatLng = tempLayer.getBounds().getCenter();
-    } catch(e) {}
+  let targetLatLng = map.getCenter();
+  try {
+    const tempLayer = L.geoJSON(feature);
+    targetLatLng = tempLayer.getBounds().getCenter();
+  } catch(e) {}
 
-    // Klik di jalan: nama jalan otomatis terisi dari layer
-    openCreateWoModal(road, `STA ${staFormatted}`, targetLatLng, props, false);
+  openCreateWoModal(road, `STA ${staFormatted}`, targetLatLng, props, false);
 }
 
 // ==========================================
-// 4. MODAL FORM: CREATE, EDIT, VIEW & DELETE
+// 4. MODAL FORM: CREATE, EDIT & VIEW WO
 // ==========================================
-function openCreateWoModal(road, locationDetail, latlng, rawProps = {}, isManualRoad = false) {
-    currentWoMode = 'create';
-    currentActiveWoId = null;
-    activeWoFeatureData = { road, locationDetail, latlng, rawProps, isManualRoad };
+function openCreateWoModal(road, locationDetail, latlng, rawProps = {}, isManualRoad = false, linkedLineId = "") {
+  currentWoMode = 'create';
+  currentActiveWoId = null;
+  activeWoFeatureData = { road, locationDetail, latlng, rawProps, isManualRoad, linkedLineId };
 
-    setupModalUI({
-        title: "BUAT WORK ORDER (WO)",
-        sub: "Tentukan temuan perbaikan infrastruktur jalan tambang.",
-        roadName: road,
-        locationDetail: locationDetail,
-        reporter: "", // Kosong, pelapor wajib ketik manual
-        category: "Overgrade / Tanjakan Curam",
-        notes: "",
-        notesLabel: "Catatan / Instruksi Lapangan:",
-        showCategory: (currentUserRole === 'admin' || currentUserRole === 'inspector'),
-        showDelete: false,
-        submitText: (currentUserRole === 'admin' || currentUserRole === 'inspector') ? "Kirim WO" : "Submit Evidence"
-    });
+  setupModalUI({
+    title: "BUAT WORK ORDER (WO)",
+    sub: "Tentukan temuan perbaikan infrastruktur jalan tambang.",
+    createdTime: UtilitiesFormatNowWita(),
+    status: "OPEN",
+    roadName: road,
+    locationDetail: locationDetail,
+    reporter: "",
+    jobs: [{ category: "Overgrade / Tanjakan Curam", notes: "" }],
+    photoUrls: [],
+    notesLabel: "Catatan Tambahan / Instruksi Umum:",
+    notesPlaceholder: "Catatan opsional...",
+    notesValue: "",
+    uploadLabel: "Upload Foto (Acuan / Stage Plan Desain):",
+    showJobsEdit: true,
+    showStatusUpdate: false,
+    showRefPhotos: false,
+    showDelete: false,
+    showViewProgress: false,
+    submitText: "Kirim WO"
+  });
 }
 
 function openEditWoModal(woId) {
-    if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
+  if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
 
-    const item = allWorkOrders[woId];
-    if (!item) return;
+  const item = allWorkOrders[woId];
+  if (!item) return;
 
-    currentWoMode = 'edit';
-    currentActiveWoId = woId;
-    activeWoFeatureData = { ...item };
+  currentWoMode = 'edit';
+  currentActiveWoId = woId;
+  activeWoFeatureData = { ...item };
 
-    setupModalUI({
-        title: "EDIT WORK ORDER",
-        sub: "Perbarui instruksi perbaikan atau status temuan jalan tambang.",
-        roadName: item.road,
-        locationDetail: item.sta || `Lat/Lng: ${item.latlng.lat.toFixed(6)}, ${item.latlng.lng.toFixed(6)}`,
-        reporter: item.reporter || "",
-        category: item.category,
-        notes: item.notes,
-        notesLabel: "Perbarui Catatan / Instruksi:",
-        showCategory: true,
-        showDelete: true,
-        submitText: "Simpan Perubahan"
-    });
+  setupModalUI({
+    title: "EDIT WORK ORDER",
+    sub: "Perbarui instruksi perbaikan atau status temuan jalan tambang.",
+    createdTime: item.createdTime,
+    status: item.status || "OPEN",
+    roadName: item.road,
+    locationDetail: item.sta,
+    reporter: item.reporter,
+    jobs: (item.jobs && item.jobs.length > 0) ? item.jobs : [{ category: "Overgrade / Tanjakan Curam", notes: item.notes || "" }],
+    photoUrls: item.photoUrls || [],
+    notesLabel: "Perbarui Catatan Umum:",
+    notesPlaceholder: "Catatan perbaikan...",
+    notesValue: item.notes || "",
+    uploadLabel: "Tambah Foto Acuan Desain:",
+    showJobsEdit: true,
+    showStatusUpdate: true,
+    showRefPhotos: (item.photoUrls && item.photoUrls.length > 0),
+    showDelete: true,
+    showViewProgress: true,
+    submitText: "Simpan Perubahan"
+  });
 }
 
 function openViewWoModal(woId) {
-    const item = allWorkOrders[woId];
-    if (!item) return;
+  const item = allWorkOrders[woId];
+  if (!item) return;
 
-    currentWoMode = 'view';
-    currentActiveWoId = woId;
-    activeWoFeatureData = { ...item };
+  currentWoMode = 'view';
+  currentActiveWoId = woId;
+  activeWoFeatureData = { ...item };
 
-    setupModalUI({
-        title: "VIEW WORK ORDER & EVIDENCE",
-        sub: "Rincian Work Order dan form pengiriman bukti foto lapangan.",
-        roadName: item.road,
-        locationDetail: item.sta || `Lat/Lng: ${item.latlng.lat.toFixed(6)}, ${item.latlng.lng.toFixed(6)}`,
-        reporter: "", // Kosong, pengirim evidence wajib ketik manual
-        category: item.category,
-        notes: "",
-        notesLabel: "Keterangan / Progres Lapangan:",
-        showCategory: false,
-        showDelete: false,
-        submitText: "Kirim Evidence"
-    });
+  setupModalUI({
+    title: "VIEW WORK ORDER & EVIDENCE",
+    sub: "Rincian Work Order dan form pengiriman bukti progres lapangan.",
+    createdTime: item.createdTime,
+    status: item.status || "OPEN",
+    roadName: item.road,
+    locationDetail: item.sta,
+    reporter: "",
+    jobs: (item.jobs && item.jobs.length > 0) ? item.jobs : [{ category: "Overgrade / Tanjakan Curam", notes: item.notes || "" }],
+    photoUrls: item.photoUrls || [],
+    notesLabel: "Keterangan / Progress Lapangan:",
+    notesPlaceholder: "Contoh : progress regrade",
+    notesValue: "",
+    uploadLabel: "Upload Foto:",
+    showJobsEdit: false,
+    showStatusUpdate: true,
+    showRefPhotos: (item.photoUrls && item.photoUrls.length > 0),
+    showDelete: false,
+    showViewProgress: true,
+    submitText: "Kirim Evidence"
+  });
 }
 
 function setupModalUI(cfg) {
-    const modal = document.getElementById('woModalOverlay');
-    const title = document.getElementById('woModalTitle');
-    const sub = document.getElementById('woModalSub');
-    const roadInput = document.getElementById('woRoadName');
-    const locDetail = document.getElementById('woLocationDetail');
-    const repInput = document.getElementById('woReporterName');
-    const catWrapper = document.getElementById('woCategoryWrapper');
-    const catSelect = document.getElementById('woCategory');
-    const notesInput = document.getElementById('woNotes');
-    const notesLabel = document.getElementById('woNotesLabel');
-    const deleteBtn = document.getElementById('woDeleteBtn');
-    const submitBtn = document.getElementById('woSubmitBtn');
+  const modal = document.getElementById('woModalOverlay');
+  const title = document.getElementById('woModalTitle');
+  const sub = document.getElementById('woModalSub');
+  const dateInfo = document.getElementById('woCreatedDateInfo');
+  const statusBadge = document.getElementById('woStatusBadge');
+  const roadInput = document.getElementById('woRoadName');
+  const locDetail = document.getElementById('woLocationDetail');
+  const repInput = document.getElementById('woReporterName');
+  const statusSelect = document.getElementById('woStatusUpdateSelect');
+  const statusWrap = document.getElementById('woStatusUpdateWrapper');
+  const notesLabel = document.getElementById('woNotesLabel');
+  const notesInput = document.getElementById('woNotes');
+  const uploadLabel = document.getElementById('woUploadPhotoLabel');
+  const deleteBtn = document.getElementById('woDeleteBtn');
+  const viewProgBtn = document.getElementById('woViewProgressBtn');
+  const submitBtn = document.getElementById('woSubmitBtn');
+  const previewBox = document.getElementById('woImagePreviewContainer');
+  const fileInput = document.getElementById('woEvidenceFile');
 
-    if (title) title.innerText = cfg.title;
-    if (sub) sub.innerText = cfg.sub;
-    if (roadInput) roadInput.value = cfg.roadName || "";
-    if (locDetail) locDetail.value = cfg.locationDetail || "";
-    if (repInput) repInput.value = cfg.reporter || "";
-    if (catSelect && cfg.category) catSelect.value = cfg.category;
-    if (catWrapper) catWrapper.style.display = cfg.showCategory ? 'block' : 'none';
-    if (notesInput) notesInput.value = cfg.notes || "";
-    if (notesLabel) notesLabel.innerText = cfg.notesLabel;
-    if (deleteBtn) deleteBtn.style.display = cfg.showDelete ? 'block' : 'none';
-    if (submitBtn) submitBtn.innerText = cfg.submitText;
+  if (title) title.innerText = cfg.title;
+  if (sub) sub.innerText = cfg.sub;
 
-    if (modal) modal.style.display = 'flex';
+  // Tanggal WO & Badge Status (Kotak Pink Foto 5)
+  if (dateInfo) {
+    dateInfo.style.display = cfg.createdTime ? 'block' : 'none';
+    dateInfo.innerText = `Tanggal WO: ${cfg.createdTime || '-'}`;
+  }
+  if (statusBadge) {
+    statusBadge.innerText = (cfg.status || "OPEN").toUpperCase();
+    const st = (cfg.status || "OPEN").toUpperCase();
+    if (st === "CLOSED") {
+      statusBadge.style.background = "#22c55e";
+      statusBadge.style.color = "#ffffff";
+    } else if (st === "PROGRESS") {
+      statusBadge.style.background = "#eab308";
+      statusBadge.style.color = "#000000";
+    } else {
+      statusBadge.style.background = "#e11d48";
+      statusBadge.style.color = "#ffffff";
+    }
+  }
+
+  if (roadInput) roadInput.value = cfg.roadName || "";
+  if (locDetail) locDetail.value = cfg.locationDetail || "";
+  if (repInput) repInput.value = cfg.reporter || "";
+
+  if (statusWrap) statusWrap.style.display = cfg.showStatusUpdate ? 'block' : 'none';
+  if (statusSelect && cfg.status) statusSelect.value = cfg.status;
+
+  if (notesLabel) notesLabel.innerText = cfg.notesLabel;
+  if (notesInput) {
+    notesInput.value = cfg.notesValue || "";
+    notesInput.placeholder = cfg.notesPlaceholder || "Ketik catatan...";
+  }
+  if (uploadLabel) uploadLabel.innerText = cfg.uploadLabel;
+
+  if (deleteBtn) deleteBtn.style.display = cfg.showDelete ? 'block' : 'none';
+  if (viewProgBtn) viewProgBtn.style.display = cfg.showViewProgress ? 'block' : 'none';
+  if (submitBtn) submitBtn.innerText = cfg.submitText;
+
+  if (fileInput) fileInput.value = '';
+  if (previewBox) previewBox.innerHTML = '';
+
+  // Setup Multi-Job Task Cards
+  renderJobsUI(cfg.jobs, cfg.showJobsEdit);
+
+  // Setup Foto Acuan / Stage Plan (View & Zoom)
+  renderRefPhotosUI(cfg.photoUrls, cfg.showRefPhotos);
+
+  if (modal) modal.style.display = 'flex';
 }
 
 function closeWoModal() {
-    const modal = document.getElementById('woModalOverlay');
-    if (modal) modal.style.display = 'none';
+  const modal = document.getElementById('woModalOverlay');
+  if (modal) modal.style.display = 'none';
+  selectedLineForWo = null;
 }
 
-// Helper kompresi gambar sebelum kirim ke Google Drive
+// Multi-Job Dynamic DOM Handler
+function renderJobsUI(jobsList, isEditable) {
+  const container = document.getElementById('woJobsContainer');
+  const addBtn = document.getElementById('btnAddJobBtn');
+  if (!container) return;
+
+  if (addBtn) addBtn.style.display = isEditable ? 'block' : 'none';
+  container.innerHTML = '';
+
+  const jobs = (jobsList && jobsList.length > 0) ? jobsList : [{ category: "Overgrade / Tanjakan Curam", notes: "" }];
+
+  jobs.forEach((j, idx) => {
+    const card = document.createElement('div');
+    card.className = 'job-item-card';
+    card.style.background = '#1e293b';
+    card.style.border = '1px solid #334155';
+    card.style.borderRadius = '6px';
+    card.style.padding = '8px 10px';
+
+    if (isEditable) {
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <span style="font-size:10px; font-weight:bold; color:#38bdf8;">JOB #${idx + 1}</span>
+          ${jobs.length > 1 ? `<button type="button" onclick="removeJobItem(${idx})" style="background:transparent; color:#ef4444; border:none; font-size:11px; cursor:pointer; font-weight:bold;">✕ Hapus</button>` : ''}
+        </div>
+        <select class="job-category-select" style="width:100%; background:#0f172a; border:1px solid #475569; padding:4px 6px; border-radius:4px; color:#fff; font-size:11px; margin-bottom:4px;">
+          <option value="Overgrade / Tanjakan Curam" ${j.category === "Overgrade / Tanjakan Curam" ? 'selected' : ''}>Overgrade / Tanjakan Curam</option>
+          <option value="Road Sempit / Perlu Pelebaran" ${j.category === "Road Sempit / Perlu Pelebaran" ? 'selected' : ''}>Road Sempit / Perlu Pelebaran</option>
+          <option value="Crossfall Tidak Sesuai / Genangan" ${j.category === "Crossfall Tidak Sesuai / Genangan" ? 'selected' : ''}>Crossfall Tidak Sesuai / Genangan</option>
+          <option value="Butuh Perbaikan Bundwall / Safety Berm" ${j.category === "Butuh Perbaikan Bundwall / Safety Berm" ? 'selected' : ''}>Butuh Perbaikan Bundwall / Safety Berm</option>
+          <option value="Lainnya" ${j.category === "Lainnya" ? 'selected' : ''}>Lainnya</option>
+        </select>
+        <textarea class="job-notes-input" rows="1" placeholder="Instruksi khusus job #${idx + 1}..." style="width:100%; background:#0f172a; border:1px solid #475569; padding:4px 6px; border-radius:4px; color:#fff; font-size:11px; resize:none;">${j.notes || ''}</textarea>
+      `;
+    } else {
+      card.innerHTML = `
+        <div style="font-size:10px; font-weight:bold; color:#38bdf8; margin-bottom:2px;">JOB #${idx + 1}: ${j.category}</div>
+        <div style="font-size:11px; color:#cbd5e1;">${j.notes || 'Tidak ada instruksi khusus.'}</div>
+      `;
+    }
+    container.appendChild(card);
+  });
+}
+
+function addNewJobItem() {
+  const currentJobs = collectJobsFromUI();
+  currentJobs.push({ category: "Overgrade / Tanjakan Curam", notes: "" });
+  renderJobsUI(currentJobs, true);
+}
+
+function removeJobItem(index) {
+  const currentJobs = collectJobsFromUI();
+  currentJobs.splice(index, 1);
+  renderJobsUI(currentJobs, true);
+}
+
+function collectJobsFromUI() {
+  const container = document.getElementById('woJobsContainer');
+  if (!container) return [];
+  const cards = container.querySelectorAll('.job-item-card');
+  const list = [];
+  cards.forEach(c => {
+    const sel = c.querySelector('.job-category-select');
+    const txt = c.querySelector('.job-notes-input');
+    if (sel && txt) {
+      list.push({ category: sel.value, notes: txt.value.trim() });
+    }
+  });
+  return list.length > 0 ? list : [{ category: "Overgrade / Tanjakan Curam", notes: "" }];
+}
+
+// Foto Acuan / Stage Plan Desain Lightbox UI
+function renderRefPhotosUI(urls, isVisible) {
+  const wrap = document.getElementById('woRefPhotosSection');
+  const gallery = document.getElementById('woRefPhotosGallery');
+  if (!wrap || !gallery) return;
+
+  if (!isVisible || !urls || urls.length === 0) {
+    wrap.style.display = 'none';
+    gallery.innerHTML = '';
+    return;
+  }
+
+  wrap.style.display = 'block';
+  gallery.innerHTML = '';
+
+  urls.forEach((u, i) => {
+    const img = document.createElement('img');
+    img.src = u;
+    img.alt = `Stage Plan #${i + 1}`;
+    img.style.width = '100%';
+    img.style.height = '65px';
+    img.style.objectFit = 'cover';
+    img.style.borderRadius = '4px';
+    img.style.border = '1px solid #475569';
+    img.style.cursor = 'pointer';
+    img.onclick = () => openImageLightbox(u);
+    gallery.appendChild(img);
+  });
+}
+
+// Pratinjau Pemilihan Multi-Foto
+document.addEventListener("DOMContentLoaded", () => {
+  const fileInput = document.getElementById('woEvidenceFile');
+  const previewBox = document.getElementById('woImagePreviewContainer');
+  if (fileInput && previewBox) {
+    fileInput.addEventListener('change', () => {
+      previewBox.innerHTML = '';
+      if (!fileInput.files) return;
+      Array.from(fileInput.files).forEach(f => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const thumb = document.createElement('img');
+          thumb.src = e.target.result;
+          thumb.style.width = '45px';
+          thumb.style.height = '45px';
+          thumb.style.objectFit = 'cover';
+          thumb.style.borderRadius = '4px';
+          thumb.style.border = '1px solid #38bdf8';
+          previewBox.appendChild(thumb);
+        };
+        reader.readAsDataURL(f);
+      });
+    });
+  }
+});
+
+// Helper Kompresi Gambar
 function compressImage(file, maxDimension = 1280, quality = 0.75) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                let width = img.width;
-                let height = img.height;
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
 
-                if (width > height) {
-                    if (width > maxDimension) {
-                        height = Math.round((height * maxDimension) / width);
-                        width = maxDimension;
-                    }
-                } else {
-                    if (height > maxDimension) {
-                        width = Math.round((width * maxDimension) / height);
-                        height = maxDimension;
-                    }
-                }
-
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-
-                const dataUrl = canvas.toDataURL('image/jpeg', quality);
-                resolve(dataUrl);
-            };
-            img.onerror = (e) => reject(e);
-        };
-        reader.onerror = (e) => reject(e);
-    });
-}
-
-async function submitWorkOrder() {
-    const roadInput = document.getElementById('woRoadName');
-    const repInput = document.getElementById('woReporterName');
-    const notesElem = document.getElementById('woNotes');
-    const categoryElem = document.getElementById('woCategory');
-    const fileInput = document.getElementById('woEvidenceFile');
-    const locDetail = document.getElementById('woLocationDetail');
-
-    const roadName = roadInput ? roadInput.value.trim() : "";
-    const reporter = repInput ? repInput.value.trim() : "";
-    const notes = notesElem ? notesElem.value.trim() : "";
-    const category = (categoryElem && currentWoMode !== 'view') ? categoryElem.value : (activeWoFeatureData.category || "Evidence Lapangan");
-    const detailLoc = locDetail ? locDetail.value : "";
-
-    if (!roadName) {
-        alert("Nama Ruas Jalan wajib diisi, bre!");
-        return;
-    }
-
-    if (!reporter) {
-        alert("Nama / NRP Pelapor wajib diisi manual!");
-        return;
-    }
-
-    if (!notes) {
-        alert("Catatan atau instruksi lapangan wajib diisi!");
-        return;
-    }
-
-    // Tangani Foto Bukti Evidence jika ada
-    let imageBase64 = null;
-    let imageName = null;
-    let imageMime = "image/jpeg";
-
-    if (fileInput && fileInput.files && fileInput.files[0]) {
-        const rawFile = fileInput.files[0];
-        imageName = `EV_${roadName.replace(/\s+/g, '_')}_${Date.now()}.jpg`;
-        try {
-            imageBase64 = await compressImage(rawFile);
-        } catch (e) {
-            console.warn("Kompresi gagal, pakai file asli:", e);
-            imageBase64 = await toBase64(rawFile);
+        if (width > height) {
+          if (width > maxDimension) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          }
+        } else {
+          if (height > maxDimension) {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
         }
-    }
 
-    if (currentWoMode === 'create') {
-        const woId = 'wo_' + Date.now();
-        const woItem = {
-            id: woId,
-            road: roadName,
-            sta: detailLoc,
-            latlng: activeWoFeatureData.latlng,
-            category: category,
-            notes: notes,
-            reporter: reporter,
-            photoUrl: ""
-        };
-        allWorkOrders[woId] = woItem;
-        createOrUpdateMarker(woItem);
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
 
-        // Kirim ke Google Apps Script (Drive & Sheet)
-        syncWorkOrderToCloud({
-            action: "SAVE_WORK_ORDER",
-            id: woItem.id,
-            road: woItem.road,
-            sta: woItem.sta,
-            latlng: woItem.latlng,
-            category: woItem.category,
-            notes: woItem.notes,
-            reporter: woItem.reporter,
-            imageBase64: imageBase64,
-            imageName: imageName,
-            imageMime: imageMime
-        });
-
-        catatLogKeServer("CREATE WO", `Pelapor: ${reporter}, Lokasi: ${woItem.road} (${woItem.sta})`);
-        alert(`Berhasil membuat Work Order di ${woItem.road}!`);
-
-    } else if (currentWoMode === 'edit') {
-        if (!currentActiveWoId || !allWorkOrders[currentActiveWoId]) return;
-
-        const woItem = allWorkOrders[currentActiveWoId];
-        woItem.road = roadName;
-        woItem.category = category;
-        woItem.notes = notes;
-        woItem.reporter = reporter;
-
-        createOrUpdateMarker(woItem);
-
-        syncWorkOrderToCloud({
-            action: "SAVE_WORK_ORDER",
-            id: woItem.id,
-            road: woItem.road,
-            sta: woItem.sta,
-            latlng: woItem.latlng,
-            category: woItem.category,
-            notes: woItem.notes,
-            reporter: woItem.reporter,
-            photoUrl: woItem.photoUrl,
-            imageBase64: imageBase64,
-            imageName: imageName,
-            imageMime: imageMime
-        });
-
-        catatLogKeServer("EDIT WO", `Diperbarui oleh: ${reporter}, Lokasi: ${woItem.road}`);
-        alert("Perubahan Work Order berhasil disimpan!");
-
-    } else if (currentWoMode === 'view') {
-        // Submit Evidence dari Viewer / Inspector ke Tab Evidence di Sheet & Drive
-        syncWorkOrderToCloud({
-            action: "SUBMIT_EVIDENCE",
-            road: roadName, // Murni nama jalan saja
-            notes: notes,
-            reporter: reporter,
-            imageBase64: imageBase64,
-            imageName: imageName,
-            imageMime: imageMime
-        });
-
-        catatLogKeServer("SUBMIT EVIDENCE", `Pelapor: ${reporter}, Lokasi: ${roadName}, Keterangan: ${notes}`);
-        alert(`Evidence foto berhasil dikirim oleh ${reporter}!`);
-    }
-
-    if (notesElem) notesElem.value = '';
-    if (fileInput) fileInput.value = '';
-    if (repInput) repInput.value = '';
-    closeWoModal();
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+    };
+    reader.onerror = reject;
+  });
 }
 
-function toBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
+// Eksekusi Submit Form WO & Evidence
+async function submitWorkOrder() {
+  const roadInput = document.getElementById('woRoadName');
+  const repInput = document.getElementById('woReporterName');
+  const notesElem = document.getElementById('woNotes');
+  const fileInput = document.getElementById('woEvidenceFile');
+  const locDetail = document.getElementById('woLocationDetail');
+  const statusSelect = document.getElementById('woStatusUpdateSelect');
+
+  const roadName = roadInput ? roadInput.value.trim() : "";
+  const reporter = repInput ? repInput.value.trim() : "";
+  const notes = notesElem ? notesElem.value.trim() : "";
+  const detailLoc = locDetail ? locDetail.value : "";
+  const statusBaru = statusSelect ? statusSelect.value : "PROGRESS";
+
+  if (!roadName) {
+    alert("Nama Ruas Jalan wajib diisi, bre!");
+    return;
+  }
+  if (!reporter) {
+    alert("Nama / NRP Pelapor wajib diisi manual!");
+    return;
+  }
+  if (!notes) {
+    alert("Catatan atau keterangan lapangan wajib diisi!");
+    return;
+  }
+
+  // Proses Unggah Banyak Foto
+  const imagesPayload = [];
+  if (fileInput && fileInput.files && fileInput.files.length > 0) {
+    for (let i = 0; i < fileInput.files.length; i++) {
+      const file = fileInput.files[i];
+      try {
+        const base64 = await compressImage(file);
+        imagesPayload.push({
+          imageBase64: base64,
+          imageName: `IMG_${roadName.replace(/\s+/g, '_')}_${Date.now()}_${i + 1}.jpg`,
+          imageMime: "image/jpeg"
+        });
+      } catch (e) {
+        console.warn("Gagal kompres foto:", e);
+      }
+    }
+  }
+
+  if (currentWoMode === 'create') {
+    const woId = 'wo_' + Date.now();
+    const jobs = collectJobsFromUI();
+    const createdTime = UtilitiesFormatNowWita();
+    const linkedLineId = (activeWoFeatureData && activeWoFeatureData.linkedLineId) ? activeWoFeatureData.linkedLineId : (selectedLineForWo ? selectedLineForWo.id : "");
+
+    const woItem = {
+      id: woId,
+      createdTime: createdTime,
+      road: roadName,
+      sta: detailLoc,
+      latlng: activeWoFeatureData.latlng,
+      jobs: jobs,
+      notes: notes,
+      reporter: reporter,
+      photoUrls: [],
+      status: "OPEN",
+      linkedLineId: linkedLineId
+    };
+    allWorkOrders[woId] = woItem;
+    createOrUpdateMarker(woItem);
+
+    // Refresh garis sketsa draw yang dikunci
+    if (linkedLineId && allDrawLines[linkedLineId]) {
+      renderDrawLineOnMap(allDrawLines[linkedLineId]);
+    }
+
+    syncWorkOrderToCloud({
+      action: "SAVE_WORK_ORDER",
+      id: woItem.id,
+      createdTime: woItem.createdTime,
+      road: woItem.road,
+      sta: woItem.sta,
+      latlng: woItem.latlng,
+      jobs: woItem.jobs,
+      notes: woItem.notes,
+      reporter: woItem.reporter,
+      status: "OPEN",
+      linkedLineId: woItem.linkedLineId,
+      images: imagesPayload
     });
+
+    catatLogKeServer("CREATE WO", `Pelapor: ${reporter}, Lokasi: ${woItem.road} (${woItem.sta})`);
+    alert(`Berhasil membuat Work Order di ${woItem.road}!`);
+
+  } else if (currentWoMode === 'edit') {
+    if (!currentActiveWoId || !allWorkOrders[currentActiveWoId]) return;
+
+    const woItem = allWorkOrders[currentActiveWoId];
+    woItem.road = roadName;
+    woItem.jobs = collectJobsFromUI();
+    woItem.notes = notes;
+    woItem.reporter = reporter;
+    woItem.status = statusBaru;
+
+    createOrUpdateMarker(woItem);
+
+    syncWorkOrderToCloud({
+      action: "SAVE_WORK_ORDER",
+      id: woItem.id,
+      createdTime: woItem.createdTime,
+      road: woItem.road,
+      sta: woItem.sta,
+      latlng: woItem.latlng,
+      jobs: woItem.jobs,
+      notes: woItem.notes,
+      reporter: woItem.reporter,
+      photoUrls: woItem.photoUrls,
+      status: woItem.status,
+      linkedLineId: woItem.linkedLineId,
+      images: imagesPayload
+    });
+
+    catatLogKeServer("EDIT WO", `Diperbarui oleh: ${reporter}, Lokasi: ${woItem.road}, Status: ${statusBaru}`);
+    alert("Perubahan Work Order berhasil disimpan!");
+
+  } else if (currentWoMode === 'view') {
+    // Pengawas / Viewer Mengirim Progres Evidence
+    syncWorkOrderToCloud({
+      action: "SUBMIT_EVIDENCE",
+      woId: currentActiveWoId,
+      road: roadName,
+      status: statusBaru,
+      notes: notes,
+      reporter: reporter,
+      images: imagesPayload
+    });
+
+    // Update status lokal tiket WO
+    if (allWorkOrders[currentActiveWoId]) {
+      allWorkOrders[currentActiveWoId].status = statusBaru;
+      createOrUpdateMarker(allWorkOrders[currentActiveWoId]);
+    }
+
+    catatLogKeServer("SUBMIT EVIDENCE", `Pelapor: ${reporter}, Lokasi: ${roadName}, Status: ${statusBaru}, Keterangan: ${notes}`);
+    alert(`Evidence progres berhasil dikirim oleh ${reporter} dengan status: ${statusBaru}!`);
+  }
+
+  closeWoModal();
 }
 
 function syncWorkOrderToCloud(payload) {
-    fetch(WEB_APP_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        body: JSON.stringify(payload)
-    }).catch(err => console.error("Sync error:", err));
+  fetch(WEB_APP_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    body: JSON.stringify(payload)
+  }).catch(err => console.error("Sync error:", err));
 }
 
+// Render Marker Titik WO dengan Warna Status Dinamis
 function createOrUpdateMarker(woItem) {
-    if (!woItem || !woItem.latlng) return;
+  if (!woItem || !woItem.latlng) return;
 
-    if (woItem.markerLayer) {
-        workOrderMarkersLayer.removeLayer(woItem.markerLayer);
-    }
+  if (woItem.markerLayer) {
+    workOrderMarkersLayer.removeLayer(woItem.markerLayer);
+  }
 
-    const customIcon = L.divIcon({
-        className: 'custom-wo-marker',
-        html: `<div style="background:#ff2b54; width:16px; height:16px; border:2px solid #ffffff; border-radius:50%; box-shadow:0 0 10px rgba(0,0,0,0.7);"></div>`,
-        iconSize: [16, 16],
-        iconAnchor: [8, 8]
-    });
+  const status = (woItem.status || "OPEN").toUpperCase();
+  let pinColor = '#e11d48'; // OPEN = Merah
+  if (status === 'PROGRESS') pinColor = '#eab308'; // PROGRESS = Kuning
+  if (status === 'CLOSED') pinColor = '#22c55e'; // CLOSED = Hijau
 
-    const marker = L.marker(woItem.latlng, { icon: customIcon });
+  const customIcon = L.divIcon({
+    className: 'custom-wo-marker',
+    html: `<div style="background:${pinColor}; width:16px; height:16px; border:2px solid #ffffff; border-radius:50%; box-shadow:0 0 10px rgba(0,0,0,0.7);"></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8]
+  });
 
-    let editBtnHtml = '';
-    if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
-        editBtnHtml = `<button onclick="openEditWoModal('${woItem.id}')" style="background:#e11d48; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">Edit WO</button>`;
-    }
-    let viewBtnHtml = `<button onclick="openViewWoModal('${woItem.id}')" style="background:#00f0ff; color:#000; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">View WO</button>`;
+  const marker = L.marker(woItem.latlng, { icon: customIcon });
 
-    let photoPreview = woItem.photoUrl ? `<br><a href="${woItem.photoUrl}" target="_blank" style="color:#0078d4; font-weight:bold; text-decoration:underline; display:inline-block; margin-top:4px;">📷 Lihat Foto Evidence</a>` : '';
+  let editBtnHtml = '';
+  if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
+    editBtnHtml = `<button onclick="openEditWoModal('${woItem.id}')" style="background:#e11d48; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">Edit WO</button>`;
+  }
+  // Tombol Biru Cyan Bertuliskan "View"
+  let viewBtnHtml = `<button onclick="openViewWoModal('${woItem.id}')" style="background:#00f0ff; color:#000; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">View</button>`;
 
-    // Pop-up bersih tanpa label CREATE/EDIT WO
-    marker.bindPopup(`
-        <div style="font-size:11px; color:#0f172a; min-width:180px;">
-            <div style="display:flex; gap:6px; margin-bottom:6px; border-bottom:1px solid #cbd5e1; padding-bottom:6px;">
-                ${editBtnHtml}
-                ${viewBtnHtml}
-            </div>
-            <b>Lokasi:</b> ${woItem.road} (${woItem.sta})<br>
-            <b>Kategori:</b> ${woItem.category}<br>
-            <b>Catatan:</b> ${woItem.notes}<br>
-            <b>Pelapor:</b> ${woItem.reporter}${photoPreview}
-        </div>
-    `);
+  let jobsListText = (woItem.jobs && woItem.jobs.length > 0)
+    ? woItem.jobs.map((j, i) => `${i + 1}. ${j.category}`).join(', ')
+    : (woItem.category || '-');
 
-    woItem.markerLayer = marker;
-    workOrderMarkersLayer.addLayer(marker);
+  marker.bindPopup(`
+    <div style="font-size:11px; color:#0f172a; min-width:190px;">
+      <div style="display:flex; gap:6px; margin-bottom:6px; border-bottom:1px solid #cbd5e1; padding-bottom:6px;">
+        ${editBtnHtml}
+        ${viewBtnHtml}
+      </div>
+      <b>Tanggal WO:</b> ${woItem.createdTime || '-'}<br>
+      <b>Status:</b> <span style="font-weight:bold; color:${pinColor};">${status}</span><br>
+      <b>Lokasi:</b> ${woItem.road} (${woItem.sta})<br>
+      <b>Pekerjaan:</b> ${jobsListText}<br>
+      <b>Pelapor:</b> ${woItem.reporter}
+    </div>
+  `);
+
+  woItem.markerLayer = marker;
+  workOrderMarkersLayer.addLayer(marker);
 }
 
 function deleteCurrentWorkOrder() {
-    if (!currentActiveWoId || !allWorkOrders[currentActiveWoId]) return;
+  if (!currentActiveWoId || !allWorkOrders[currentActiveWoId]) return;
+  if (!confirm("Yakin ingin menghapus Work Order ini?")) return;
 
-    if (!confirm("Yakin ingin menghapus Work Order ini?")) return;
+  const woItem = allWorkOrders[currentActiveWoId];
+  if (woItem.markerLayer) {
+    workOrderMarkersLayer.removeLayer(woItem.markerLayer);
+  }
 
-    const woItem = allWorkOrders[currentActiveWoId];
-    if (woItem.markerLayer) {
-        workOrderMarkersLayer.removeLayer(woItem.markerLayer);
-    }
+  fetch(WEB_APP_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    body: JSON.stringify({ action: "DELETE_WORK_ORDER", id: currentActiveWoId })
+  });
 
-    // Sync Hapus ke Cloud Sheets
-    fetch(WEB_APP_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        body: JSON.stringify({ action: "DELETE_WORK_ORDER", id: currentActiveWoId })
-    });
+  catatLogKeServer("DELETE WO", `Dihapus oleh: ${currentNRP}, Lokasi: ${woItem.road}`);
+  delete allWorkOrders[currentActiveWoId];
 
-    catatLogKeServer("DELETE WO", `Dihapus oleh: ${currentNRP}, Lokasi: ${woItem.road}`);
-    delete allWorkOrders[currentActiveWoId];
-
-    alert("Work Order berhasil dihapus!");
-    closeWoModal();
-}
-
-// Tarik data WO & Garis Draw dari Cloud saat pertama kali aplikasi dibuka (Multi-User Sync)
-async function loadCloudWorkOrders() {
-    try {
-        const res = await fetch(`${WEB_APP_URL}?action=GET_CLOUD_WO`);
-        if (res.ok) {
-            const data = await res.json();
-            if (data.workOrders && data.workOrders.length > 0) {
-                data.workOrders.forEach(wo => {
-                    allWorkOrders[wo.id] = wo;
-                    createOrUpdateMarker(wo);
-                });
-            }
-            if (data.drawLines && data.drawLines.length > 0) {
-                data.drawLines.forEach(line => {
-                    allDrawLines[line.id] = line;
-                    renderDrawLineOnMap(line);
-                });
-            }
-        }
-    } catch (e) {
-        console.warn("Gagal sinkronisasi data cloud:", e);
-    }
+  alert("Work Order berhasil dihapus!");
+  closeWoModal();
 }
 
 // ==========================================
-// 5. HELPER WEBGIS, CHART & DATA HANDLING
+// 5. MODAL RIWAYAT PROGRESS TIMELINE
+// ==========================================
+async function openProgressTimelineModal() {
+  if (!currentActiveWoId) return;
+
+  const modal = document.getElementById('progressTimelineModal');
+  const titleInfo = document.getElementById('timelineRoadInfo');
+  const listContainer = document.getElementById('progressTimelineList');
+  const emptyNotice = document.getElementById('emptyProgressNotice');
+
+  const wo = allWorkOrders[currentActiveWoId];
+  if (titleInfo && wo) {
+    titleInfo.innerText = `${wo.road} (${wo.sta}) | Dibuat: ${wo.createdTime || '-'}`;
+  }
+
+  if (listContainer && emptyNotice) {
+    // Bersihkan kartu sebelumnya kecuali notif kosong
+    const cards = listContainer.querySelectorAll('.timeline-history-card');
+    cards.forEach(c => c.remove());
+    emptyNotice.style.display = 'none';
+  }
+
+  if (modal) modal.style.display = 'flex';
+
+  try {
+    const res = await fetch(`${WEB_APP_URL}?action=GET_WO_HISTORY&wo_id=${encodeURIComponent(currentActiveWoId)}`);
+    if (res.ok) {
+      const result = await res.json();
+      const history = result.history || [];
+
+      if (history.length === 0) {
+        if (emptyNotice) emptyNotice.style.display = 'block';
+      } else {
+        if (emptyNotice) emptyNotice.style.display = 'none';
+        history.forEach(item => {
+          const card = document.createElement('div');
+          card.className = 'timeline-history-card';
+          card.style.background = '#1e293b';
+          card.style.border = '1px solid #334155';
+          card.style.borderRadius = '8px';
+          card.style.padding = '10px 12px';
+
+          const st = (item.status || "PROGRESS").toUpperCase();
+          let stColor = st === 'CLOSED' ? '#22c55e' : '#eab308';
+
+          let photosHtml = '';
+          if (item.photoUrls && item.photoUrls.length > 0) {
+            photosHtml = `
+              <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+                ${item.photoUrls.map(u => `
+                  <img src="${u}" style="width:70px; height:55px; object-fit:cover; border-radius:4px; border:1px solid #475569; cursor:pointer;" onclick="openImageLightbox('${u}')" title="Klik untuk perbesar & download">
+                `).join('')}
+              </div>
+            `;
+          }
+
+          card.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <span style="font-size:10px; color:#38bdf8; font-family:monospace;">${item.timestamp}</span>
+              <span style="font-size:9px; font-weight:bold; padding:2px 6px; border-radius:4px; background:${stColor}; color:#000;">${st}</span>
+            </div>
+            <div style="font-size:11px; font-weight:bold; color:#fff;">Pengawas: ${item.reporter}</div>
+            <div style="font-size:11px; color:#cbd5e1; margin-top:2px;">${item.notes}</div>
+            ${photosHtml}
+          `;
+          listContainer.appendChild(card);
+        });
+      }
+    }
+  } catch (err) {
+    if (emptyNotice) emptyNotice.style.display = 'block';
+  }
+}
+
+function closeProgressTimelineModal() {
+  const modal = document.getElementById('progressTimelineModal');
+  if (modal) modal.style.display = 'none';
+}
+
+// Lightbox Modal Zoom & Download Foto
+function openImageLightbox(url) {
+  const modal = document.getElementById('imageLightboxModal');
+  const img = document.getElementById('lightboxImg');
+  const dlBtn = document.getElementById('lightboxDownloadBtn');
+  if (img) img.src = url;
+  if (dlBtn) dlBtn.href = url;
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeImageLightbox() {
+  const modal = document.getElementById('imageLightboxModal');
+  if (modal) modal.style.display = 'none';
+  const img = document.getElementById('lightboxImg');
+  if (img) img.src = '';
+}
+
+// ==========================================
+// 6. FILTER KALENDER, HISTORY & EXPORT REKAP
+// ==========================================
+function openCalendarFilterModal() {
+  const modal = document.getElementById('calendarFilterModal');
+  const dateInput = document.getElementById('mapCalendarDateInput');
+  const nowStr = new Date().toISOString().split('T')[0];
+  if (dateInput) dateInput.value = calendarFilterDate || nowStr;
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeCalendarFilterModal() {
+  const modal = document.getElementById('calendarFilterModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function applyCalendarDateFilter() {
+  const dateInput = document.getElementById('mapCalendarDateInput');
+  if (!dateInput || !dateInput.value) return;
+
+  calendarFilterDate = dateInput.value;
+  closeCalendarFilterModal();
+  refreshWorkOrderMapDisplay();
+
+  const calBtn = document.getElementById('btnCalendarFilter');
+  if (calBtn) calBtn.style.borderColor = '#00f0ff';
+  alert(`Menampilkan WO untuk tanggal: ${calendarFilterDate}`);
+}
+
+function resetCalendarToToday() {
+  calendarFilterDate = null;
+  closeCalendarFilterModal();
+  refreshWorkOrderMapDisplay();
+
+  const calBtn = document.getElementById('btnCalendarFilter');
+  if (calBtn) calBtn.style.borderColor = '#334155';
+  alert("Peta kembali ke tampilan hari ini (Live Real-Time)!");
+}
+
+// Refresh Tampilan Peta Berdasarkan Tanggal Kalender
+function refreshWorkOrderMapDisplay() {
+  if (!isWorkOrderModeActive) return;
+
+  workOrderMarkersLayer.clearLayers();
+  workOrderDrawingsLayer.clearLayers();
+
+  const nowWita = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar" }));
+  const todayYMD = nowWita.toISOString().split('T')[0];
+
+  Object.values(allWorkOrders).forEach(wo => {
+    const woDateYMD = parseTimestampToYMD(wo.createdTime);
+    const status = (wo.status || "OPEN").toUpperCase();
+
+    let shouldShow = false;
+
+    if (calendarFilterDate === null) {
+      // Tampilan Default Hari Ini:
+      // Tampilkan WO hari ini ATAU WO hari kemarin yang belum CLOSED (OPEN / PROGRESS)
+      if (woDateYMD === todayYMD || status !== 'CLOSED') {
+        shouldShow = true;
+      }
+    } else {
+      // Mode History: Tampilkan semua WO yang lahir di tanggal tersebut
+      if (woDateYMD === calendarFilterDate) {
+        shouldShow = true;
+      }
+    }
+
+    if (shouldShow) {
+      createOrUpdateMarker(wo);
+      // Tampilkan garis draw yang terkunci dengan WO ini
+      if (wo.linkedLineId && allDrawLines[wo.linkedLineId]) {
+        renderDrawLineOnMap(allDrawLines[wo.linkedLineId]);
+      }
+    }
+  });
+
+  // Render Garis Sketsa Bebas yang Tidak Terkunci
+  Object.values(allDrawLines).forEach(line => {
+    const isLinked = Object.values(allWorkOrders).some(wo => wo.linkedLineId === line.id);
+    if (!isLinked) {
+      renderDrawLineOnMap(line);
+    }
+  });
+}
+
+function parseTimestampToYMD(ts) {
+  if (!ts) return "";
+  // Format contoh: "16/09/2026, 12:19:53 WITA"
+  if (ts.includes('/')) {
+    const parts = ts.split(',')[0].split('/');
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+  }
+  try {
+    return new Date(ts).toISOString().split('T')[0];
+  } catch(e) {
+    return "";
+  }
+}
+
+function UtilitiesFormatNowWita() {
+  const d = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar" }));
+  const tgl = String(d.getDate()).padStart(2, '0');
+  const bln = String(d.getMonth() + 1).padStart(2, '0');
+  const thn = d.getFullYear();
+  const jam = String(d.getHours()).padStart(2, '0');
+  const mnt = String(d.getMinutes()).padStart(2, '0');
+  const dtk = String(d.getSeconds()).padStart(2, '0');
+  return `${tgl}/${bln}/${thn}, ${jam}:${mnt}:${dtk} WITA`;
+}
+
+// Ekspor Rekap Rentang Tanggal ke PDF
+async function executeExportRekapRange() {
+  const startInput = document.getElementById('exportStartDate');
+  const endInput = document.getElementById('exportEndDate');
+  if (!startInput || !endInput || !startInput.value || !endInput.value) {
+    alert("Pilih tanggal awal dan tanggal akhir rekap!");
+    return;
+  }
+
+  const sDate = startInput.value;
+  const eDate = endInput.value;
+  closeCalendarFilterModal();
+
+  const { jsPDF } = window.jspdf;
+  if (!jsPDF) {
+    alert("Library jsPDF belum termuat.");
+    return;
+  }
+
+  alert("Mengambil database rekap dari cloud...");
+  try {
+    const res = await fetch(`${WEB_APP_URL}?action=EXPORT_REKAP`);
+    if (!res.ok) throw new Error("Gagal mengambil data");
+    const json = await res.json();
+    const allData = json.data || [];
+
+    // Filter tanggal
+    const filtered = allData.filter(wo => {
+      const d = parseTimestampToYMD(wo.createdTime);
+      return d >= sDate && d <= eDate;
+    });
+
+    if (filtered.length === 0) {
+      alert("Tidak ada data Work Order pada rentang tanggal tersebut.");
+      return;
+    }
+
+    const doc = new jsPDF('l', 'mm', 'a4');
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text(`LAPORAN REKAP WORK ORDER & PROGRESS LAPANGAN`, 14, 14);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Periode: ${sDate} s/d ${eDate} | Total: ${filtered.length} Tiket WO`, 14, 20);
+
+    let yPos = 28;
+    filtered.forEach((wo, idx) => {
+      if (yPos > 175) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setFont("helvetica", "bold");
+      doc.text(`${idx + 1}. [${(wo.status || 'OPEN').toUpperCase()}] ${wo.road} (${wo.sta}) - Tgl: ${wo.createdTime || '-'} (Oleh: ${wo.reporter})`, 14, yPos);
+      yPos += 5;
+
+      // Jobs List
+      doc.setFont("helvetica", "normal");
+      const jobText = (wo.jobs && wo.jobs.length > 0) ? wo.jobs.map(j => `${j.category}: ${j.notes}`).join(' | ') : (wo.notes || '-');
+      doc.text(`   Instruksi Pekerjaan: ${jobText}`, 14, yPos);
+      yPos += 5;
+
+      // Timeline Progress
+      const hist = wo.progressHistory || [];
+      if (hist.length > 0) {
+        doc.setFont("helvetica", "italic");
+        hist.forEach(h => {
+          doc.text(`   - ${h.timestamp} [${h.status}] Oleh ${h.reporter}: ${h.notes} (${h.photoUrls.length} Foto)`, 18, yPos);
+          yPos += 4;
+        });
+      } else {
+        doc.setFont("helvetica", "italic");
+        doc.text(`   - Belum ada update progress.`, 18, yPos);
+        yPos += 4;
+      }
+      yPos += 4;
+    });
+
+    doc.save(`Rekap_WO_${sDate}_sd_${eDate}.pdf`);
+  } catch (err) {
+    alert("Gagal mengekspor PDF: " + err.message);
+  }
+}
+
+// Sinkronisasi WO & Sketsa Draw dari Cloud saat Buka WebGIS
+async function loadCloudWorkOrders() {
+  try {
+    const res = await fetch(`${WEB_APP_URL}?action=GET_CLOUD_WO`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.workOrders && data.workOrders.length > 0) {
+        data.workOrders.forEach(wo => {
+          allWorkOrders[wo.id] = wo;
+        });
+      }
+      if (data.drawLines && data.drawLines.length > 0) {
+        data.drawLines.forEach(line => {
+          allDrawLines[line.id] = line;
+        });
+      }
+      refreshWorkOrderMapDisplay();
+    }
+  } catch (e) {
+    console.warn("Gagal sinkronisasi data cloud:", e);
+  }
+}
+
+// ==========================================
+// 7. HELPER WEBGIS, CHART & DATA HANDLING
 // ==========================================
 function mulaiAnimasiIntroDanLoadData() {
   const splash = document.getElementById('intro-splash');
@@ -841,7 +1371,7 @@ function mulaiAnimasiIntroDanLoadData() {
 
   loadExcelData();
   loadAllVectorLayers();
-  loadCloudWorkOrders(); // Muat data WO & Garis yang tersimpan di Google Sheets
+  loadCloudWorkOrders();
 
   setTimeout(() => {
     if (bar) bar.style.width = '100%';
@@ -1100,7 +1630,6 @@ async function loadAllVectorLayers() {
           const props = feature.properties || {};
           const sta = props.STA_Akhir || formatKeSTA(props.Station_m || props.STA_Awal || 0);
           const road = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
-          const statusGrade = (props.Status_Gra || props["Status Grade"] || "Aman").toString().toUpperCase();
           
           let gVal = "";
           if (props.Grade_Pct !== undefined && props.Grade_Pct !== null && props.Grade_Pct !== "") {
