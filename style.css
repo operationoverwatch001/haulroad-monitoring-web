@@ -14,10 +14,11 @@ body, html {
 }
 
 /* ========================================== */
-/* APP HEADER LOCK (ANTI-GEPENG MOBILE)        */
+/* APP HEADER LOCK (ANTI-GEPENG & NO CLIP)    */
 /* ========================================== */
 .app-header {
   height: 52px;
+  overflow: visible !important; /* Kunci agar dropdown tidak terpotong garis header */
   touch-action: pan-x;
   -webkit-overflow-scrolling: touch;
 }
