@@ -240,7 +240,7 @@
       box-shadow: 0 0 10px rgba(0,240,255,0.7);
     }
 
-    /* TOMBOL SIDEBAR KIRI (NOTIF & LEGENDA VERTIKAL) */
+    /* TOMBOL SIDEBAR KIRI (NOTIF & LEGENDA VERTIKAL RAMPING) */
     .left-sidebar-controls {
       position: fixed;
       left: 10px;
@@ -272,16 +272,17 @@
       color: #00f0ff;
     }
 
-    /* TOMBOL VERTIKAL KIRI & KANAN (LEGENDA & OUTSTANDING) */
+    /* TOMBOL VERTIKAL KIRI & KANAN (LEGENDA RAMPING & OUTSTANDING) */
     .vertical-nav-btn {
       background: rgba(15, 23, 42, 0.92);
       border: 1px solid;
       border-radius: 6px;
-      padding: 6px 4px;
-      font-size: 8.5px;
+      padding: 5px 3px;
+      width: 22px;
+      font-size: 8px;
       font-weight: 900;
       font-family: monospace;
-      letter-spacing: 1px;
+      letter-spacing: 0.5px;
       cursor: pointer;
       box-shadow: 0 4px 12px rgba(0,0,0,0.6);
       backdrop-filter: blur(4px);
@@ -295,7 +296,7 @@
     }
     .vertical-nav-btn:hover {
       background: #1e293b;
-      transform: scale(1.06);
+      transform: scale(1.08);
     }
 
     /* SIDEBAR KANAN (OUTSTANDING WO) */
@@ -376,18 +377,19 @@
       object-fit: contain;
     }
 
-    /* TOUCH DRAG HANDLE BARIS BAWAH */
+    /* TOUCH DRAG HANDLE BARIS BAWAH (EMPUK & JELAS) */
     .drag-handle-touch-bar {
-      width: 54px;
-      height: 5px;
+      width: 58px;
+      height: 6px;
       background: #94a3b8;
-      border-radius: 4px;
-      margin: 1px auto 4px auto;
+      border-radius: 9999px;
+      margin: 1px auto 5px auto;
       transition: all 0.2s;
+      cursor: grab;
     }
     .panel-header:hover .drag-handle-touch-bar {
-      background: #64748b;
-      width: 64px;
+      background: #38bdf8;
+      width: 72px;
     }
 
     /* KUSTOM SCROLLBAR */
@@ -511,7 +513,7 @@
         MAP
       </button>
 
-      <!-- TAB KANAN: PARAMETER DROPDOWN -->
+      <!-- TAB KANAN: PARAMETER DROPDOWN (PENULISAN RINGKAS) -->
       <div class="relative inline-block shrink-0" id="paramDropdownWrap">
         <button id="tabParamBtn" onclick="toggleParameterDropdown()" 
           class="font-bold text-xs px-2.5 sm:px-3 py-1 rounded-md transition duration-150 text-slate-300 hover:text-white flex items-center gap-1 shrink-0 whitespace-nowrap">
@@ -519,15 +521,15 @@
           <span class="text-[9px]">▾</span>
         </button>
         <!-- DROPDOWN CONTENT -->
-        <div id="paramDropdownMenu" class="hidden absolute left-0 mt-1.5 w-44 bg-slate-900/95 border border-slate-700 rounded-lg shadow-2xl py-1 z-[2000] backdrop-blur-md">
+        <div id="paramDropdownMenu" class="hidden absolute left-0 mt-1.5 w-36 bg-slate-900/95 border border-slate-700 rounded-lg shadow-2xl py-1 z-[2000] backdrop-blur-md">
           <button onclick="selectParameter('grade')" class="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-slate-800 hover:text-amber-400 font-medium transition">
-            Grade Longitudinal
+            Grade
           </button>
           <button onclick="selectParameter('lebar')" class="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-slate-800 hover:text-cyan-400 font-medium border-t border-slate-800/80 transition">
-            Audit Lebar Jalan
+            Lebar Jalan
           </button>
           <button onclick="selectParameter('crossfall')" class="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-slate-800 hover:text-emerald-400 font-medium border-t border-slate-800/80 transition">
-            Cross Section 3 Titik
+            Cross Section
           </button>
         </div>
       </div>
@@ -541,16 +543,24 @@
     </button>
   </header>
 
-  <!-- SUB-BARIS FLOATING ATAS: LIVE ONLINE COUNTER -->
-  <div id="onlineCounterWrap" class="fixed top-[54px] sm:top-[58px] left-1/2 -translate-x-1/2 z-[1000] bg-slate-900/85 border border-slate-700/80 px-2.5 py-0.5 rounded-full shadow flex items-center gap-1.5 backdrop-blur-sm pointer-events-none">
-    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-    <span id="onlineCounterText" class="text-[10px] font-mono text-slate-300 font-semibold">Online: 1</span>
+  <!-- SUB-BARIS FLOATING ATAS: LIVE ONLINE COUNTER & NOTIFIKASI SYNC (FOTO 6) -->
+  <div class="fixed top-[54px] sm:top-[58px] left-1/2 -translate-x-1/2 z-[1000] flex flex-col items-center gap-1 pointer-events-none">
+    <div id="onlineCounterWrap" class="bg-slate-900/85 border border-slate-700/80 px-2.5 py-0.5 rounded-full shadow flex items-center gap-1.5 backdrop-blur-sm pointer-events-auto">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+      <span id="onlineCounterText" class="text-[10px] font-mono text-slate-300 font-semibold">Online: 1</span>
+    </div>
+
+    <!-- BADGE BLIP DINAMIS: OFFLINE (MERAH), UPDATING (KUNING), UPDATED (HIJAU 3 DETIK) -->
+    <div id="syncStatusBadge" class="hidden px-2 py-0.5 rounded-full shadow-lg border backdrop-blur-md transition-all duration-300 pointer-events-auto flex items-center gap-1.5">
+      <span id="syncStatusDot" class="w-2 h-2 rounded-full"></span>
+      <span id="syncStatusText" class="text-[9px] font-mono font-bold tracking-wider"></span>
+    </div>
   </div>
 
   <!-- TOAST NOTIFIKASI REALTIME (3.5 DETIK) -->
   <div id="toastNotification">Notifikasi baru masuk...</div>
 
-  <!-- TOMBOL SIDEBAR KIRI: NOTIFIKASI LOG & LEGENDA VERTIKAL (L-E-G-E-N-D-A) -->
+  <!-- TOMBOL SIDEBAR KIRI: NOTIFIKASI LOG & LEGENDA VERTIKAL RAMPING (L-E-G-E-N-D-A) -->
   <div class="left-sidebar-controls">
     <button id="btnNotificationToggle" onclick="toggleNotificationDrawer()" class="left-btn" title="Buka Riwayat Log Notifikasi">
       <span class="text-xs">🔔</span>
@@ -663,11 +673,13 @@
     <button class="gps-btn" onclick="locateUser()" title="Posisi Saya">📍</button>
   </div>
 
-  <!-- 4. PANEL BAWAH DENGAN INTERAKSI AUTO-HIDE & TOUCH DRAG BAR -->
+  <!-- 4. PANEL BAWAH DENGAN TOUCH DRAG BAR & NAMA JALAN RATA KIRI (FOTO 2) -->
   <div id="bottom-panel" class="bottom-panel">
     <div class="panel-header cursor-pointer" onclick="handlePanelHeaderClick(event)">
-      <div class="drag-handle-touch-bar"></div>
-      <div class="panel-title" id="panel-title">Peta Operasional Tambang</div>
+      <div class="drag-handle-touch-bar" title="Sentuh atau geser untuk atur panel"></div>
+      <div class="w-full flex items-center justify-start text-left" id="panel-title-container">
+        <div class="panel-title text-left font-bold text-slate-800 text-xs" id="panel-title">Peta Operasional Tambang</div>
+      </div>
     </div>
     <div class="panel-body custom-scrollbar" id="panel-body"></div>
   </div>
