@@ -2562,7 +2562,7 @@ function parseWitaToDateTimeLocal(ts) {
     const dateParts = parts[0].split('/');
     const timeParts = parts[1].split(':');
     return `${dateParts[2]}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}T${timeParts[0].padStart(2, '0')}:${timeParts[1].padStart(2, '0')}`;
-  } catch (e) {
+  } catch(e) {
     return getNowDateTimeLocalWita();
   }
 }
@@ -2577,7 +2577,7 @@ function parseTimestampToYMD(ts) {
   }
   try {
     return new Date(ts).toISOString().split('T')[0];
-  } catch (e) {
+  } catch(e) {
     return "";
   }
 }
@@ -3028,10 +3028,10 @@ function renderCrossfallSplitLayer() {
   if (currentMainTab !== 'parameter' || currentParam !== 'crossfall') return;
 
   const currentZoom = map ? map.getZoom() : 15;
-  if (currentZoom < 14) return; // Zoom threshold agar tetap ringan di overview
+  if (currentZoom < 14) return;
 
   const baseWeight = currentZoom >= 18 ? 5.5 : (currentZoom >= 16 ? 4 : 3);
-  const bounds = map.getBounds().pad(0.15); // Viewport Culling Aktif
+  const bounds = map.getBounds().pad(0.15);
 
   rawWidthFeatures.forEach(feature => {
     const coords = feature.geometry ? feature.geometry.coordinates : null;
@@ -3954,9 +3954,9 @@ function locateUser() {
   );
 }
 
-// ==========================================
-// 7B. BOTTOM PANEL: AUTO-HIDE, TAP & MEMORY DRAG
-// ==========================================
+// ==========================================================
+// 7B. BOTTOM PANEL: AUTO-HIDE, TAP & TOUCH DRAG DENGAN PANAH
+// ==========================================================
 function setBottomPanelHeight(heightPx, animate = true) {
   const bottomPanel = document.getElementById('bottom-panel');
   const floatingGroup = document.getElementById('floatingActionGroup');
@@ -3979,6 +3979,9 @@ function setBottomPanelHeight(heightPx, animate = true) {
   isPanelOpen = heightPx > 45;
   if (isPanelOpen) {
     lastPanelHeight = heightPx;
+    bottomPanel.classList.add('panel-open');
+  } else {
+    bottomPanel.classList.remove('panel-open');
   }
 
   if (chartInstance) {
