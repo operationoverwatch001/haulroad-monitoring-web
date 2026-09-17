@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Monitoring Haul Road - Overwatch</title>
   
   <!-- TAG PWA & IOS SAFARI STANDALONE -->
@@ -29,7 +29,7 @@
 
   <!-- SUPABASE JS CLIENT LIBRARY -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- Tailwind CSS khusus buat styling modal login & form WO -->
+  <!-- Tailwind CSS khusus styling komponen fleksibel -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
@@ -67,7 +67,7 @@
       color: #38bdf8;
       border: 1px solid #1e293b;
       border-radius: 6px;
-      padding: 8px 14px;
+      padding: 7px 12px;
       font-size: 11px;
       font-weight: bold;
       cursor: pointer;
@@ -80,16 +80,17 @@
       border-color: #38bdf8;
     }
 
-    /* CONTAINER GROUP FLOATING KANAN BAWAH */
+    /* CONTAINER GROUP FLOATING KANAN BAWAH DINAMIS */
     .floating-action-group {
       position: absolute;
       right: 16px;
-      bottom: 300px;
+      bottom: 56px; /* Nilai dinamis diatur via script mengikuti tinggi bottom panel */
       z-index: 999;
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 8px;
+      transition: bottom 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     /* SUB-MENU TOMBOL (MARK & DRAW) */
@@ -160,8 +161,8 @@
 
     /* TOMBOL BULAT UTAMA MODE WO */
     .wo-floating-btn {
-      width: 48px;
-      height: 48px;
+      width: 46px;
+      height: 46px;
       background: #0f172a;
       color: #38bdf8;
       border: 2px solid #334155;
@@ -192,12 +193,8 @@
       box-shadow: 0 0 15px rgba(0, 240, 255, 0.7);
     }
 
-    /* TOMBOL KALENDER DI SEBELAH TOMBOL GPS */
-    .calendar-btn {
-      position: fixed;
-      right: 68px;
-      bottom: 240px;
-      z-index: 1000;
+    /* TOMBOL KONTROL ANOTASI & GPS */
+    .annotation-btn, .gps-btn {
       width: 40px;
       height: 40px;
       background: #0f172a;
@@ -205,17 +202,83 @@
       border: 2px solid #334155;
       border-radius: 50%;
       box-shadow: 0 4px 12px rgba(0,0,0,0.6);
-      font-size: 16px;
+      font-size: 15px;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
       transition: all 0.2s ease;
     }
-    .calendar-btn:hover {
+    .annotation-btn:hover, .gps-btn:hover {
       background: #1e293b;
       border-color: #00f0ff;
-      transform: scale(1.1);
+      transform: scale(1.08);
+    }
+    .annotation-btn.active {
+      background: #00f0ff;
+      color: #000;
+      border-color: #fff;
+      box-shadow: 0 0 10px rgba(0,240,255,0.7);
+    }
+
+    /* TOMBOL SIDEBAR KIRI (NOTIF & LEGENDA) */
+    .left-sidebar-controls {
+      position: fixed;
+      left: 10px;
+      top: 70px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .left-btn {
+      background: rgba(15, 23, 42, 0.9);
+      color: #fff;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 11px;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .left-btn:hover {
+      background: #1e293b;
+      border-color: #00f0ff;
+      color: #00f0ff;
+    }
+
+    /* TOAST POP-UP REALTIME (3.5 DETIK) */
+    #toastNotification {
+      position: fixed;
+      top: 65px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      z-index: 10000;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid #eab308;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.8), 0 0 15px rgba(234, 179, 8, 0.3);
+      color: #ffffff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      backdrop-filter: blur(6px);
+      pointer-events: none;
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      max-width: 90vw;
+      text-align: center;
+    }
+    #toastNotification.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
     }
 
     /* INTRO SPLASH */
@@ -237,7 +300,6 @@
       height: 120px;
       margin-bottom: 10px;
     }
-
     .splash-logo {
       width: 100%;
       height: 100%;
@@ -293,10 +355,6 @@
       font-weight: bold;
       box-shadow: 0 2px 4px rgba(0,0,0,0.5);
     }
-    .preview-thumb-del:hover {
-      background: #dc2626;
-      transform: scale(1.1);
-    }
 
     /* INPUT DATETIME-LOCAL GELAP */
     input[type="datetime-local"]::-webkit-calendar-picker-indicator {
@@ -350,75 +408,171 @@
     <div class="loading-status" id="status-text">INITIALIZING SECURE LINK...</div>
   </div>
 
-  <!-- 2. HEADER UTAMA -->
-  <header class="app-header">
-    <div class="brand" style="margin-bottom: 2px;">
-      <span>OVERWATCH <b style="color: #00f0ff;">INSPECTOR</b></span>
+  <!-- 2. HEADER UTAMA RESTRUKTURISASI -->
+  <header class="app-header fixed top-0 left-0 right-0 z-[1001] bg-slate-950/95 border-b border-slate-800 px-3 py-2 flex items-center justify-between shadow-lg backdrop-blur-md">
+    
+    <!-- KOTAK PINK KIRI: INDIKATOR TANGGAL AKTIF WO & PEMINDAH TOMBOL KALENDER -->
+    <button id="btnActiveWoDate" onclick="openCalendarFilterModal()" title="Klik untuk pilih tanggal pantauan WO" 
+      class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-[11px] px-2.5 py-1.5 rounded-md shadow-md flex items-center gap-1.5 transition active:scale-95 cursor-pointer">
+      <span class="text-xs">📅</span>
+      <span id="labelActiveWoDate" class="font-mono">17/09/2026</span>
+    </button>
+
+    <!-- KOTAK TENGAH: BRANDING & 2 TAB UTAMA (MAP & PARAMETER) -->
+    <div class="flex flex-col items-center">
+      <div class="brand text-[10px] font-mono tracking-wider mb-1 hidden sm:block">
+        <span class="text-slate-300">OVERWATCH</span> <b class="text-cyan-400">INSPECTOR</b>
+      </div>
+      <div class="flex items-center gap-1 bg-slate-900/90 p-0.5 rounded-lg border border-slate-800">
+        <!-- TAB KIRI: MAP -->
+        <button id="tabMapBtn" onclick="switchMainTab('map')" 
+          class="font-bold text-xs px-3.5 py-1 rounded-md transition duration-150 bg-amber-400 text-slate-950 shadow">
+          MAP
+        </button>
+
+        <!-- TAB KANAN: PARAMETER DENGAN DROPDOWN LIST -->
+        <div class="relative inline-block" id="paramDropdownWrap">
+          <button id="tabParamBtn" onclick="toggleParameterDropdown()" 
+            class="font-bold text-xs px-3 py-1 rounded-md transition duration-150 text-slate-300 hover:text-white flex items-center gap-1">
+            <span id="currentParamLabel">PARAMETER</span>
+            <span class="text-[9px]">▾</span>
+          </button>
+          <!-- DROPDOWN CONTENT -->
+          <div id="paramDropdownMenu" class="hidden absolute left-0 mt-1.5 w-44 bg-slate-900/95 border border-slate-700 rounded-lg shadow-2xl py-1 z-[2000] backdrop-blur-md">
+            <button onclick="selectParameter('grade')" class="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-slate-800 hover:text-amber-400 font-medium transition">
+              Grade Longitudinal
+            </button>
+            <button onclick="selectParameter('lebar')" class="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-slate-800 hover:text-cyan-400 font-medium border-t border-slate-800/80 transition">
+              Audit Lebar Jalan
+            </button>
+            <button onclick="selectParameter('crossfall')" class="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-slate-800 hover:text-emerald-400 font-medium border-t border-slate-800/80 transition">
+              Cross Section 3 Titik
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
-    <nav class="tab-container">
-      <button class="tab-btn active" onclick="switchTab('grade')">Grade</button>
-      <button class="tab-btn" onclick="switchTab('lebar')">Lebar</button>
-      <button class="tab-btn" onclick="switchTab('crossfall')">Crossfall</button>
-    </nav>
+
+    <!-- KOTAK PINK KANAN: UPDATE DATA STATUS (ADMIN ONLY INTERACTIVE) -->
+    <button id="btnDataUpdateStatus" onclick="handleDataUpdateClick()" title="Tanggal update data audit terakhir"
+      class="bg-amber-400 text-slate-950 font-bold text-[10px] px-2.5 py-1 rounded-md shadow-md text-left transition leading-tight flex flex-col items-center cursor-default">
+      <span class="text-[8px] uppercase tracking-wider font-extrabold text-slate-800">Update Data</span>
+      <span id="labelDataUpdateDate" class="font-mono text-[10px]">17-09-2026</span>
+    </button>
   </header>
 
-  <!-- 3. PETA, GPS, TOMBOL KALENDER & FLOATING CONTROLS -->
+  <!-- SUB-BARIS FLOATING ATAS: LIVE ONLINE COUNTER -->
+  <div id="onlineCounterWrap" class="fixed top-[58px] left-1/2 -translate-x-1/2 z-[1000] bg-slate-900/85 border border-slate-700/80 px-2.5 py-0.5 rounded-full shadow flex items-center gap-1.5 backdrop-blur-sm pointer-events-none">
+    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+    <span id="onlineCounterText" class="text-[10px] font-mono text-slate-300 font-semibold">Online: 1</span>
+  </div>
+
+  <!-- TOAST NOTIFIKASI REALTIME (3.5 DETIK) -->
+  <div id="toastNotification">Notifikasi baru masuk...</div>
+
+  <!-- TOMBOL SIDEBAR KIRI: NOTIFIKASI DRAWER & LEGENDA POPUP -->
+  <div class="left-sidebar-controls">
+    <button id="btnNotificationToggle" onclick="toggleNotificationDrawer()" class="left-btn" title="Buka Riwayat Log Notifikasi">
+      <span class="text-xs">🔔</span>
+      <span>LOG</span>
+      <span id="notifBadgeDot" class="hidden w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+    </button>
+    <button id="btnLegendToggle" onclick="toggleLegendDrawer()" class="left-btn text-amber-300 border-amber-500/50" title="Buka Legenda Peta">
+      <span>LEGENDA</span>
+    </button>
+  </div>
+
+  <!-- DRAWER KIRI: RIWAYAT LOG NOTIFIKASI REALTIME -->
+  <div id="notificationDrawer" class="fixed top-0 left-0 bottom-0 w-80 max-w-[85vw] bg-slate-950/95 border-r border-slate-800 shadow-2xl z-[100001] transform -translate-x-full transition-transform duration-300 flex flex-col backdrop-blur-md">
+    <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-sm">🔔</span>
+        <h3 class="text-xs font-mono font-bold text-cyan-400 tracking-wider">LOG AKTIVITAS REALTIME</h3>
+      </div>
+      <button onclick="toggleNotificationDrawer()" class="text-slate-400 hover:text-white text-base">✕</button>
+    </div>
+    <div id="notificationList" class="flex-1 overflow-y-auto p-3 space-y-2.5 custom-scrollbar text-xs">
+      <p id="emptyNotifNotice" class="text-slate-500 text-center py-8">Belum ada aktivitas baru hari ini.</p>
+    </div>
+    <div class="p-3 border-t border-slate-800 text-[10px] text-slate-500 text-center font-mono">
+      Overwatch Live Broadcast Stream
+    </div>
+  </div>
+
+  <!-- POPUP / DRAWER MINI: LEGENDA DINAMIS -->
+  <div id="legendDrawer" class="fixed top-24 left-10 w-64 max-w-[80vw] bg-slate-950/95 border border-slate-700 rounded-lg shadow-2xl z-[100000] hidden flex-col backdrop-blur-md p-3.5">
+    <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2.5">
+      <h4 id="legendTitle" class="text-[11px] font-mono font-bold text-amber-400 tracking-wider">LEGENDA PETA</h4>
+      <button onclick="toggleLegendDrawer()" class="text-slate-400 hover:text-white text-xs">✕</button>
+    </div>
+    <div id="legendContent" class="space-y-2 text-[11px] text-slate-200">
+      <!-- Konten legenda digenerate via script sesuai tab yang aktif -->
+    </div>
+  </div>
+
+  <!-- 3. PETA LEAFLET -->
   <div id="map"></div>
   
-  <!-- GROUP TOMBOL FLOATING DI KANAN BAWAH -->
-  <div class="floating-action-group">
+  <!-- TOMBOL TOGGLE BASEMAP SATELIT -->
+  <button id="btnToggleBasemap" onclick="toggleBasemapSatelit()" title="Matikan / Hidupkan Satelit Luar">🌍 Satelit: <b>ON</b></button>
+
+  <!-- GROUP TOMBOL FLOATING DI KANAN BAWAH DINAMIS -->
+  <div id="floatingActionGroup" class="floating-action-group">
+    <!-- SUB-MENU TOMBOL (MARK & DRAW) -->
     <div id="woSubmenu" class="wo-submenu-container">
       <button class="wo-sub-btn" onclick="setWoTool('mark')" title="Tandai Titik Mark di Peta">MARK</button>
       <button class="wo-sub-btn" onclick="setWoTool('draw')" title="Gambar Garis / Sketsa di Peta">DRAW</button>
     </div>
 
+    <!-- TOMBOL PLUS (+) INSPECTOR -->
     <button id="woPlusBtn" class="wo-plus-floating-btn" onclick="toggleInspectorSubmenu()" title="Opsi Work Order">+</button>
 
+    <!-- TOMBOL MODE WO -->
     <button id="woFloatingBtn" class="wo-floating-btn" onclick="toggleWorkOrderFloating()" title="Aktifkan Mode Work Order / Evidence">
       <span>WO</span>
       <span id="woStatusText" style="font-size: 7px; color: #94a3b8;">OFF</span>
     </button>
+
+    <!-- TOMBOL ANOTASI (MENGGANTIKAN TOMBOL KALENDER LAMA) -->
+    <button id="btnToggleAnnotation" class="annotation-btn" onclick="toggleAnnotationVisibility()" title="Tampilkan / Sembunyikan Label Teks (Anotasi)">
+      🏷️
+    </button>
+
+    <!-- TOMBOL GPS LOKASI -->
+    <button class="gps-btn" onclick="locateUser()" title="Posisi Saya">📍</button>
   </div>
 
-  <!-- TOMBOL KALENDER DI SEBELAH GPS -->
-  <button id="btnCalendarFilter" class="calendar-btn" onclick="openCalendarFilterModal()" title="Filter Kalender & History WO">📅</button>
-  <button class="gps-btn" onclick="locateUser()" title="Posisi Saya">📍</button>
-  <button id="btnToggleBasemap" onclick="toggleBasemapSatelit()" title="Matikan / Hidupkan Satelit Luar">🌍 Satelit: <b>ON</b></button>
-
-  <!-- 4. PANEL BAWAH -->
+  <!-- 4. PANEL BAWAH DENGAN INTERAKSI AUTO-HIDE & MEMORY DRAG -->
   <div id="bottom-panel" class="bottom-panel">
-    <div class="panel-header">
+    <div class="panel-header cursor-pointer" onclick="handlePanelHeaderClick(event)">
       <div class="drag-handle"></div>
       <div class="panel-title" id="panel-title">Pilih Parameter / STA</div>
     </div>
-    <div class="panel-body" id="panel-body"></div>
+    <div class="panel-body custom-scrollbar" id="panel-body"></div>
   </div>
 
   <!-- 5. MODAL FORM GEO-TICKETING WORK ORDER & EVIDENCE -->
   <div id="woModalOverlay" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:99999; justify-content:center; align-items:center; padding: 12px;">
-    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:440px; max-height:90vh; overflow-y:auto; border:1px solid #334155; box-shadow:0 10px 30px rgba(0,0,0,0.7);" class="custom-scrollbar">
+    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:440px; max-height:82dvh; overflow-y:auto; border:1px solid #334155; box-shadow:0 10px 30px rgba(0,0,0,0.7);" class="custom-scrollbar pb-16">
       
-      <!-- HEADER MODAL & STATUS BADGE (KOTAK PINK FOTO 5) -->
+      <!-- HEADER MODAL & STATUS BADGE -->
       <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:8px;">
         <div style="flex:1;">
           <h3 id="woModalTitle" style="margin:0; font-size:14px; color:#00f0ff; letter-spacing:1px; font-family:monospace;">BUAT WORK ORDER (WO)</h3>
           <p id="woModalSub" style="font-size:11px; color:#94a3b8; margin:4px 0 0;">Tentukan temuan perbaikan infrastruktur jalan tambang.</p>
           
-          <!-- TANGGAL & JAM BISA DIKLIK / DIEDIT OPSIONAL (FOTO 3) -->
           <div id="woCreatedDateWrapper" style="display:flex; align-items:center; gap:6px; margin-top:6px;">
             <label style="font-size:10px; color:#94a3b8; font-family:monospace;">Waktu WO:</label>
             <input type="datetime-local" id="woCreatedDateInput" style="background:#1e293b; border:1px solid #475569; padding:2px 8px; border-radius:4px; color:#38bdf8; font-size:11px; font-family:monospace; outline:none; cursor:pointer;" title="Klik untuk ubah tanggal/jam jika perlu backdate">
           </div>
         </div>
 
-        <!-- STATUS BADGE DINAMIS (KOTAK PINK) -->
         <div id="woStatusBadge" style="padding:4px 10px; border-radius:6px; font-size:10px; font-weight:bold; letter-spacing:1px; font-family:monospace; text-transform:uppercase; background:#e11d48; color:#fff; box-shadow:0 2px 8px rgba(0,0,0,0.4); margin-left:8px;">
           OPEN
         </div>
       </div>
       
       <div style="display:flex; flex-direction:column; gap:10px; font-size:12px;">
-        
         <!-- NAMA RUAS JALAN -->
         <div>
           <label style="color:#cbd5e1; font-size:11px;">Nama Ruas Jalan: <span style="color:#ef4444;">*</span></label>
@@ -437,26 +591,23 @@
           <input type="text" id="woReporterName" placeholder="Ketik nama atau NRP pelapor..." style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; font-size:12px; margin-top:2px;">
         </div>
 
-        <!-- FOTO ACUAN / STAGE PLAN DARI PEMBUAT WO (VIEW MODE - FOTO 7) -->
+        <!-- FOTO ACUAN DESAIN -->
         <div id="woRefPhotosSection" style="display:none; background:#1e293b; padding:10px; border-radius:8px; border:1px solid #334155;">
           <label style="color:#38bdf8; font-size:11px; font-weight:bold; display:block; margin-bottom:6px;">📸 Foto Acuan / Stage Plan Desain (Klik untuk Zoom):</label>
           <div id="woRefPhotosGallery" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap:6px;"></div>
         </div>
 
-        <!-- MULTI-JOB TASK LIST (FOTO 5) -->
+        <!-- DAFTAR JOBS -->
         <div id="woJobsSection">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
             <label style="color:#cbd5e1; font-size:11px; font-weight:bold;">Daftar Pekerjaan (Jobs):</label>
             <button type="button" id="btnAddJobBtn" onclick="addNewJobItem()" style="background:#0284c7; color:#fff; border:none; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">+ Tambah Job</button>
           </div>
-          <div id="woJobsContainer" style="display:flex; flex-direction:column; gap:8px;">
-            <!-- Kartu Job di-generate via app.js -->
-          </div>
+          <div id="woJobsContainer" style="display:flex; flex-direction:column; gap:8px;"></div>
         </div>
 
-        <!-- SECTION KHUSUS UPDATE GLOBAL (HANYA MUNCUL SAAT BUAT WO / SINGLE JOB) -->
+        <!-- GLOBAL INPUTS -->
         <div id="woGlobalInputsWrapper" style="display:flex; flex-direction:column; gap:10px;">
-          <!-- DROPDOWN UPDATE STATUS PEKERJAAN -->
           <div id="woStatusUpdateWrapper" style="display:none;">
             <label style="color:#cbd5e1; font-size:11px; font-weight:bold;">Update Status WO:</label>
             <select id="woStatusUpdateSelect" style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; margin-top:2px; font-size:12px;">
@@ -466,21 +617,17 @@
             </select>
           </div>
 
-          <!-- KETERANGAN / PROGRESS LAPANGAN -->
           <div>
             <label id="woNotesLabel" style="color:#cbd5e1; font-size:11px;">Keterangan / Progress Lapangan:</label>
             <textarea id="woNotes" rows="2" placeholder="Contoh : progress regrade" style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; margin-top:2px; resize:none;"></textarea>
           </div>
 
-          <!-- UPLOAD FOTO DENGAN PREVIEW AKUMULATIF & TOMBOL (X) -->
           <div id="woEvidenceWrapper">
             <label id="woUploadPhotoLabel" style="color:#cbd5e1; font-size:11px;">Upload Foto:</label>
             <input type="file" id="woEvidenceFile" accept="image/*" multiple style="width:100%; font-size:11px; color:#94a3b8; margin-top:2px; background:#1e293b; padding:6px; border-radius:6px; border:1px solid #475569;">
-            <!-- Pratinjau Gambar Pilihan + Tombol X Hapus -->
             <div id="woImagePreviewContainer" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;"></div>
           </div>
         </div>
-
       </div>
 
       <!-- FOOTER MODAL UTAMA -->
@@ -497,9 +644,9 @@
     </div>
   </div>
 
-  <!-- 5B. MODAL POPUP UPDATE PROGRESS KHUSUS PER-JOB (FOTO 5) -->
+  <!-- 5B. MODAL POPUP UPDATE PROGRESS KHUSUS PER-JOB -->
   <div id="jobUpdateModalOverlay" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.82); z-index:100002; justify-content:center; align-items:center; padding: 12px;">
-    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:400px; max-height:90vh; overflow-y:auto; border:1px solid #38bdf8; box-shadow:0 10px 30px rgba(0,0,0,0.8);" class="custom-scrollbar">
+    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:400px; max-height:82dvh; overflow-y:auto; border:1px solid #38bdf8; box-shadow:0 10px 30px rgba(0,0,0,0.8);" class="custom-scrollbar pb-14">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:10px;">
         <div>
           <h3 id="jobUpdateModalTitle" style="margin:0; font-size:13px; color:#00f0ff; font-family:monospace; letter-spacing:1px;">UPDATE PROGRESS PEKERJAAN</h3>
@@ -531,7 +678,6 @@
         <div>
           <label style="color:#cbd5e1; font-size:11px;">Upload Bukti Foto Progres:</label>
           <input type="file" id="jobUpdateFile" accept="image/*" multiple style="width:100%; font-size:11px; color:#94a3b8; margin-top:2px; background:#1e293b; padding:6px; border-radius:6px; border:1px solid #475569;">
-          <!-- Pratinjau Gambar Khusus Per-Job + Tombol X -->
           <div id="jobUpdatePreviewContainer" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;"></div>
         </div>
       </div>
@@ -543,11 +689,9 @@
     </div>
   </div>
 
-  <!-- 6. MODAL POPUP RIWAYAT PROGRESS (TIMELINE CARD SCROLLABLE + TAB FILTER JOB) -->
+  <!-- 6. MODAL POPUP RIWAYAT PROGRESS TIMELINE -->
   <div id="progressTimelineModal" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); z-index:100000; justify-content:center; align-items:center; padding: 12px;">
-    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:480px; max-height:85vh; display:flex; flex-direction:column; border:1px solid #334155; box-shadow:0 10px 30px rgba(0,0,0,0.8);">
-      
-      <!-- HEADER RIWAYAT -->
+    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:480px; max-height:85dvh; display:flex; flex-direction:column; border:1px solid #334155; box-shadow:0 10px 30px rgba(0,0,0,0.8);">
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:10px; margin-bottom:8px;">
         <div>
           <h3 style="margin:0; font-size:14px; color:#00f0ff; font-family:monospace; letter-spacing:1px;">RIWAYAT PROGRESS WORK ORDER</h3>
@@ -556,19 +700,15 @@
         <button onclick="closeProgressTimelineModal()" style="background:#1e293b; color:#cbd5e1; border:none; width:28px; height:28px; border-radius:50%; font-weight:bold; cursor:pointer;">✕</button>
       </div>
 
-      <!-- TAB FILTER KHUSUS JOB (FOTO 5) -->
       <div id="timelineJobFilterTabs" style="display:none; gap:6px; margin-bottom:10px; flex-wrap:wrap; border-bottom:1px solid #1e293b; padding-bottom:8px;"></div>
 
-      <!-- KONTEN TIMELINE SCROLLABLE ATAS BAWAH -->
       <div id="progressTimelineList" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:12px; padding-right:4px;" class="custom-scrollbar">
-        <!-- Notifikasi Belum Ada Progress -->
         <div id="emptyProgressNotice" style="display:none; text-align:center; padding:30px 10px;">
           <span style="color:#ef4444; font-size:14px; font-weight:bold; font-family:monospace;">Belum Ada Progress</span>
-          <p style="color:#64748b; font-size:11px; margin-top:4px;">Belum ada pengawas atau tim lapangan yang mengunggah progres pengerjaan untuk tiket WO ini.</p>
+          <p style="color:#64748b; font-size:11px; margin-top:4px;">Belum ada pengawas yang mengunggah progres pengerjaan untuk tiket ini.</p>
         </div>
       </div>
 
-      <!-- FOOTER RIWAYAT -->
       <div style="margin-top:12px; border-top:1px solid #1e293b; padding-top:8px; display:flex; justify-content:flex-end;">
         <button onclick="closeProgressTimelineModal()" style="background:#334155; color:#fff; border:none; padding:6px 14px; border-radius:6px; font-size:11px; cursor:pointer;">Tutup</button>
       </div>
@@ -576,14 +716,13 @@
   </div>
 
   <!-- 7. MODAL FILTER KALENDER & EXPORT REKAP WO -->
-  <div id="calendarFilterModal" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:100000; justify-content:center; align-items:center; padding:12px;">
+  <div id="calendarFilterModal" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:100000; justify-content:center; align-items:center; padding:12px;">
     <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:380px; border:1px solid #334155; box-shadow:0 10px 25px rgba(0,0,0,0.7);">
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:12px;">
         <h3 style="margin:0; font-size:13px; color:#38bdf8; font-family:monospace; letter-spacing:1px;">📅 FILTER KALENDER & HISTORY WO</h3>
         <button onclick="closeCalendarFilterModal()" style="background:#1e293b; color:#94a3b8; border:none; width:26px; height:26px; border-radius:50%; font-size:12px; cursor:pointer;">✕</button>
       </div>
 
-      <!-- FILTER TANGGAL VIEW PETA -->
       <div style="font-size:12px; margin-bottom:16px;">
         <label style="color:#cbd5e1; font-size:11px; display:block; margin-bottom:4px;">Tampilkan Data WO Tanggal:</label>
         <div style="display:flex; gap:6px;">
@@ -593,7 +732,6 @@
         <button onclick="resetCalendarToToday()" style="background:transparent; color:#38bdf8; border:none; padding:4px 0; font-size:10px; cursor:pointer; text-decoration:underline; margin-top:4px;">Kembali ke Hari Ini (Live Real-Time)</button>
       </div>
 
-      <!-- REKAP EXPORT RENTANG TANGGAL -->
       <div style="border-top:1px solid #1e293b; padding-top:12px; font-size:12px;">
         <label style="color:#eab308; font-size:11px; font-weight:bold; display:block; margin-bottom:6px;">📊 Export Rekap Progres Lengkap (Rentang Tanggal):</label>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-bottom:8px;">
@@ -611,7 +749,7 @@
     </div>
   </div>
 
-  <!-- 8. MODAL LIGHTBOX FOTO PENUH / ZOOM & DOWNLOAD -->
+  <!-- 8. MODAL LIGHTBOX FOTO ZOOM & DOWNLOAD -->
   <div id="imageLightboxModal" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.92); z-index:100005; justify-content:center; align-items:center; padding:16px;">
     <div style="position:relative; max-width:90vw; max-height:90vh; display:flex; flex-direction:column; align-items:center;">
       <div style="position:absolute; top:-36px; right:0; display:flex; gap:10px;">
@@ -641,6 +779,22 @@
       <div style="display:flex; justify-content:flex-end; gap:8px;">
         <button onclick="closePdfModal()" style="background:#1e293b; color:#cbd5e1; border:none; padding:6px 12px; border-radius:4px; font-size:11px; cursor:pointer;">Batal</button>
         <button onclick="executeExportPDF()" style="background:#b81432; color:#fff; border:none; padding:6px 14px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer;">Download</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10. MODAL KHUSUS ADMIN: SET TANGGAL UPDATE DATA AUDIT (BARU) -->
+  <div id="adminDataUpdateModal" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:100010; justify-content:center; align-items:center; padding:12px;">
+    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:320px; border:1px solid #eab308; box-shadow:0 10px 30px rgba(0,0,0,0.8);">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:12px;">
+        <h3 style="margin:0; font-size:13px; color:#eab308; font-family:monospace; letter-spacing:1px;">⚙️ SET TANGGAL UPDATE DATA</h3>
+        <button onclick="closeAdminDataUpdateModal()" style="background:#1e293b; color:#94a3b8; border:none; width:26px; height:26px; border-radius:50%; font-size:12px; cursor:pointer;">✕</button>
+      </div>
+      <p style="font-size:11px; color:#94a3b8; margin-bottom:10px;">Atur tanggal pembaruan data audit peta (Grade, Lebar, Crossfall):</p>
+      <input type="date" id="adminNewUpdateDateInput" style="width:100%; background:#1e293b; border:1px solid #475569; padding:7px 10px; border-radius:6px; color:#fff; font-size:12px; margin-bottom:14px;">
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button onclick="closeAdminDataUpdateModal()" style="background:#1e293b; color:#cbd5e1; border:none; padding:6px 12px; border-radius:6px; font-size:11px; cursor:pointer;">Batal</button>
+        <button onclick="saveAdminDataUpdateDate()" style="background:#eab308; color:#000; border:none; padding:6px 14px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Simpan Tanggal</button>
       </div>
     </div>
   </div>
