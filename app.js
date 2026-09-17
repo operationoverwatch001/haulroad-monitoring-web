@@ -15,7 +15,7 @@ const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, 
 // URL Web App Google Apps Script Akun Kantor
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycby59dwiJ6H78OiXH_NIIvLj6mS6qwGH0zKa-7Pf70XYAoiQEXoeTK37Hav6zLkVIxUH/exec";
 
-// Kunci Sesi 30 Hari (1 Bulan) & Log 48 Jam
+// Kunci Sesi 30 Hari & Log 48 Jam
 const SESSION_STORAGE_KEY = "overwatch_user_session";
 const NOTIF_LOGS_KEY = "overwatch_notification_logs";
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -73,6 +73,7 @@ let currentDrawPoints = [];
 let tempDrawPolyline = null;
 let selectedLineForWo = null; 
 let lastTouchDownTime = 0;
+let finishDrawBtn = null;
 
 // State Antrean Akumulasi Multi-Foto & Update Per-Job
 let mainUploadFilesQueue = [];
@@ -236,6 +237,9 @@ function handleIncomingRealtimeSync(payload) {
         allWorkOrders[data.id] = data;
         if (isWorkOrderModeActive) {
           createOrUpdateMarker(data);
+          if (data.linkedLineId && allDrawLines[data.linkedLineId]) {
+            renderDrawLineOnMap(allDrawLines[data.linkedLineId]);
+          }
         }
       }
       break;
@@ -278,7 +282,11 @@ function handleIncomingRealtimeSync(payload) {
         if (woItem.markerLayer && workOrderMarkersLayer.hasLayer(woItem.markerLayer)) {
           workOrderMarkersLayer.removeLayer(woItem.markerLayer);
         }
+        const lineId = woItem.linkedLineId;
         delete allWorkOrders[data.id];
+        if (lineId && allDrawLines[lineId]) {
+          renderDrawLineOnMap(allDrawLines[lineId]);
+        }
       }
       break;
 
@@ -353,23 +361,29 @@ function renderNotificationDrawerList() {
   if (empty) empty.style.display = 'none';
 
   container.innerHTML = notificationLogs.map(item => `
-    <div class="bg-slate-900 border border-slate-800 p-2.5 rounded-lg shadow-sm">
-      <div class="flex items-center justify-between text-[10px] text-cyan-400 font-mono mb-1">
+    <div class="bg-slate-900 border border-slate-800 p-2 rounded-lg shadow-sm">
+      <div class="flex items-center justify-between text-[9px] text-cyan-400 font-mono mb-1">
         <span>INFO BROADCAST</span>
         <span>${item.time}</span>
       </div>
-      <div class="text-[11px] text-slate-200">${item.text}</div>
+      <div class="text-[11px] text-slate-200 leading-relaxed">${item.text}</div>
     </div>
   `).join('');
 }
 
+// Perbaikan Toggle Drawer (1/4 Layar Sesuai Foto 2)
 function toggleNotificationDrawer() {
   const drawer = document.getElementById('notificationDrawer');
   const dot = document.getElementById('notifBadgeDot');
   if (!drawer) return;
-  drawer.classList.toggle('-translate-x-full');
-  if (dot && !drawer.classList.contains('-translate-x-full')) {
-    dot.classList.add('hidden');
+
+  if (drawer.classList.contains('active-drawer')) {
+    drawer.classList.remove('active-drawer');
+    drawer.style.transform = 'translateX(-130%)';
+  } else {
+    drawer.classList.add('active-drawer');
+    drawer.style.transform = 'translateX(0)';
+    if (dot) dot.classList.add('hidden');
   }
 }
 
@@ -556,7 +570,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// Kunci Tanggal Kalender Mobile (Anti-Masa Depan)
 function initDatePickersMax() {
   const todayYMD = getTodayYMDWita();
   const pickerIds = ['mapCalendarDateInput', 'exportStartDate', 'exportEndDate', 'adminNewUpdateDateInput'];
@@ -884,7 +897,7 @@ function toggleAnnotationVisibility() {
 }
 
 // ==========================================
-// 3. WORK ORDER MODE, DRAW & HIGHLIGHT LOCK
+// 3. WORK ORDER MODE, DRAW TOOL & HIT-ZONE LINKING
 // ==========================================
 function toggleWorkOrderFloating() {
   isWorkOrderModeActive = !isWorkOrderModeActive;
@@ -900,7 +913,6 @@ function toggleWorkOrderFloating() {
       statusTxt.style.color = '#000000';
     }
 
-    // Seluruh pengguna (Admin, Inspector, Viewer) BISA melihat marker dan garis sketsa
     if (!map.hasLayer(workOrderMarkersLayer)) workOrderMarkersLayer.addTo(map);
     if (!map.hasLayer(workOrderDrawingsLayer)) workOrderDrawingsLayer.addTo(map);
 
@@ -925,6 +937,7 @@ function toggleWorkOrderFloating() {
     activeWoTool = null;
     document.querySelectorAll('.wo-sub-btn').forEach(b => b.classList.remove('active-tool'));
     selectedLineForWo = null;
+    cancelOrFinishDrawing();
     map.dragging.enable();
 
     catatLogKeServer("WO MODE", "Menonaktifkan Mode WO.");
@@ -942,6 +955,7 @@ function setWoTool(toolName) {
   if (activeWoTool === toolName) {
     activeWoTool = null;
     document.querySelectorAll('.wo-sub-btn').forEach(b => b.classList.remove('active-tool'));
+    cancelOrFinishDrawing();
     map.dragging.enable();
     return;
   }
@@ -954,29 +968,105 @@ function setWoTool(toolName) {
 
   if (toolName === 'draw') {
     map.dragging.disable();
+    createFloatingFinishDrawBtn();
   } else {
     map.dragging.enable();
+    cancelOrFinishDrawing();
   }
 }
 
-function handleMapClickForWo(latlng) {
-  if (!isWorkOrderModeActive) return;
-  if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
-  if (activeWoTool !== 'mark') return;
-
-  const lat = latlng.lat.toFixed(6);
-  const lng = latlng.lng.toFixed(6);
-
-  openCreateWoModal("", `Lat/Lng: ${lat}, ${lng}`, latlng, {}, true);
+// Tombol Floating Dinamis [ ✓ Selesai Garis ]
+function createFloatingFinishDrawBtn() {
+  if (finishDrawBtn) return;
+  finishDrawBtn = document.createElement('button');
+  finishDrawBtn.id = 'floatingFinishDrawBtn';
+  finishDrawBtn.innerText = '✓ Selesai Garis';
+  finishDrawBtn.style.cssText = `
+    position: fixed;
+    right: 70px;
+    bottom: 120px;
+    z-index: 10000;
+    background: #00f0ff;
+    color: #000;
+    font-weight: bold;
+    font-size: 11px;
+    padding: 7px 14px;
+    border-radius: 20px;
+    border: 2px solid #fff;
+    box-shadow: 0 4px 15px rgba(0,240,255,0.6);
+    cursor: pointer;
+    display: none;
+  `;
+  finishDrawBtn.onclick = () => {
+    finalizeDrawLine();
+  };
+  document.body.appendChild(finishDrawBtn);
 }
 
-// Interaksi Freehand & Point-to-Point Drawing di Mobile & Desktop
+function showFinishDrawBtn() {
+  if (finishDrawBtn) finishDrawBtn.style.display = 'block';
+}
+
+function hideFinishDrawBtn() {
+  if (finishDrawBtn) finishDrawBtn.style.display = 'none';
+}
+
+function cancelOrFinishDrawing() {
+  hideFinishDrawBtn();
+  if (tempDrawPolyline) {
+    workOrderDrawingsLayer.removeLayer(tempDrawPolyline);
+    tempDrawPolyline = null;
+  }
+  currentDrawPoints = [];
+  isDrawingActive = false;
+}
+
+// Jarak Matematis Titik ke Garis untuk Snapping 25px
+function distToSegment(p, v, w) {
+  const l2 = Math.pow(v.x - w.x, 2) + Math.pow(v.y - w.y, 2);
+  if (l2 === 0) return Math.sqrt(Math.pow(p.x - v.x, 2) + Math.pow(p.y - v.y, 2));
+  let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.sqrt(Math.pow(p.x - (v.x + t * (w.x - v.x)), 2) + Math.pow(p.y - (v.y + t * (w.y - v.y)), 2));
+}
+
+function findNearbyDrawLine(latlng, maxPixelDist = 25) {
+  const clickPt = map.latLngToContainerPoint(latlng);
+  for (const lineId in allDrawLines) {
+    const line = allDrawLines[lineId];
+    if (!line || !line.points || line.points.length < 2) continue;
+    for (let i = 0; i < line.points.length - 1; i++) {
+      const p1 = map.latLngToContainerPoint(line.points[i]);
+      const p2 = map.latLngToContainerPoint(line.points[i + 1]);
+      const dist = distToSegment(clickPt, p1, p2);
+      if (dist <= maxPixelDist) {
+        return line;
+      }
+    }
+  }
+  return null;
+}
+
+// Mode Gambar: Mendukung Freehand & Point-to-Point Bersih
 map.on('mousedown touchstart', (e) => {
   if (!isWorkOrderModeActive || activeWoTool !== 'draw') return;
   if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
 
   isDrawingActive = true;
   lastTouchDownTime = Date.now();
+
+  // Auto-Snap Point-to-Point: Jika klik dekat titik awal (loop/kotak), langsung selesaikan
+  if (currentDrawPoints.length >= 3) {
+    const firstPt = map.latLngToContainerPoint(currentDrawPoints[0]);
+    const currPt = map.latLngToContainerPoint(e.latlng);
+    const distFromStart = Math.sqrt(Math.pow(firstPt.x - currPt.x, 2) + Math.pow(firstPt.y - currPt.y, 2));
+    if (distFromStart <= 20) {
+      currentDrawPoints.push(currentDrawPoints[0]); // Tutup loop
+      finalizeDrawLine();
+      return;
+    }
+  }
+
   currentDrawPoints.push(e.latlng);
 
   if (!tempDrawPolyline) {
@@ -984,13 +1074,20 @@ map.on('mousedown touchstart', (e) => {
   } else {
     tempDrawPolyline.setLatLngs(currentDrawPoints);
   }
+
+  if (currentDrawPoints.length > 1) {
+    showFinishDrawBtn();
+  }
 });
 
 map.on('mousemove touchmove', (e) => {
   if (!isDrawingActive || activeWoTool !== 'draw') return;
-  currentDrawPoints.push(e.latlng);
-  if (tempDrawPolyline) {
-    tempDrawPolyline.setLatLngs(currentDrawPoints);
+  // Deteksi drag tahan freehand
+  if (Date.now() - lastTouchDownTime > 200) {
+    currentDrawPoints.push(e.latlng);
+    if (tempDrawPolyline) {
+      tempDrawPolyline.setLatLngs(currentDrawPoints);
+    }
   }
 });
 
@@ -999,8 +1096,8 @@ map.on('mouseup touchend', (e) => {
   isDrawingActive = false;
 
   const touchDuration = Date.now() - lastTouchDownTime;
-
-  if (currentDrawPoints.length > 2 && touchDuration > 300) {
+  // Jika berupa tarikan drag panjang dan cepat, langsung selesaikan garis
+  if (currentDrawPoints.length > 5 && touchDuration > 350) {
     finalizeDrawLine();
   }
 });
@@ -1012,7 +1109,10 @@ map.on('dblclick', () => {
 });
 
 function finalizeDrawLine() {
-  if (currentDrawPoints.length < 2) return;
+  if (currentDrawPoints.length < 2) {
+    cancelOrFinishDrawing();
+    return;
+  }
 
   const lineId = 'draw_' + Date.now();
   const lineItem = {
@@ -1028,15 +1128,13 @@ function finalizeDrawLine() {
   broadcastWoSync('CREATE_DRAW_LINE', sanitizeDrawLineForBroadcast(lineItem));
   catatLogKeServer("DRAW WO", `Inspector membuat sketsa garis di ${lineItem.road}`);
 
-  if (tempDrawPolyline) {
-    workOrderDrawingsLayer.removeLayer(tempDrawPolyline);
-    tempDrawPolyline = null;
-  }
-  currentDrawPoints = [];
+  cancelOrFinishDrawing();
 }
 
-// Render Garis Sketsa yang Dapat Dilihat Semua User (Termasuk Viewer)
+// Render Garis Sketsa dengan Hit-Zone Lebar & Sinkronisasi Warna
 function renderDrawLineOnMap(lineItem) {
+  if (!lineItem || !lineItem.points) return;
+
   const linkedWo = Object.values(allWorkOrders).find(wo => wo.linkedLineId === lineItem.id);
   let strokeColor = '#ff2b54'; 
   let strokeWeight = 4;
@@ -1050,22 +1148,37 @@ function renderDrawLineOnMap(lineItem) {
     } else {
       strokeColor = '#e11d48'; // OPEN = Merah
     }
-    strokeWeight = 5;
+    strokeWeight = 5.5;
   }
 
   if (lineItem.layer && workOrderDrawingsLayer.hasLayer(lineItem.layer)) {
     workOrderDrawingsLayer.removeLayer(lineItem.layer);
   }
 
-  const polyLine = L.polyline(lineItem.points, { color: strokeColor, weight: strokeWeight });
+  const groupLayer = L.featureGroup();
 
-  polyLine.on('click', function(e) {
+  // Hit-zone transparan selebar 24px agar mudah disentuh di HP
+  const hitZone = L.polyline(lineItem.points, {
+    color: 'transparent',
+    weight: 24,
+    opacity: 0,
+    interactive: true
+  });
+
+  const visiblePoly = L.polyline(lineItem.points, { 
+    color: strokeColor, 
+    weight: strokeWeight,
+    interactive: false
+  });
+
+  hitZone.on('click', function(e) {
     L.DomEvent.stopPropagation(e);
 
+    // Kunci Garis Sketsa ke Tiket WO Baru
     if (isWorkOrderModeActive && activeWoTool === 'mark' && (currentUserRole === 'admin' || currentUserRole === 'inspector')) {
       selectedLineForWo = lineItem;
-      polyLine.setStyle({ color: '#00f0ff', weight: 6 });
-      const center = polyLine.getBounds().getCenter();
+      visiblePoly.setStyle({ color: '#00f0ff', weight: 7 });
+      const center = visiblePoly.getBounds().getCenter();
       openCreateWoModal("", `Garis Sketsa Terkunci`, center, {}, true, lineItem.id);
       return;
     }
@@ -1079,11 +1192,14 @@ function renderDrawLineOnMap(lineItem) {
         ` : ''}
       </div>
     `;
-    polyLine.bindPopup(popupContent).openPopup(e.latlng);
+    visiblePoly.bindPopup(popupContent).openPopup(e.latlng);
   });
 
-  lineItem.layer = polyLine;
-  workOrderDrawingsLayer.addLayer(polyLine);
+  groupLayer.addLayer(visiblePoly);
+  groupLayer.addLayer(hitZone);
+
+  lineItem.layer = groupLayer;
+  workOrderDrawingsLayer.addLayer(groupLayer);
 }
 
 function hapusGarisDraw(lineId) {
@@ -1116,6 +1232,24 @@ function syncDrawLineToCloud(lineItem) {
       reporter: lineItem.reporter
     })
   });
+}
+
+function handleMapClickForWo(latlng) {
+  if (!isWorkOrderModeActive) return;
+  if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
+  if (activeWoTool !== 'mark') return;
+
+  // Snapping Otomatis: Jika tap dekat garis sketsa (<=25px), otomatis kunci garis tersebut!
+  const nearbyLine = findNearbyDrawLine(latlng, 25);
+  if (nearbyLine) {
+    selectedLineForWo = nearbyLine;
+    openCreateWoModal("", `Garis Sketsa Terkunci`, latlng, {}, true, nearbyLine.id);
+    return;
+  }
+
+  const lat = latlng.lat.toFixed(6);
+  const lng = latlng.lng.toFixed(6);
+  openCreateWoModal("", `Lat/Lng: ${lat}, ${lng}`, latlng, {}, true);
 }
 
 function handleWorkOrderClick(feature) {
@@ -2408,6 +2542,7 @@ async function executeExportRekapRange() {
   }
 }
 
+// Background Auto-Sync Polling (12 Detik) Agar Seluruh User Selalu Menerima Update Garis
 async function loadCloudWorkOrders() {
   try {
     const res = await fetch(`${WEB_APP_URL}?action=GET_CLOUD_WO`);
@@ -2458,6 +2593,9 @@ function mulaiAnimasiIntroDanLoadData() {
   loadAllVectorLayers();
   loadCloudWorkOrders();
   initSupabaseRealtime();
+
+  // Jalankan background sync tiap 12 detik sebagai fallback jaringan tambang
+  setInterval(loadCloudWorkOrders, 12000);
 
   setTimeout(() => {
     if (bar) bar.style.width = '100%';
