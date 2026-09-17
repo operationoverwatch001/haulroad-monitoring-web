@@ -14,6 +14,22 @@ body, html {
 }
 
 /* ========================================== */
+/* APP HEADER LOCK (ANTI-GEPENG MOBILE)        */
+/* ========================================== */
+.app-header {
+  height: 52px;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+.app-header::-webkit-scrollbar {
+  display: none;
+}
+.app-header button {
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+}
+
+/* ========================================== */
 /* INTRO SPLASH SCREEN & CYBER GLITCH STYLES  */
 /* ========================================== */
 #intro-splash {
@@ -188,9 +204,9 @@ body, html {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 38px; /* Default auto-hide (hanya menyisakan bar handle) */
+  height: 38px;
   min-height: 38px;
-  max-height: 50vh !important; /* Dibatasi ketat maksimal 50% viewport layar */
+  max-height: 50vh !important;
   background: #ffffff;
   z-index: 1000;
   border-top-left-radius: 16px;
@@ -203,7 +219,7 @@ body, html {
 }
 
 .bottom-panel.no-transition {
-  transition: none !important; /* Dihapus transisinya saat drag manual aktif */
+  transition: none !important;
 }
 
 .panel-header {
@@ -267,7 +283,7 @@ body, html {
 .floating-action-group {
   position: absolute;
   right: 16px;
-  bottom: 52px; /* Dinamis diperbarui script mengikuti tinggi panel */
+  bottom: 52px;
   z-index: 999;
   display: flex;
   flex-direction: column;
@@ -346,6 +362,12 @@ body, html {
   padding: 2px 6px !important;
   white-space: nowrap !important;
   box-shadow: 0 2px 6px rgba(0,0,0,0.6) !important;
+}
+
+/* Panah Aliran Air Crossfall */
+.crossfall-flow-arrow {
+  background: transparent !important;
+  border: none !important;
 }
 
 /* ========================================================== */
