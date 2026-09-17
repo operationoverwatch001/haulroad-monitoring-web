@@ -197,9 +197,70 @@ body, html {
   opacity: 1;
 }
 
-/* ========================================== */
-/* NOTIFICATION DRAWER / CHAT BOX (1/4 LAYAR) */
-/* ========================================== */
+/* ========================================================== */
+/* TOMBOL VERTIKAL KIRI & KANAN (LEGENDA & OUTSTANDING)       */
+/* ========================================================== */
+.vertical-nav-btn {
+  background: rgba(15, 23, 42, 0.94) !important;
+  border-radius: 7px !important;
+  padding: 8px 5px !important;
+  font-size: 9px !important;
+  font-weight: 900 !important;
+  font-family: monospace, sans-serif !important;
+  letter-spacing: 1px !important;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7) !important;
+  backdrop-filter: blur(6px) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1.15 !important;
+  user-select: none;
+}
+
+.vertical-nav-btn:hover {
+  background: #1e293b !important;
+  transform: scale(1.08);
+}
+
+.vertical-nav-btn:active {
+  transform: scale(0.95);
+}
+
+/* ========================================================== */
+/* SIDEBAR KANAN (OUTSTANDING WO TOGGLE & BADGE)              */
+/* ========================================================== */
+.right-sidebar-controls {
+  position: fixed;
+  right: 12px;
+  top: 105px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.outstanding-badge {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  background: #e11d48;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 800;
+  font-family: monospace;
+  border-radius: 9999px;
+  padding: 1px 5px;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  line-height: 1;
+}
+
+/* ========================================================== */
+/* NOTIFICATION DRAWER & OUTSTANDING DRAWER (COMPACT POPUP)   */
+/* ========================================================== */
 #notificationDrawer {
   position: fixed !important;
   top: 102px !important;
@@ -217,15 +278,48 @@ body, html {
   flex-direction: column !important;
   backdrop-filter: blur(8px) !important;
   overflow: hidden !important;
-  transform: none !important;
-  animation: fadeInDrawer 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeInDrawerLeft 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 #notificationDrawer.active-drawer {
   display: flex !important;
 }
 
-@keyframes fadeInDrawer {
+#outstandingDrawer {
+  position: fixed !important;
+  top: 102px !important;
+  right: 12px !important;
+  width: 290px !important;
+  max-width: 85vw !important;
+  max-height: 32vh !important;
+  background: rgba(15, 23, 42, 0.96) !important;
+  border: 1px solid #00f0ff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.85), 0 0 15px rgba(0, 240, 255, 0.2) !important;
+  z-index: 100001 !important;
+  display: none;
+  flex-direction: column !important;
+  backdrop-filter: blur(8px) !important;
+  overflow: hidden !important;
+  animation: fadeInDrawerRight 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+#outstandingDrawer.active-drawer {
+  display: flex !important;
+}
+
+@keyframes fadeInDrawerLeft {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInDrawerRight {
   from {
     opacity: 0;
     transform: translateY(-8px);
@@ -237,7 +331,7 @@ body, html {
 }
 
 /* ========================================================== */
-/* BOTTOM PANEL AUTO-HIDE & MEMORY DRAG (MAX 1/2 LAYAR)       */
+/* BOTTOM PANEL AUTO-HIDE & TOUCH PILL DRAG BAR               */
 /* ========================================================== */
 .bottom-panel {
   position: absolute;
@@ -263,7 +357,7 @@ body, html {
 }
 
 .panel-header {
-  padding: 6px 16px 8px;
+  padding: 4px 16px 8px;
   text-align: center;
   border-bottom: 1px solid #e2e8f0;
   cursor: pointer;
@@ -282,17 +376,20 @@ body, html {
   cursor: grabbing;
 }
 
-.drag-handle {
-  width: 48px;
-  height: 4px;
+/* Kapsul Tebal Touch Handle (Mudah disentuh & digeser) */
+.drag-handle-touch-bar {
+  width: 58px;
+  height: 5px;
   background: #94a3b8;
-  border-radius: 3px;
-  margin: 2px auto 4px;
-  transition: background 0.2s;
+  border-radius: 9999px;
+  margin: 2px auto 4px auto;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.panel-header:hover .drag-handle {
-  background: #64748b;
+.panel-header:hover .drag-handle-touch-bar {
+  background: #0284c7;
+  width: 68px;
+  transform: scaleY(1.2);
 }
 
 .panel-title {
@@ -302,6 +399,9 @@ body, html {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .panel-body {
