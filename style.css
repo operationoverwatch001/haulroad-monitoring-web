@@ -9,7 +9,7 @@ body, html {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #1e1e1e;
+  background: #040508;
   position: relative;
 }
 
@@ -27,15 +27,15 @@ body, html {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  z-index: 99999;
+  z-index: 999999;
   opacity: 1;
   pointer-events: none;
 }
 
 .splash-logo-container {
   position: relative;
-  width: 150px;
-  height: 150px;
+  width: 130px;
+  height: 130px;
   animation: logoPulse 2s infinite ease-in-out;
 }
 
@@ -43,7 +43,7 @@ body, html {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  filter: drop-shadow(0 0 25px rgba(184, 20, 50, 0.8));
+  filter: drop-shadow(0 0 25px rgba(0, 240, 255, 0.6));
 }
 
 .glitch-title {
@@ -52,14 +52,14 @@ body, html {
   font-family: monospace, sans-serif;
   font-weight: 900;
   letter-spacing: 4px;
-  margin-top: 24px;
+  margin-top: 20px;
   font-size: 1.15rem;
   text-align: center;
   text-transform: uppercase;
 }
 
 .glitch-title span {
-  color: #b81432;
+  color: #00f0ff;
 }
 
 .glitch-title::before,
@@ -75,14 +75,14 @@ body, html {
 
 .glitch-title::before {
   left: 2px;
-  text-shadow: -2px 0 #ff0033;
+  text-shadow: -2px 0 #ff2b54;
   clip: rect(24px, 550px, 90px, 0);
   animation: glitch-anim-1 2s infinite linear alternate-reverse;
 }
 
 .glitch-title::after {
   left: -2px;
-  text-shadow: -2px 0 #00ffff;
+  text-shadow: -2px 0 #00f0ff;
   clip: rect(85px, 550px, 140px, 0);
   animation: glitch-anim-2 2.5s infinite linear alternate-reverse;
 }
@@ -100,7 +100,7 @@ body, html {
 #loading-bar {
   width: 0%;
   height: 100%;
-  background: linear-gradient(90deg, #b81432, #ff2b54);
+  background: linear-gradient(90deg, #00f0ff, #38bdf8);
   transition: width 1.4s cubic-bezier(0.1, 0.9, 0.2, 1);
 }
 
@@ -114,7 +114,7 @@ body, html {
 
 @keyframes logoPulse {
   0% { transform: scale(0.96); opacity: 0.85; }
-  50% { transform: scale(1.04); opacity: 1; filter: drop-shadow(0 0 35px rgba(184, 20, 50, 0.95)); }
+  50% { transform: scale(1.04); opacity: 1; filter: drop-shadow(0 0 35px rgba(0, 240, 255, 0.8)); }
   100% { transform: scale(0.96); opacity: 0.85; }
 }
 
@@ -137,72 +137,8 @@ body, html {
 }
 
 /* ========================================== */
-/* HEADER & TABS                              */
+/* PETA UTAMA LEAFLET                         */
 /* ========================================== */
-.app-header {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 72px;
-  max-height: 75px !important;
-  overflow: hidden !important;
-  z-index: 1000;
-  background: #0f172a;
-  backdrop-filter: blur(6px);
-  padding: 8px 16px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.4);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.header-logo-img {
-  display: none !important;
-}
-
-.brand {
-  margin-bottom: 6px;
-  text-align: center;
-}
-
-.brand span {
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 1.2px;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
-}
-
-.tab-container {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  width: 100%;
-  max-width: 380px;
-}
-
-.tab-btn {
-  flex: 1;
-  padding: 5px 0;
-  background: rgba(255,255,255,0.15);
-  border: 1px solid rgba(255,255,255,0.2);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.tab-btn.active {
-  background: #ffc000;
-  color: #000;
-  border-color: #ffc000;
-}
-
-/* Map */
 #map {
   position: absolute;
   top: 0;
@@ -210,51 +146,71 @@ body, html {
   width: 100vw;
   height: 100vh;
   z-index: 1;
+  background: #040508;
 }
 
-/* GPS Button */
-.gps-btn {
-  position: absolute;
-  right: 16px;
-  bottom: 240px;
-  z-index: 999;
-  width: 44px;
-  height: 44px;
-  background: #fff;
-  border: none;
-  border-radius: 50%;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-  font-size: 20px;
-  cursor: pointer;
+/* ========================================== */
+/* TOAST NOTIFIKASI REALTIME (3.5 DETIK)      */
+/* ========================================== */
+#toastNotification {
+  position: fixed;
+  top: 66px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-25px);
+  z-index: 10000;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid #eab308;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8), 0 0 15px rgba(234, 179, 8, 0.25);
+  color: #ffffff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 90vw;
+  text-align: center;
+}
+
+#toastNotification.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
 }
 
 /* ========================================================== */
-/* BOTTOM PANEL (FREE RESIZABLE BY DRAGGING PC & MOBILE)      */
+/* BOTTOM PANEL AUTO-HIDE & MEMORY DRAG (MAX 1/2 LAYAR)       */
 /* ========================================================== */
 .bottom-panel {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 220px;
-  min-height: 44px;
-  max-height: 80vh;
+  height: 38px; /* Default auto-hide (hanya menyisakan bar handle) */
+  min-height: 38px;
+  max-height: 50vh !important; /* Dibatasi ketat maksimal 50% viewport layar */
   background: #ffffff;
   z-index: 1000;
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
-  box-shadow: 0 -3px 14px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.45);
   display: flex;
   flex-direction: column;
   user-select: none;
+  transition: height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bottom-panel.no-transition {
+  transition: none !important; /* Dihapus transisinya saat drag manual aktif */
 }
 
 .panel-header {
   padding: 6px 16px 8px;
   text-align: center;
   border-bottom: 1px solid #e2e8f0;
-  cursor: grab;
-  cursor: -webkit-grab;
+  cursor: pointer;
   background: #f8fafc;
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
@@ -268,21 +224,28 @@ body, html {
 
 .panel-header:active {
   cursor: grabbing;
-  cursor: -webkit-grabbing;
 }
 
 .drag-handle {
-  width: 52px;
-  height: 5px;
+  width: 48px;
+  height: 4px;
   background: #94a3b8;
   border-radius: 3px;
-  margin: 2px auto 6px;
+  margin: 2px auto 4px;
+  transition: background 0.2s;
+}
+
+.panel-header:hover .drag-handle {
+  background: #64748b;
 }
 
 .panel-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
-  color: #1f4e79;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .panel-body {
@@ -294,12 +257,31 @@ body, html {
 .chart-container {
   position: relative;
   width: 100%;
-  height: calc(100% - 30px);
+  height: calc(100% - 28px);
   min-height: 120px;
 }
 
 /* ========================================================== */
-/* LABEL TEKS ROTASI MENGIKUTI KOTAK JALAN (PERSIS FOTO 1)    */
+/* FLOATING ACTION GROUP (IKUT NAIK-TURUN DI ATAS PANEL BAWAH) */
+/* ========================================================== */
+.floating-action-group {
+  position: absolute;
+  right: 16px;
+  bottom: 52px; /* Dinamis diperbarui script mengikuti tinggi panel */
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transition: bottom 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.floating-action-group.no-transition {
+  transition: none !important;
+}
+
+/* ========================================================== */
+/* ANOTASI TEKS & LABEL BADGE LEAFLET                          */
 /* ========================================================== */
 .leaflet-tooltip.sta-rotated-label,
 .leaflet-tooltip.grade-badge-label {
@@ -316,11 +298,10 @@ body, html {
   display: none !important;
 }
 
-/* Teks STA: Posisi di Tengah Blok & Terputar Mengikuti Badan Jalan */
+/* Teks STA di Badan Jalan */
 .sta-text-box {
   display: block;
   color: #000000 !important;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   font-weight: 800 !important;
   font-size: 7.5px !important;
   line-height: 1 !important;
@@ -330,25 +311,57 @@ body, html {
   transform-origin: center center;
 }
 
-/* Badge Kapsul Putih Persentase Grade di Luar Kotak */
+/* Badge Kapsul Grade di Peta */
 .badge-grade-box {
   display: inline-block;
   background: #ffffff !important;
   color: #000000 !important;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   font-weight: 900 !important;
   font-size: 8.5px !important;
   line-height: 1 !important;
-  padding: 1px 3.5px !important;
+  padding: 1px 4px !important;
   border-radius: 3px !important;
   white-space: nowrap !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5) !important;
 }
 
 .badge-grade-box.overgrade {
-  border: 1.2px solid #c00000 !important;
+  border: 1.2px solid #e11d48 !important;
+  color: #e11d48 !important;
 }
 
 .badge-grade-box.warning {
   border: 1.2px solid #d97706 !important;
+  color: #b45309 !important;
+}
+
+/* Label Nama Ruas Jalan di Layer MAP */
+.road-name-label {
+  background: rgba(15, 23, 42, 0.85) !important;
+  border: 1px solid #38bdf8 !important;
+  color: #ffffff !important;
+  font-size: 9px !important;
+  font-weight: bold !important;
+  border-radius: 4px !important;
+  padding: 2px 6px !important;
+  white-space: nowrap !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6) !important;
+}
+
+/* ========================================================== */
+/* CUSTOM SCROLLBAR                                           */
+/* ========================================================== */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }
