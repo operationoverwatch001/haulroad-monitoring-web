@@ -2129,32 +2129,22 @@ function UtilitiesFormatNowWita() {
   return `${tgl}/${bln}/${thn}, ${jam}:${mnt}:${dtk} WITA`;
 }
 
-function fetchImageAsBase64(url) {
-  return new Promise((resolve) => {
-    if (!url) return resolve(null);
-    if (url.startsWith('data:image')) return resolve(url);
-
-    const directUrl = toDirectDriveUrl(url, 400);
-    const img = new Image();
-    img.crossOrigin = 'Anonymous';
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
-      } catch (e) {
-        resolve(null);
-      }
-    };
-    img.onerror = () => resolve(null);
-    img.src = directUrl;
-  });
+// Helper Konversi URL Google Drive ke Base64 via Backend Google Apps Script (Anti-CORS 100%)
+async function fetchImageAsBase64(url) {
+  if (!url) return null;
+  if (url.startsWith('data:image')) return url;
+  try {
+    const res = await fetch(`${WEB_APP_URL}?action=GET_IMAGE_BASE64&url=${encodeURIComponent(url)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.base64 || null;
+  } catch (e) {
+    console.warn("Gagal konversi foto via backend GAS:", e);
+    return null;
+  }
 }
 
-// Ekspor Rekap Rentang Tanggal ke PDF Lengkap dengan Hyperlink Google Drive
+// Ekspor Rekap Rentang Tanggal ke PDF Lengkap dengan Hyperlink Google Drive & Foto Bebas CORS
 async function executeExportRekapRange() {
   const startInput = document.getElementById('exportStartDate');
   const endInput = document.getElementById('exportEndDate');
@@ -2263,6 +2253,7 @@ async function executeExportRekapRange() {
                 }
               }
 
+              // Konversi foto via Google Apps Script (Bebas CORS)
               const base64Img = await fetchImageAsBase64(photoUrl);
               if (base64Img) {
                 try {
@@ -2274,7 +2265,7 @@ async function executeExportRekapRange() {
                 }
               }
 
-              // Tambahkan Link Google Drive Asli yang Bisa Diklik
+              // Tambahkan Link Google Drive Asli yang Bisa Diklik Langsung
               doc.setTextColor(2, 132, 199);
               doc.setFontSize(8);
               doc.textWithLink("[Link Drive]", currentX + 6, yPos + thumbHeight + 4, { url: photoUrl });
