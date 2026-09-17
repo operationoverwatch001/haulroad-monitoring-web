@@ -15,6 +15,12 @@ const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, 
 // URL Web App Google Apps Script Akun Kantor
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycby59dwiJ6H78OiXH_NIIvLj6mS6qwGH0zKa-7Pf70XYAoiQEXoeTK37Hav6zLkVIxUH/exec";
 
+// Kunci Sesi 30 Hari (1 Bulan) & Log 48 Jam
+const SESSION_STORAGE_KEY = "overwatch_user_session";
+const NOTIF_LOGS_KEY = "overwatch_notification_logs";
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
+
 let currentNRP = "SUPABASE_USER";
 let currentUserRole = "viewer"; 
 
@@ -41,6 +47,7 @@ let roadGradeLayer = null;
 let roadMapLayer = null;
 let roadNonSaranaLayer = null;       
 let gradeLabelsLayer = L.layerGroup();  
+let crossfallVisualLayer = L.layerGroup(); // Layer Khusus Belah 2 Crossfall + Panah Air
 let allStaMarkers = []; 
 let allRoadNameMarkers = [];
 
@@ -308,9 +315,27 @@ function showToastNotification(text) {
   }, 3500);
 }
 
+// Simpan Catatan ke Drawer Riwayat Notifikasi (Persist 48 Jam)
+function loadStoredNotificationLogs() {
+  const raw = localStorage.getItem(NOTIF_LOGS_KEY);
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw);
+    const now = Date.now();
+    const valid = list.filter(item => (now - item.timestampMs) < FORTY_EIGHT_HOURS_MS);
+    localStorage.setItem(NOTIF_LOGS_KEY, JSON.stringify(valid));
+    return valid;
+  } catch(e) {
+    return [];
+  }
+}
+
 function recordNotification(text) {
+  const now = Date.now();
   const timeNow = UtilitiesFormatNowWita().split(', ')[1] || '';
-  notificationLogs.unshift({ text, time: timeNow });
+  notificationLogs.unshift({ text: text, time: timeNow, timestampMs: now });
+  notificationLogs = notificationLogs.filter(item => (now - item.timestampMs) < FORTY_EIGHT_HOURS_MS);
+  localStorage.setItem(NOTIF_LOGS_KEY, JSON.stringify(notificationLogs));
   renderNotificationDrawerList();
   const dot = document.getElementById('notifBadgeDot');
   if (dot) dot.classList.remove('hidden');
@@ -433,6 +458,10 @@ function updateLegendUI() {
           <span class="w-5 h-1.5 rounded-sm bg-[#00f0ff]"></span>
           <span>STA Terpilih (Highlight)</span>
         </div>
+        <div class="flex items-center gap-2 mt-2 pt-1 border-t border-slate-700">
+          <span class="text-xs font-bold text-cyan-400">➤</span>
+          <span>Arah Aliran Air (Tinggi ke Rendah)</span>
+        </div>
       `;
     }
   }
@@ -464,22 +493,62 @@ function sanitizeDrawLineForBroadcast(line) {
 }
 
 // ==========================================
-// 2. AUTHENTICATION & ROLE WHITELIST
+// 2. SESI LOGIN 30 HARI & AUTHENTICATION
 // ==========================================
+function saveUserSession(nrp, role) {
+  const sessionData = {
+    nrp: nrp,
+    role: role,
+    loginTime: Date.now()
+  };
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionData));
+}
+
+function checkStoredSession() {
+  const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const sess = JSON.parse(raw);
+    if (Date.now() - sess.loginTime < THIRTY_DAYS_MS) {
+      return sess;
+    } else {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      return null;
+    }
+  } catch (e) {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    return null;
+  }
+}
+
 window.addEventListener('DOMContentLoaded', async () => {
   initDatePickersMax();
   initMultiPhotoQueueListeners();
   updateDataDateUI(dataUpdateDate, false);
   updateActiveWoDateButtonText();
+  
+  notificationLogs = loadStoredNotificationLogs();
+  renderNotificationDrawerList();
 
-  const { data: { session } } = await _supabase.auth.getSession();
-  if (session) {
+  // 1. Periksa Sesi Tersimpan (Kunci 30 Hari Aktif)
+  const savedSession = checkStoredSession();
+  if (savedSession) {
+    currentNRP = savedSession.nrp;
+    currentUserRole = savedSession.role;
     const authOverlay = document.getElementById('auth-overlay');
     if (authOverlay) authOverlay.style.display = 'none';
-    if (session.user && session.user.email) {
-      currentNRP = session.user.email;
-      await checkUserRole(currentNRP);
-    }
+    mulaiAnimasiIntroDanLoadData();
+    return;
+  }
+
+  // 2. Cek Token Supabase Asli
+  const { data: { session } } = await _supabase.auth.getSession();
+  if (session && session.user && session.user.email) {
+    currentNRP = session.user.email;
+    await checkUserRole(currentNRP);
+    saveUserSession(currentNRP, currentUserRole);
+    const authOverlay = document.getElementById('auth-overlay');
+    if (authOverlay) authOverlay.style.display = 'none';
     mulaiAnimasiIntroDanLoadData();
   } else {
     const authOverlay = document.getElementById('auth-overlay');
@@ -487,16 +556,29 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
+// Kunci Tanggal Kalender Mobile (Anti-Masa Depan)
 function initDatePickersMax() {
   const todayYMD = getTodayYMDWita();
-  const mapDate = document.getElementById('mapCalendarDateInput');
-  const expStart = document.getElementById('exportStartDate');
-  const expEnd = document.getElementById('exportEndDate');
-  const adminDate = document.getElementById('adminNewUpdateDateInput');
-  if (mapDate) mapDate.max = todayYMD;
-  if (expStart) expStart.max = todayYMD;
-  if (expEnd) expEnd.max = todayYMD;
-  if (adminDate) adminDate.max = todayYMD;
+  const pickerIds = ['mapCalendarDateInput', 'exportStartDate', 'exportEndDate', 'adminNewUpdateDateInput'];
+  
+  pickerIds.forEach(id => {
+    const elem = document.getElementById(id);
+    if (elem) {
+      elem.max = todayYMD;
+      elem.addEventListener('input', function() {
+        if (this.value > todayYMD) {
+          alert("Wkwk gak bisa milih tanggal masa depan bre! Maksimal hari ini.");
+          this.value = todayYMD;
+        }
+      });
+      elem.addEventListener('change', function() {
+        if (this.value > todayYMD) {
+          alert("Wkwk gak bisa milih tanggal masa depan bre! Maksimal hari ini.");
+          this.value = todayYMD;
+        }
+      });
+    }
+  });
 }
 
 async function checkUserRole(email) {
@@ -528,11 +610,12 @@ window.requestOtp = async function() {
     return;
   }
 
-  // FAST BACKDOOR DEVELOPER BYPASS
+  // 1. FAST BACKDOOR DEVELOPER / ADMIN BYPASS (Kunci 30 Hari)
   if (rawVal === "blackmamba11") {
     statusMsg.innerText = 'Access Granted (Developer Mode)...';
     currentUserRole = "admin";
     currentNRP = "DEVELOPER";
+    saveUserSession("DEVELOPER", "admin");
     setTimeout(() => {
       const authOverlay = document.getElementById('auth-overlay');
       if (authOverlay) authOverlay.style.display = 'none';
@@ -540,11 +623,13 @@ window.requestOtp = async function() {
     }, 500);
     return;
   }
-  // FAST BACKDOOR VIEWER BYPASS
+
+  // 2. FAST BACKDOOR VIEWER BYPASS (Kunci 30 Hari)
   if (rawVal === "foxhunt88") {
     statusMsg.innerText = 'Access Granted (Viewer Mode)...';
     currentUserRole = "viewer";
     currentNRP = "GUEST_VIEWER";
+    saveUserSession("GUEST_VIEWER", "viewer");
     setTimeout(() => {
       const authOverlay = document.getElementById('auth-overlay');
       if (authOverlay) authOverlay.style.display = 'none';
@@ -618,6 +703,7 @@ window.verifyOtp = async function() {
   } else {
     statusMsg.innerText = 'Login Berhasil! Memuat peta...';
     await checkUserRole(email);
+    saveUserSession(email, currentUserRole);
     setTimeout(() => {
       const authOverlay = document.getElementById('auth-overlay');
       if (authOverlay) authOverlay.style.display = 'none';
@@ -702,10 +788,10 @@ function switchMainTab(tabKey) {
 
   if (tabKey === 'map') {
     if (mapBtn) {
-      mapBtn.className = "font-bold text-xs px-3.5 py-1 rounded-md transition duration-150 bg-amber-400 text-slate-950 shadow";
+      mapBtn.className = "font-bold text-xs px-3.5 py-1 rounded-md transition duration-150 bg-amber-400 text-slate-950 shadow flex-shrink-0";
     }
     if (paramBtn) {
-      paramBtn.className = "font-bold text-xs px-3 py-1 rounded-md transition duration-150 text-slate-300 hover:text-white flex items-center gap-1";
+      paramBtn.className = "font-bold text-xs px-3 py-1 rounded-md transition duration-150 text-slate-300 hover:text-white flex items-center gap-1 flex-shrink-0";
     }
     refreshVisibleLayers();
     updateLegendUI();
@@ -735,10 +821,10 @@ function selectParameter(paramKey) {
   const paramLabel = document.getElementById('currentParamLabel');
 
   if (mapBtn) {
-    mapBtn.className = "font-bold text-xs px-3.5 py-1 rounded-md transition duration-150 text-slate-300 hover:text-white";
+    mapBtn.className = "font-bold text-xs px-3.5 py-1 rounded-md transition duration-150 text-slate-300 hover:text-white flex-shrink-0";
   }
   if (paramBtn) {
-    paramBtn.className = "font-bold text-xs px-3 py-1 rounded-md transition duration-150 bg-amber-400 text-slate-950 shadow flex items-center gap-1";
+    paramBtn.className = "font-bold text-xs px-3 py-1 rounded-md transition duration-150 bg-amber-400 text-slate-950 shadow flex items-center gap-1 flex-shrink-0";
   }
 
   const nameMap = {
@@ -814,6 +900,7 @@ function toggleWorkOrderFloating() {
       statusTxt.style.color = '#000000';
     }
 
+    // Seluruh pengguna (Admin, Inspector, Viewer) BISA melihat marker dan garis sketsa
     if (!map.hasLayer(workOrderMarkersLayer)) workOrderMarkersLayer.addTo(map);
     if (!map.hasLayer(workOrderDrawingsLayer)) workOrderDrawingsLayer.addTo(map);
 
@@ -948,6 +1035,7 @@ function finalizeDrawLine() {
   currentDrawPoints = [];
 }
 
+// Render Garis Sketsa yang Dapat Dilihat Semua User (Termasuk Viewer)
 function renderDrawLineOnMap(lineItem) {
   const linkedWo = Object.values(allWorkOrders).find(wo => wo.linkedLineId === lineItem.id);
   let strokeColor = '#ff2b54'; 
@@ -982,15 +1070,16 @@ function renderDrawLineOnMap(lineItem) {
       return;
     }
 
-    if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
-      const popupContent = `
-        <div style="font-size:11px; text-align:center; padding:4px; min-width:110px;">
-          <b>Garis Sketsa WO</b><br>
-          <button onclick="hapusGarisDraw('${lineItem.id}')" style="background:#e11d48; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-weight:bold; cursor:pointer; margin-top:6px;">Hapus Garis</button>
-        </div>
-      `;
-      polyLine.bindPopup(popupContent).openPopup(e.latlng);
-    }
+    let popupContent = `
+      <div style="font-size:11px; text-align:center; padding:4px; min-width:110px;">
+        <b>Sketsa Garis WO</b><br>
+        <span style="font-size:10px; color:#64748b;">Oleh: ${lineItem.reporter || '-'}</span>
+        ${(currentUserRole === 'admin' || currentUserRole === 'inspector') ? `
+          <br><button onclick="hapusGarisDraw('${lineItem.id}')" style="background:#e11d48; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-weight:bold; cursor:pointer; margin-top:6px;">Hapus Garis</button>
+        ` : ''}
+      </div>
+    `;
+    polyLine.bindPopup(popupContent).openPopup(e.latlng);
   });
 
   lineItem.layer = polyLine;
@@ -2425,6 +2514,7 @@ map.on('zoomend moveend', () => {
     if (roadWidthLayer && map.hasLayer(roadWidthLayer)) roadWidthLayer.setStyle(getWidthSliceStyle);
     if (roadGradeLayer && map.hasLayer(roadGradeLayer)) roadGradeLayer.setStyle(getGradePolygonBlockStyle);
     if (roadMapLayer && map.hasLayer(roadMapLayer)) roadMapLayer.setStyle(getRoadMapStyle);
+    if (currentParam === 'crossfall' && currentMainTab === 'parameter') renderCrossfallSplitLayer();
     updateGradeLabelsVisibility();
   }, 75);
 });
@@ -2532,35 +2622,7 @@ function getGradePolygonBlockStyle(feature) {
   return { color: "#000000", weight: 1.2, fillColor: fillColor, fillOpacity: 0.88 };
 }
 
-// Status Warna Crossfall (Hijau = Compliant 2-4%, Merah = Non-Compliant)
-function getCrossfallStatusColor(meterVal, roadVal) {
-  const targetRoad = (roadVal || activeRoad).trim().toLowerCase();
-  const row = monitoringData.find(d => {
-    const r = (d["Nama Jalan"] || "").trim().toLowerCase();
-    const m = parseMeterSTA(d["STA"]);
-    return r === targetRoad && m === meterVal;
-  });
-
-  if (row) {
-    const st = (row["Status Crossfall"] || row["Status_Cro"] || "").toString().toUpperCase();
-    if (st.includes("NON") || st.includes("TIDAK") || st.includes("WARNING") || st.includes("OVER")) {
-      return "#e11d48"; // Non-compliant / Merah
-    }
-    if (st.includes("STANDAR") || st.includes("COMPLIANT") || st.includes("NORMAL")) {
-      return "#22c55e"; // Compliant / Hijau
-    }
-
-    const cfL = Math.abs(parseFloat(row["Crossfall Kiri (%)"]) || 0);
-    const cfR = Math.abs(parseFloat(row["Crossfall Kanan (%)"]) || 0);
-    if ((cfL > 0 && (cfL < 2.0 || cfL > 4.0)) || (cfR > 0 && (cfR < 2.0 || cfR > 4.0))) {
-      return "#e11d48";
-    }
-    return "#22c55e";
-  }
-
-  return "#22c55e";
-}
-
+// Styling Mode Lebar Jalan (Slices Standard Hijau / Merah)
 function getWidthSliceStyle(feature) {
   const props = feature.properties || {};
   const meterVal = parseMeterSTA(props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || 0));
@@ -2568,29 +2630,132 @@ function getWidthSliceStyle(feature) {
   const currentZoom = map ? map.getZoom() : 15;
   let baseWeight = currentZoom >= 18 ? 6 : (currentZoom >= 16 ? 4.5 : (currentZoom >= 14 ? 3.5 : 2.5));
 
-  // Jika Sedang Diklik / Diseleksi: Highlight Cyan (#00f0ff)
   if (isMeterSelected(meterVal, roadVal)) {
     return { color: "#00f0ff", weight: baseWeight + 3.5, opacity: 1 };
   }
 
-  // 1. Mode AUDIT LEBAR JALAN
-  if (currentParam === 'lebar') {
-    const lebarAktual = parseFloat(props.Lebar_m !== undefined ? props.Lebar_m : (props.Shape_Leng || 0));
-    const lebarStandar = props.Standar_m !== undefined ? parseFloat(props.Standar_m) : getActiveRoadStandardWidth(roadVal);
-    let color = "#22c55e"; // Standar = Hijau
-    if (!isNaN(lebarAktual) && lebarAktual > 0 && lebarAktual < lebarStandar) {
-      color = "#e11d48"; // Sempit / Non-standar = Merah
+  const lebarAktual = parseFloat(props.Lebar_m !== undefined ? props.Lebar_m : (props.Shape_Leng || 0));
+  const lebarStandar = props.Standar_m !== undefined ? parseFloat(props.Standar_m) : getActiveRoadStandardWidth(roadVal);
+  let color = "#22c55e"; 
+  if (!isNaN(lebarAktual) && lebarAktual > 0 && lebarAktual < lebarStandar) {
+    color = "#e11d48"; 
+  }
+  return { color: color, weight: color === "#e11d48" ? baseWeight + 1.5 : baseWeight, opacity: 0.95 };
+}
+
+// ==========================================
+// 7C. CROSSFALL SPLIT LAYER: BELAH 2 & PANAH ALIRAN AIR
+// ==========================================
+function renderCrossfallSplitLayer() {
+  crossfallVisualLayer.clearLayers();
+  if (currentMainTab !== 'parameter' || currentParam !== 'crossfall') return;
+
+  const currentZoom = map ? map.getZoom() : 15;
+  const baseWeight = currentZoom >= 18 ? 5.5 : (currentZoom >= 16 ? 4 : 3);
+
+  rawWidthFeatures.forEach(feature => {
+    const props = feature.properties || {};
+    const coords = feature.geometry ? feature.geometry.coordinates : null;
+    if (!coords || coords.length < 2) return;
+
+    const rawSta = props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || 0);
+    const meterVal = parseMeterSTA(rawSta);
+    const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
+
+    if (roadVal.toLowerCase() !== activeRoad.toLowerCase()) return;
+
+    const pt1 = L.latLng(coords[0][1], coords[0][0]); // Tepi 1 (Kiri)
+    const pt2 = L.latLng(coords[1][1], coords[1][0]); // Tepi 2 (Kanan)
+    const mid = L.latLng((pt1.lat + pt2.lat) / 2, (pt1.lng + pt2.lng) / 2); // As Jalan
+
+    // Ambil Data Kemiringan Melintang
+    const row = monitoringData.find(d => (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.toLowerCase() && parseMeterSTA(d["STA"]) === meterVal);
+    const cfL = row ? Math.abs(parseFloat(row["Crossfall Kiri (%)"]) || 0) : 0;
+    const cfR = row ? Math.abs(parseFloat(row["Crossfall Kanan (%)"]) || 0) : 0;
+
+    const isSelected = isMeterSelected(meterVal, roadVal);
+
+    // Evaluasi Status Segmen Kiri & Kanan (Compliant: 2.0% - 4.0%)
+    let colorLeft = (cfL >= 2.0 && cfL <= 4.0) ? "#22c55e" : "#e11d48";
+    let colorRight = (cfR >= 2.0 && cfR <= 4.0) ? "#22c55e" : "#e11d48";
+
+    if (isSelected) {
+      colorLeft = "#00f0ff";
+      colorRight = "#00f0ff";
     }
-    return { color: color, weight: color === "#e11d48" ? baseWeight + 1.5 : baseWeight, opacity: 0.95 };
-  }
 
-  // 2. Mode CROSSFALL (KEMIRINGAN MELINTANG) - Hijau Standar, Merah Non-Compliant
-  if (currentParam === 'crossfall') {
-    const color = getCrossfallStatusColor(meterVal, roadVal);
-    return { color: color, weight: color === "#e11d48" ? baseWeight + 1.5 : baseWeight, opacity: 0.95 };
-  }
+    // 1. Gambar Garis Belah Dua Sisi
+    const lineLeft = L.polyline([mid, pt1], {
+      color: colorLeft,
+      weight: isSelected ? baseWeight + 3 : baseWeight,
+      opacity: 0.95
+    });
+    const lineRight = L.polyline([mid, pt2], {
+      color: colorRight,
+      weight: isSelected ? baseWeight + 3 : baseWeight,
+      opacity: 0.95
+    });
 
-  return { color: "#22c55e", weight: baseWeight, opacity: 0.9 };
+    const clickHandler = (e) => {
+      L.DomEvent.stopPropagation(e);
+      handleFeatureClick(feature);
+    };
+    lineLeft.on('click', clickHandler);
+    lineRight.on('click', clickHandler);
+
+    crossfallVisualLayer.addLayer(lineLeft);
+    crossfallVisualLayer.addLayer(lineRight);
+
+    // 2. Tentukan Panah Aliran Air Berdasarkan Elevasi As Jalan
+    const keyTarget = `${roadVal}_${formatKeSTA(meterVal)}`;
+    const pts = crossSectionData.filter(d => (d["Key"] || "").trim() === keyTarget);
+    const ptLeftData = pts.find(p => p["Point"] && p["Point"].includes("Kiri"));
+    const ptAsData = pts.find(p => p["Point"] && p["Point"].includes("As"));
+    const ptRightData = pts.find(p => p["Point"] && p["Point"].includes("Kanan"));
+
+    const elevAs = ptAsData ? parseFloat(ptAsData["Elevasi_RL"]) : (row ? parseFloat(row["Elevasi As (m)"]) : 100);
+    const elevLeft = ptLeftData ? parseFloat(ptLeftData["Elevasi_RL"]) : (elevAs - 0.2);
+    const elevRight = ptRightData ? parseFloat(ptRightData["Elevasi_RL"]) : (elevAs - 0.2);
+
+    // Aliran Sisi Kiri (Tinggi ke Rendah)
+    const fromLeft = (elevAs >= elevLeft) ? mid : pt1;
+    const toLeft = (elevAs >= elevLeft) ? pt1 : mid;
+    const arrowLeftPos = L.latLng((mid.lat + pt1.lat) / 2, (mid.lng + pt1.lng) / 2);
+
+    // Aliran Sisi Kanan (Tinggi ke Rendah)
+    const fromRight = (elevAs >= elevRight) ? mid : pt2;
+    const toRight = (elevAs >= elevRight) ? pt2 : mid;
+    const arrowRightPos = L.latLng((mid.lat + pt2.lat) / 2, (mid.lng + pt2.lng) / 2);
+
+    if (currentZoom >= 16) {
+      crossfallVisualLayer.addLayer(createCrossfallArrowMarker(arrowLeftPos, fromLeft, toLeft, colorLeft));
+      crossfallVisualLayer.addLayer(createCrossfallArrowMarker(arrowRightPos, fromRight, toRight, colorRight));
+    }
+  });
+}
+
+function createCrossfallArrowMarker(pos, from, to, color) {
+  const dLng = to.lng - from.lng;
+  const y = Math.sin(dLng * Math.PI / 180) * Math.cos(to.lat * Math.PI / 180);
+  const x = Math.cos(from.lat * Math.PI / 180) * Math.sin(to.lat * Math.PI / 180) -
+            Math.sin(from.lat * Math.PI / 180) * Math.cos(to.lat * Math.PI / 180) * Math.cos(dLng * Math.PI / 180);
+  const bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+
+  return L.marker(pos, {
+    icon: L.divIcon({
+      className: 'crossfall-flow-arrow',
+      html: `
+        <div style="transform: rotate(${bearing}deg); width:16px; height:16px; display:flex; align-items:center; justify-content:center; pointer-events:none;">
+          <svg width="14" height="14" viewBox="0 0 24 24">
+            <path d="M12 2L4 16h6v6h4v-6h6z" fill="${color}" stroke="#ffffff" stroke-width="1.5"/>
+          </svg>
+        </div>
+      `,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
+    }),
+    interactive: false
+  });
 }
 
 // Kontrol Anotasi: Hanya Muncul jika Toggle Anotasi = ON
@@ -2630,9 +2795,11 @@ function resetSegmentSelection() {
 }
 
 function refreshVisibleLayers() {
+  // 1. Mode MAP
   if (currentMainTab === 'map') {
     if (roadGradeLayer && map.hasLayer(roadGradeLayer)) map.removeLayer(roadGradeLayer);
     if (roadWidthLayer && map.hasLayer(roadWidthLayer)) map.removeLayer(roadWidthLayer);
+    if (crossfallVisualLayer && map.hasLayer(crossfallVisualLayer)) map.removeLayer(crossfallVisualLayer);
 
     if (roadMapLayer && !map.hasLayer(roadMapLayer)) roadMapLayer.addTo(map);
     if (roadNonSaranaLayer && !map.hasLayer(roadNonSaranaLayer)) roadNonSaranaLayer.addTo(map);
@@ -2644,27 +2811,37 @@ function refreshVisibleLayers() {
     if (roadNonSaranaLayer) roadNonSaranaLayer.bringToFront();
 
   } else {
+    // 2. Mode PARAMETER
     if (roadMapLayer && map.hasLayer(roadMapLayer)) map.removeLayer(roadMapLayer);
     if (roadNonSaranaLayer && map.hasLayer(roadNonSaranaLayer)) map.removeLayer(roadNonSaranaLayer);
 
     if (currentParam === 'grade') {
       if (roadWidthLayer && map.hasLayer(roadWidthLayer)) map.removeLayer(roadWidthLayer);
+      if (crossfallVisualLayer && map.hasLayer(crossfallVisualLayer)) map.removeLayer(crossfallVisualLayer);
       if (roadGradeLayer && !map.hasLayer(roadGradeLayer)) roadGradeLayer.addTo(map);
       if (roadGradeLayer) {
         roadGradeLayer.setStyle(getGradePolygonBlockStyle);
         roadGradeLayer.bringToFront();
       }
-    } else if (currentParam === 'lebar' || currentParam === 'crossfall') {
+
+    } else if (currentParam === 'lebar') {
       if (roadGradeLayer && map.hasLayer(roadGradeLayer)) map.removeLayer(roadGradeLayer);
+      if (crossfallVisualLayer && map.hasLayer(crossfallVisualLayer)) map.removeLayer(crossfallVisualLayer);
       if (roadWidthLayer && !map.hasLayer(roadWidthLayer)) roadWidthLayer.addTo(map);
       if (roadWidthLayer) {
         roadWidthLayer.setStyle(getWidthSliceStyle);
         roadWidthLayer.bringToFront();
       }
+
+    } else if (currentParam === 'crossfall') {
+      if (roadGradeLayer && map.hasLayer(roadGradeLayer)) map.removeLayer(roadGradeLayer);
+      if (roadWidthLayer && map.hasLayer(roadWidthLayer)) map.removeLayer(roadWidthLayer);
+      if (crossfallVisualLayer && !map.hasLayer(crossfallVisualLayer)) crossfallVisualLayer.addTo(map);
+      renderCrossfallSplitLayer();
     }
   }
 
-  // Work Order Layer Selalu Paling Depan
+  // Lapisan Work Order Selalu Berada Paling Depan
   if (map.hasLayer(workOrderDrawingsLayer)) workOrderDrawingsLayer.bringToFront();
   if (map.hasLayer(workOrderMarkersLayer)) workOrderMarkersLayer.bringToFront();
 
@@ -2703,7 +2880,6 @@ function handleFeatureClick(feature) {
       if (currentParam === 'lebar') renderLebarSummary();
       else if (currentParam === 'grade') renderGradeSummary();
     } else if (currentParam === 'crossfall') {
-      // Highlight Cyan pada Slice yang Diklik
       selectedStartMeter = meterVal;
       selectedEndMeter = null;
       refreshVisibleLayers();
@@ -3274,9 +3450,9 @@ function drawCrossSectionChart(staTarget) {
   }
   if (pts.length < 3) return;
 
-  const ptLeft = pts.find(p => p["Point"].includes("Kiri")) || pts[0];
-  const ptAs = pts.find(p => p["Point"].includes("As")) || pts[1];
-  const ptRight = pts.find(p => p["Point"].includes("Kanan")) || pts[2];
+  const ptLeft = pts.find(p => p["Point"] && p["Point"].includes("Kiri")) || pts[0];
+  const ptAs = pts.find(p => p["Point"] && p["Point"].includes("As")) || pts[1];
+  const ptRight = pts.find(p => p["Point"] && p["Point"].includes("Kanan")) || pts[2];
 
   const elevAs = parseFloat(ptAs["Elevasi_RL"]);
   const distAs = parseFloat(ptAs["Lebar_m"]);
