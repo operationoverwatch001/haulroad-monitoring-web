@@ -1684,6 +1684,7 @@ function closeWoModal() {
   mainUploadFilesQueue = [];
 }
 
+// Render Jobs UI: Tombol UPDATE hanya muncul bila Multi-Job (Foto 1 Revisi)
 function renderJobsUI(jobsList, isEditable, isViewMode = false) {
   const container = document.getElementById('woJobsContainer');
   const addBtn = document.getElementById('btnAddJobBtn');
@@ -1722,7 +1723,8 @@ function renderJobsUI(jobsList, isEditable, isViewMode = false) {
       `;
     } else {
       let updateBtnHtml = '';
-      if (isViewMode) {
+      // HANYA MUNCUL JIKA LEBIH DARI 1 JOB
+      if (isViewMode && jobs.length > 1) {
         updateBtnHtml = `
           <button type="button" onclick="openJobUpdateModal(${idx})" style="background:#ec4899; color:#fff; border:none; padding:4px 10px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer; box-shadow:0 2px 6px rgba(236,72,153,0.4);">UPDATE</button>
         `;
