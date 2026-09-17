@@ -427,8 +427,8 @@
     <div class="loading-status" id="status-text">INITIALIZING SECURE LINK...</div>
   </div>
 
-  <!-- 2. HEADER UTAMA RESTRUKTURISASI (ANTI-GEPENG MOBILE) -->
-  <header class="app-header fixed top-0 left-0 right-0 z-[1001] bg-slate-950/95 border-b border-slate-800 px-2 sm:px-3 py-1.5 flex items-center justify-between shadow-lg backdrop-blur-md gap-1 select-none overflow-x-auto">
+  <!-- 2. HEADER UTAMA RESTRUKTURISASI (OVERFLOW-VISIBLE AGAR DROPDOWN TIDAK TERTUTUP) -->
+  <header class="app-header fixed top-0 left-0 right-0 z-[1001] bg-slate-950/95 border-b border-slate-800 px-2 sm:px-3 py-1.5 flex items-center justify-between shadow-lg backdrop-blur-md gap-1 select-none overflow-visible">
     
     <!-- KOTAK PINK KIRI: INDIKATOR TANGGAL AKTIF WO -->
     <button id="btnActiveWoDate" onclick="openCalendarFilterModal()" title="Klik untuk pilih tanggal pantauan WO" 
@@ -452,7 +452,7 @@
           <span id="currentParamLabel">PARAMETER</span>
           <span class="text-[9px]">▾</span>
         </button>
-        <!-- DROPDOWN CONTENT -->
+        <!-- DROPDOWN CONTENT (Z-[2000] MELAYANG DI ATAS MAP) -->
         <div id="paramDropdownMenu" class="hidden absolute left-0 mt-1.5 w-44 bg-slate-900/95 border border-slate-700 rounded-lg shadow-2xl py-1 z-[2000] backdrop-blur-md">
           <button onclick="selectParameter('grade')" class="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-slate-800 hover:text-amber-400 font-medium transition">
             Grade Longitudinal
@@ -496,8 +496,8 @@
     </button>
   </div>
 
-  <!-- DRAWER KIRI: RIWAYAT LOG NOTIFIKASI (1/4 LAYAR COMPACT FLOATING BOX - SOLUSI FOTO 2) -->
-  <div id="notificationDrawer" class="hidden fixed top-[102px] left-3 w-72 max-w-[85vw] max-h-[28vh] bg-slate-950/95 border border-slate-700 rounded-xl shadow-2xl z-[100001] flex flex-col backdrop-blur-md">
+  <!-- DRAWER KIRI: RIWAYAT LOG NOTIFIKASI (1/4 LAYAR FLOATING CHAT BOX - SINKRON DENGAN STYLE.CSS) -->
+  <div id="notificationDrawer">
     <div class="p-2 px-3 border-b border-slate-800 flex items-center justify-between shrink-0">
       <div class="flex items-center gap-1.5">
         <span class="text-xs">🔔</span>
@@ -534,7 +534,7 @@
     <div id="woSubmenu" class="wo-submenu-container">
       <button class="wo-sub-btn" onclick="setWoTool('mark')" title="Tandai Titik Mark di Peta">MARK</button>
       <button class="wo-sub-btn" onclick="setWoTool('draw')" title="Gambar Garis / Sketsa di Peta">DRAW</button>
-      <!-- Tombol Selesai Garis Khusus Point-to-Point (Solusi Foto 1) -->
+      <!-- Tombol Selesai Garis Khusus Point-to-Point -->
       <button id="btnFinishDraw" onclick="finalizeDrawLine()" class="wo-sub-btn finish-draw-btn" style="display:none;" title="Selesaikan Garis Ini">✓ SELESAI</button>
     </div>
 
