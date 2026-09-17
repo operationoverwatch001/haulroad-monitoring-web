@@ -1,8 +1,10 @@
 {
+  "id": "overwatch-webgis-app",
   "name": "Overwatch Inspector",
   "short_name": "Overwatch",
   "description": "Mining Haul Road Monitoring & Geo-Ticketing Work Order",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#040508",
   "theme_color": "#040508",
@@ -12,13 +14,25 @@
       "src": "./logo_overwatch.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "./logo_overwatch.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "./logo_overwatch.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "./logo_overwatch.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
