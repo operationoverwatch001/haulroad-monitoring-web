@@ -5,13 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Monitoring Haul Road - Overwatch</title>
   
-  <!-- TAG PWA & IOS SAFARI STANDALONE -->
+  <!-- TAG PWA & STANDALONE APP ENGINE -->
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#040508" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <link rel="icon" type="image/png" href="./logo_overwatch.png" />
-  <link rel="apple-touch-icon" href="./logo_overwatch.png" />
+  <meta name="apple-mobile-web-app-title" content="Overwatch" />
+  <meta name="application-name" content="Overwatch" />
+  
+  <!-- FAVICON & PWA TOUCH ICONS -->
+  <link rel="icon" type="image/png" sizes="192x192" href="./logo_overwatch.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="./logo_overwatch.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="./logo_overwatch.png" />
+  <link rel="apple-touch-icon" sizes="512x512" href="./logo_overwatch.png" />
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
@@ -277,9 +284,10 @@
       background: rgba(15, 23, 42, 0.92);
       border: 1px solid;
       border-radius: 6px;
-      padding: 5px 3px;
-      width: 22px;
-      font-size: 8px;
+      padding: 6px 2px;
+      width: 20px;
+      min-width: 20px;
+      font-size: 7.5px;
       font-weight: 900;
       font-family: monospace;
       letter-spacing: 0.5px;
@@ -315,7 +323,7 @@
       left: -6px;
       background: #e11d48;
       color: #ffffff;
-      font-size: 9px;
+      font-size: 8.5px;
       font-weight: bold;
       border-radius: 9999px;
       padding: 1px 4px;
@@ -377,19 +385,34 @@
       object-fit: contain;
     }
 
-    /* TOUCH DRAG HANDLE BARIS BAWAH (EMPUK & JELAS) */
-    .drag-handle-touch-bar {
-      width: 58px;
-      height: 6px;
-      background: #94a3b8;
-      border-radius: 9999px;
+    /* KOTAK HANDLE PANEL BAWAH DENGAN PANAH SEGITIGA (FOTO 4) */
+    .panel-drag-box {
+      width: 38px;
+      height: 18px;
+      background: #0f172a;
+      border: 1.5px solid #334155;
+      border-radius: 6px;
       margin: 1px auto 5px auto;
-      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #38bdf8;
+      font-size: 10px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+      transition: all 0.2s ease;
       cursor: grab;
+      user-select: none;
     }
-    .panel-header:hover .drag-handle-touch-bar {
-      background: #38bdf8;
-      width: 72px;
+    .panel-drag-box:hover {
+      background: #1e293b;
+      border-color: #38bdf8;
+      transform: scale(1.08);
+    }
+    .panel-drag-arrow {
+      display: inline-block;
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      line-height: 1;
+      font-weight: bold;
     }
 
     /* KUSTOM SCROLLBAR */
@@ -543,7 +566,7 @@
     </button>
   </header>
 
-  <!-- SUB-BARIS FLOATING ATAS: LIVE ONLINE COUNTER & NOTIFIKASI SYNC (FOTO 6) -->
+  <!-- SUB-BARIS FLOATING ATAS: LIVE ONLINE COUNTER & NOTIFIKASI SYNC -->
   <div class="fixed top-[54px] sm:top-[58px] left-1/2 -translate-x-1/2 z-[1000] flex flex-col items-center gap-1 pointer-events-none">
     <div id="onlineCounterWrap" class="bg-slate-900/85 border border-slate-700/80 px-2.5 py-0.5 rounded-full shadow flex items-center gap-1.5 backdrop-blur-sm pointer-events-auto">
       <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -551,7 +574,7 @@
     </div>
 
     <!-- BADGE BLIP DINAMIS: OFFLINE (MERAH), UPDATING (KUNING), UPDATED (HIJAU 3 DETIK) -->
-    <div id="syncStatusBadge" class="hidden px-2 py-0.5 rounded-full shadow-lg border backdrop-blur-md transition-all duration-300 pointer-events-auto flex items-center gap-1.5">
+    <div id="syncStatusBadge" class="hidden px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md transition-all duration-300 pointer-events-auto flex items-center gap-1.5">
       <span id="syncStatusDot" class="w-2 h-2 rounded-full"></span>
       <span id="syncStatusText" class="text-[9px] font-mono font-bold tracking-wider"></span>
     </div>
@@ -673,10 +696,13 @@
     <button class="gps-btn" onclick="locateUser()" title="Posisi Saya">📍</button>
   </div>
 
-  <!-- 4. PANEL BAWAH DENGAN TOUCH DRAG BAR & NAMA JALAN RATA KIRI (FOTO 2) -->
+  <!-- 4. PANEL BAWAH DENGAN KOTAK DRAG HANDLE PANAH SEGITIGA (FOTO 4) -->
   <div id="bottom-panel" class="bottom-panel">
     <div class="panel-header cursor-pointer" onclick="handlePanelHeaderClick(event)">
-      <div class="drag-handle-touch-bar" title="Sentuh atau geser untuk atur panel"></div>
+      <!-- KOTAK HANDLE BARU: BENTUK KOTAK TACTILE + LOGO SEGITIGA PANAH -->
+      <div class="panel-drag-box" id="panelDragHandleBtn" title="Sentuh atau geser untuk buka/tutup panel">
+        <span class="panel-drag-arrow" id="panelDragArrow">▲</span>
+      </div>
       <div class="w-full flex items-center justify-start text-left" id="panel-title-container">
         <div class="panel-title text-left font-bold text-slate-800 text-xs" id="panel-title">Peta Operasional Tambang</div>
       </div>
