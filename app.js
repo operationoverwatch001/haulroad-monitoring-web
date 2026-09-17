@@ -229,6 +229,7 @@ function handleIncomingRealtimeSync(payload) {
             renderDrawLineOnMap(allDrawLines[data.linkedLineId]);
           }
         }
+        renderOutstandingList();
       }
       break;
 
@@ -241,6 +242,7 @@ function handleIncomingRealtimeSync(payload) {
             renderDrawLineOnMap(allDrawLines[data.linkedLineId]);
           }
         }
+        renderOutstandingList();
       }
       break;
 
@@ -257,6 +259,7 @@ function handleIncomingRealtimeSync(payload) {
             renderDrawLineOnMap(allDrawLines[targetWo.linkedLineId]);
           }
         }
+        renderOutstandingList();
       }
       break;
 
@@ -273,6 +276,7 @@ function handleIncomingRealtimeSync(payload) {
             renderDrawLineOnMap(allDrawLines[targetWo.linkedLineId]);
           }
         }
+        renderOutstandingList();
       }
       break;
 
@@ -287,6 +291,7 @@ function handleIncomingRealtimeSync(payload) {
         if (lineId && allDrawLines[lineId]) {
           renderDrawLineOnMap(allDrawLines[lineId]);
         }
+        renderOutstandingList();
       }
       break;
 
@@ -323,7 +328,26 @@ function showToastNotification(text) {
   }, 3500);
 }
 
-// Simpan Catatan ke Drawer Riwayat Notifikasi (Persist 48 Jam)
+// ==========================================
+// 1C. SINKRONISASI LOG 48 JAM MULTI-DEVICE
+// ==========================================
+function parseTimestampToMs(ts) {
+  if (!ts) return null;
+  try {
+    if (ts.includes('/')) {
+      const clean = ts.replace(" WITA", "").trim();
+      const parts = clean.split(', ');
+      const dateParts = parts[0].split('/');
+      const timeParts = (parts[1] || "00:00:00").split(':');
+      const d = new Date(parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0]), parseInt(timeParts[0]) || 0, parseInt(timeParts[1]) || 0, parseInt(timeParts[2]) || 0);
+      return d.getTime();
+    }
+    return new Date(ts).getTime();
+  } catch (e) {
+    return null;
+  }
+}
+
 function loadStoredNotificationLogs() {
   const raw = localStorage.getItem(NOTIF_LOGS_KEY);
   if (!raw) return [];
@@ -333,7 +357,7 @@ function loadStoredNotificationLogs() {
     const valid = list.filter(item => (now - item.timestampMs) < FORTY_EIGHT_HOURS_MS);
     localStorage.setItem(NOTIF_LOGS_KEY, JSON.stringify(valid));
     return valid;
-  } catch(e) {
+  } catch (e) {
     return [];
   }
 }
@@ -349,6 +373,55 @@ function recordNotification(text) {
   if (dot) dot.classList.remove('hidden');
 }
 
+function syncNotificationLogsFromCloud() {
+  const now = Date.now();
+  const serverLogs = [];
+
+  Object.values(allWorkOrders).forEach(wo => {
+    const woTimeMs = parseTimestampToMs(wo.createdTime);
+    if (woTimeMs && (now - woTimeMs) < FORTY_EIGHT_HOURS_MS) {
+      serverLogs.push({
+        text: `${wo.reporter || 'Pengawas'} menambahkan WO di ${wo.road}`,
+        time: wo.createdTime ? (wo.createdTime.split(', ')[1] || '') : '',
+        timestampMs: woTimeMs
+      });
+    }
+
+    if (wo.progressHistory && Array.isArray(wo.progressHistory)) {
+      wo.progressHistory.forEach(h => {
+        const hTimeMs = parseTimestampToMs(h.timestamp);
+        if (hTimeMs && (now - hTimeMs) < FORTY_EIGHT_HOURS_MS) {
+          const target = h.jobTarget ? ` [${h.jobTarget}]` : '';
+          serverLogs.push({
+            text: `${h.reporter || 'Pengawas'} update${target} ${wo.road}. Status : ${h.status || 'PROGRESS'}`,
+            time: h.timestamp ? (h.timestamp.split(', ')[1] || '') : '',
+            timestampMs: hTimeMs
+          });
+        }
+      });
+    }
+  });
+
+  const localLogs = loadStoredNotificationLogs();
+  const combined = [...serverLogs, ...localLogs];
+  const seen = new Set();
+  const deduped = [];
+
+  combined.sort((a, b) => b.timestampMs - a.timestampMs);
+
+  combined.forEach(item => {
+    const key = `${item.text}_${item.time}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(item);
+    }
+  });
+
+  notificationLogs = deduped.filter(item => (now - item.timestampMs) < FORTY_EIGHT_HOURS_MS);
+  localStorage.setItem(NOTIF_LOGS_KEY, JSON.stringify(notificationLogs));
+  renderNotificationDrawerList();
+}
+
 function renderNotificationDrawerList() {
   const container = document.getElementById('notificationList');
   const empty = document.getElementById('emptyNotifNotice');
@@ -356,6 +429,7 @@ function renderNotificationDrawerList() {
 
   if (notificationLogs.length === 0) {
     if (empty) empty.style.display = 'block';
+    container.innerHTML = '';
     return;
   }
   if (empty) empty.style.display = 'none';
@@ -371,7 +445,6 @@ function renderNotificationDrawerList() {
   `).join('');
 }
 
-// Perbaikan Toggle Drawer (1/4 Layar Sesuai Foto 2)
 function toggleNotificationDrawer() {
   const drawer = document.getElementById('notificationDrawer');
   const dot = document.getElementById('notifBadgeDot');
@@ -379,11 +452,90 @@ function toggleNotificationDrawer() {
 
   if (drawer.classList.contains('active-drawer')) {
     drawer.classList.remove('active-drawer');
-    drawer.style.transform = 'translateX(-130%)';
   } else {
     drawer.classList.add('active-drawer');
-    drawer.style.transform = 'translateX(0)';
     if (dot) dot.classList.add('hidden');
+  }
+}
+
+// ==========================================
+// 1D. OUTSTANDING DRAWER & LIST (MAX 5 BARIS SCROLL)
+// ==========================================
+function toggleOutstandingDrawer() {
+  const drawer = document.getElementById('outstandingDrawer');
+  if (!drawer) return;
+
+  if (drawer.classList.contains('active-drawer')) {
+    drawer.classList.remove('active-drawer');
+    drawer.style.display = 'none';
+  } else {
+    renderOutstandingList();
+    drawer.classList.add('active-drawer');
+    drawer.style.display = 'flex';
+  }
+}
+
+function renderOutstandingList() {
+  const listContainer = document.getElementById('outstandingList');
+  const countBadge = document.getElementById('outstandingCountBadge');
+  if (!listContainer) return;
+
+  const outstandingWos = Object.values(allWorkOrders).filter(wo => {
+    const st = (wo.status || 'OPEN').toUpperCase();
+    return st === 'OPEN' || st === 'PROGRESS';
+  });
+
+  outstandingWos.sort((a, b) => (b.id || '').localeCompare(a.id || ''));
+
+  if (countBadge) {
+    countBadge.innerText = outstandingWos.length;
+  }
+
+  if (outstandingWos.length === 0) {
+    listContainer.innerHTML = '<p class="text-slate-500 text-center py-4 text-[10px]">Semua pekerjaan sudah CLOSED! Mantap.</p>';
+    return;
+  }
+
+  listContainer.innerHTML = outstandingWos.map(wo => {
+    const st = (wo.status || 'OPEN').toUpperCase();
+    const stColor = st === 'PROGRESS' ? '#eab308' : '#e11d48';
+    const road = wo.road || 'Ruas Tambang';
+    const sta = wo.sta ? ` (${wo.sta})` : '';
+
+    return `
+      <div onclick="flyToOutstandingWo('${wo.id}')" class="bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 p-2 rounded-lg cursor-pointer transition flex items-center justify-between gap-2">
+        <div class="truncate">
+          <div class="text-[11px] font-bold text-slate-200 truncate">${road}${sta}</div>
+          <div class="text-[9px] text-slate-400 font-mono">${wo.createdTime ? wo.createdTime.split(',')[0] : '-'}</div>
+        </div>
+        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0" style="background:${stColor}; color:#000;">${st}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function flyToOutstandingWo(woId) {
+  const wo = allWorkOrders[woId];
+  if (!wo || !wo.latlng) return;
+
+  if (!isWorkOrderModeActive) {
+    toggleWorkOrderFloating();
+  }
+
+  map.flyTo(wo.latlng, 18, { duration: 1.2 });
+
+  setTimeout(() => {
+    if (wo.markerLayer) {
+      wo.markerLayer.openPopup();
+    } else {
+      openViewWoModal(woId);
+    }
+  }, 1300);
+
+  const drawer = document.getElementById('outstandingDrawer');
+  if (drawer && window.innerWidth < 768) {
+    drawer.classList.remove('active-drawer');
+    drawer.style.display = 'none';
   }
 }
 
@@ -405,7 +557,7 @@ function updateLegendUI() {
   if (!title || !content) return;
 
   if (currentMainTab === 'map') {
-    title.innerText = 'LEGENDA: PETA INFRASTRUKTUR';
+    title.innerText = 'LEGENDA: MAP';
     content.innerHTML = `
       <div class="flex items-center gap-2">
         <span class="w-5 h-1.5 rounded-sm bg-[#38bdf8]"></span>
@@ -418,6 +570,10 @@ function updateLegendUI() {
       <div class="flex items-center gap-2">
         <span class="w-5 h-1.5 rounded-sm bg-[#f97316]"></span>
         <span>Jalan Hauler 200 Ton</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="w-5 h-1.5 rounded-sm bg-[#ec4899]"></span>
+        <span>Jalur Sarana</span>
       </div>
       <div class="flex items-center gap-2">
         <span class="w-5 h-2 rounded-sm border-2 border-[#ef4444] bg-[#ef4444]/40"></span>
@@ -544,7 +700,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   notificationLogs = loadStoredNotificationLogs();
   renderNotificationDrawerList();
 
-  // 1. Periksa Sesi Tersimpan (Kunci 30 Hari Aktif)
   const savedSession = checkStoredSession();
   if (savedSession) {
     currentNRP = savedSession.nrp;
@@ -555,7 +710,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  // 2. Cek Token Supabase Asli
   const { data: { session } } = await _supabase.auth.getSession();
   if (session && session.user && session.user.email) {
     currentNRP = session.user.email;
@@ -578,18 +732,16 @@ function initDatePickersMax() {
     const elem = document.getElementById(id);
     if (elem) {
       elem.max = todayYMD;
-      elem.addEventListener('input', function() {
-        if (this.value > todayYMD) {
+      const enforceMax = function() {
+        if (this.value && this.value > todayYMD) {
           alert("Wkwk gak bisa milih tanggal masa depan bre! Maksimal hari ini.");
           this.value = todayYMD;
         }
-      });
-      elem.addEventListener('change', function() {
-        if (this.value > todayYMD) {
-          alert("Wkwk gak bisa milih tanggal masa depan bre! Maksimal hari ini.");
-          this.value = todayYMD;
-        }
-      });
+      };
+      elem.addEventListener('input', enforceMax);
+      elem.addEventListener('change', enforceMax);
+      elem.addEventListener('focus', function() { this.max = todayYMD; });
+      elem.addEventListener('click', function() { this.max = todayYMD; });
     }
   });
 }
@@ -623,7 +775,6 @@ window.requestOtp = async function() {
     return;
   }
 
-  // 1. FAST BACKDOOR DEVELOPER / ADMIN BYPASS (Kunci 30 Hari)
   if (rawVal === "blackmamba11") {
     statusMsg.innerText = 'Access Granted (Developer Mode)...';
     currentUserRole = "admin";
@@ -637,7 +788,6 @@ window.requestOtp = async function() {
     return;
   }
 
-  // 2. FAST BACKDOOR VIEWER BYPASS (Kunci 30 Hari)
   if (rawVal === "foxhunt88") {
     statusMsg.innerText = 'Access Granted (Viewer Mode)...';
     currentUserRole = "viewer";
@@ -872,6 +1022,10 @@ function renderMapOverviewSummary() {
         <div style="font-size:10px; color:#64748b;">Kelas Hauler</div>
         <div style="font-size:12px; font-weight:bold; color:#1e293b;">100, 150 & 200 Ton</div>
       </div>
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #ec4899; padding:6px 10px; border-radius:4px;">
+        <div style="font-size:10px; color:#64748b;">Jalur Sarana</div>
+        <div style="font-size:12px; font-weight:bold; color:#ec4899;">Akses Ringan (Pink)</div>
+      </div>
       <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #ef4444; padding:6px 10px; border-radius:4px;">
         <div style="font-size:10px; color:#64748b;">Jalur Non-Sarana</div>
         <div style="font-size:12px; font-weight:bold; color:#ef4444;">Monitoring Aktif</div>
@@ -975,8 +1129,13 @@ function setWoTool(toolName) {
   }
 }
 
-// Tombol Floating Dinamis [ ✓ Selesai Garis ]
 function createFloatingFinishDrawBtn() {
+  const existingInDom = document.getElementById('btnFinishDraw');
+  if (existingInDom) {
+    finishDrawBtn = existingInDom;
+    return;
+  }
+
   if (finishDrawBtn) return;
   finishDrawBtn = document.createElement('button');
   finishDrawBtn.id = 'floatingFinishDrawBtn';
@@ -986,14 +1145,14 @@ function createFloatingFinishDrawBtn() {
     right: 70px;
     bottom: 120px;
     z-index: 10000;
-    background: #00f0ff;
+    background: #22c55e;
     color: #000;
     font-weight: bold;
     font-size: 11px;
     padding: 7px 14px;
     border-radius: 20px;
     border: 2px solid #fff;
-    box-shadow: 0 4px 15px rgba(0,240,255,0.6);
+    box-shadow: 0 4px 15px rgba(34,197,94,0.6);
     cursor: pointer;
     display: none;
   `;
@@ -1004,10 +1163,14 @@ function createFloatingFinishDrawBtn() {
 }
 
 function showFinishDrawBtn() {
+  const domBtn = document.getElementById('btnFinishDraw');
+  if (domBtn) domBtn.style.display = 'flex';
   if (finishDrawBtn) finishDrawBtn.style.display = 'block';
 }
 
 function hideFinishDrawBtn() {
+  const domBtn = document.getElementById('btnFinishDraw');
+  if (domBtn) domBtn.style.display = 'none';
   if (finishDrawBtn) finishDrawBtn.style.display = 'none';
 }
 
@@ -1021,7 +1184,6 @@ function cancelOrFinishDrawing() {
   isDrawingActive = false;
 }
 
-// Jarak Matematis Titik ke Garis untuk Snapping 25px
 function distToSegment(p, v, w) {
   const l2 = Math.pow(v.x - w.x, 2) + Math.pow(v.y - w.y, 2);
   if (l2 === 0) return Math.sqrt(Math.pow(p.x - v.x, 2) + Math.pow(p.y - v.y, 2));
@@ -1047,7 +1209,6 @@ function findNearbyDrawLine(latlng, maxPixelDist = 25) {
   return null;
 }
 
-// Mode Gambar: Mendukung Freehand & Point-to-Point Bersih
 map.on('mousedown touchstart', (e) => {
   if (!isWorkOrderModeActive || activeWoTool !== 'draw') return;
   if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
@@ -1055,13 +1216,12 @@ map.on('mousedown touchstart', (e) => {
   isDrawingActive = true;
   lastTouchDownTime = Date.now();
 
-  // Auto-Snap Point-to-Point: Jika klik dekat titik awal (loop/kotak), langsung selesaikan
   if (currentDrawPoints.length >= 3) {
     const firstPt = map.latLngToContainerPoint(currentDrawPoints[0]);
     const currPt = map.latLngToContainerPoint(e.latlng);
     const distFromStart = Math.sqrt(Math.pow(firstPt.x - currPt.x, 2) + Math.pow(firstPt.y - currPt.y, 2));
     if (distFromStart <= 20) {
-      currentDrawPoints.push(currentDrawPoints[0]); // Tutup loop
+      currentDrawPoints.push(currentDrawPoints[0]);
       finalizeDrawLine();
       return;
     }
@@ -1082,7 +1242,6 @@ map.on('mousedown touchstart', (e) => {
 
 map.on('mousemove touchmove', (e) => {
   if (!isDrawingActive || activeWoTool !== 'draw') return;
-  // Deteksi drag tahan freehand
   if (Date.now() - lastTouchDownTime > 200) {
     currentDrawPoints.push(e.latlng);
     if (tempDrawPolyline) {
@@ -1096,7 +1255,6 @@ map.on('mouseup touchend', (e) => {
   isDrawingActive = false;
 
   const touchDuration = Date.now() - lastTouchDownTime;
-  // Jika berupa tarikan drag panjang dan cepat, langsung selesaikan garis
   if (currentDrawPoints.length > 5 && touchDuration > 350) {
     finalizeDrawLine();
   }
@@ -1131,7 +1289,6 @@ function finalizeDrawLine() {
   cancelOrFinishDrawing();
 }
 
-// Render Garis Sketsa dengan Hit-Zone Lebar & Sinkronisasi Warna
 function renderDrawLineOnMap(lineItem) {
   if (!lineItem || !lineItem.points) return;
 
@@ -1142,11 +1299,11 @@ function renderDrawLineOnMap(lineItem) {
   if (linkedWo) {
     const st = (linkedWo.status || 'OPEN').toUpperCase();
     if (st === 'CLOSED') {
-      strokeColor = '#22c55e'; // CLOSED = Hijau
+      strokeColor = '#22c55e';
     } else if (st === 'PROGRESS') {
-      strokeColor = '#eab308'; // PROGRESS = Kuning
+      strokeColor = '#eab308';
     } else {
-      strokeColor = '#e11d48'; // OPEN = Merah
+      strokeColor = '#e11d48';
     }
     strokeWeight = 5.5;
   }
@@ -1157,7 +1314,6 @@ function renderDrawLineOnMap(lineItem) {
 
   const groupLayer = L.featureGroup();
 
-  // Hit-zone transparan selebar 24px agar mudah disentuh di HP
   const hitZone = L.polyline(lineItem.points, {
     color: 'transparent',
     weight: 24,
@@ -1174,7 +1330,6 @@ function renderDrawLineOnMap(lineItem) {
   hitZone.on('click', function(e) {
     L.DomEvent.stopPropagation(e);
 
-    // Kunci Garis Sketsa ke Tiket WO Baru
     if (isWorkOrderModeActive && activeWoTool === 'mark' && (currentUserRole === 'admin' || currentUserRole === 'inspector')) {
       selectedLineForWo = lineItem;
       visiblePoly.setStyle({ color: '#00f0ff', weight: 7 });
@@ -1239,7 +1394,6 @@ function handleMapClickForWo(latlng) {
   if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
   if (activeWoTool !== 'mark') return;
 
-  // Snapping Otomatis: Jika tap dekat garis sketsa (<=25px), otomatis kunci garis tersebut!
   const nearbyLine = findNearbyDrawLine(latlng, 25);
   if (nearbyLine) {
     selectedLineForWo = nearbyLine;
@@ -1792,6 +1946,7 @@ async function submitWorkOrder() {
     const notifMsg = `${reporter} menambahkan WO di ${woItem.road}`;
     broadcastWoSync('CREATE_WO', sanitizeWoForBroadcast(woItem), notifMsg);
     catatLogKeServer("CREATE WO", `Pelapor: ${reporter}, Lokasi: ${woItem.road} (${woItem.sta})`);
+    renderOutstandingList();
     alert(`Berhasil membuat Work Order di ${woItem.road}!`);
 
   } else if (currentWoMode === 'edit') {
@@ -1829,6 +1984,7 @@ async function submitWorkOrder() {
     const notifMsg = `${reporter} Update WO di ${woItem.road}`;
     broadcastWoSync('EDIT_WO', sanitizeWoForBroadcast(woItem), notifMsg);
     catatLogKeServer("EDIT WO", `Diperbarui oleh: ${reporter}, Lokasi: ${woItem.road}, Status: ${statusBaru}`);
+    renderOutstandingList();
     alert("Perubahan Work Order berhasil disimpan!");
 
   } else if (currentWoMode === 'view') {
@@ -1866,6 +2022,7 @@ async function submitWorkOrder() {
     }, notifMsg);
 
     catatLogKeServer("SUBMIT EVIDENCE", `Pelapor: ${reporter}, Lokasi: ${roadName}, Status: ${statusBaru}`);
+    renderOutstandingList();
     alert(`Progress berhasil dikirim oleh ${reporter} dengan status: ${statusBaru}!`);
   }
 
@@ -1984,6 +2141,7 @@ async function submitJobUpdate() {
   }, notifMsg);
 
   catatLogKeServer("SUBMIT JOB EVIDENCE", `Pelapor: ${reporter}, Lokasi: ${wo.road}, ${jobTargetName}, Status: ${statusBaru}`);
+  renderOutstandingList();
   alert(`Berhasil mengupdate progress ${jobTargetName} menjadi: ${statusBaru}!`);
 
   closeJobUpdateModal();
@@ -2066,6 +2224,7 @@ function deleteCurrentWorkOrder() {
   catatLogKeServer("DELETE WO", `Dihapus oleh: ${currentNRP}, Lokasi: ${woItem.road}`);
   delete allWorkOrders[currentActiveWoId];
 
+  renderOutstandingList();
   alert("Work Order berhasil dihapus!");
   closeWoModal();
 }
@@ -2377,7 +2536,6 @@ function UtilitiesFormatNowWita() {
   return `${tgl}/${bln}/${thn}, ${jam}:${mnt}:${dtk} WITA`;
 }
 
-// Helper Konversi URL Google Drive ke Base64 via Backend Google Apps Script (Anti-CORS)
 async function fetchImageAsBase64(url) {
   if (!url) return null;
   if (url.startsWith('data:image')) return url;
@@ -2392,7 +2550,6 @@ async function fetchImageAsBase64(url) {
   }
 }
 
-// Ekspor Rekap Rentang Tanggal ke PDF Lengkap dengan Hyperlink Google Drive & Foto Bebas CORS
 async function executeExportRekapRange() {
   const startInput = document.getElementById('exportStartDate');
   const endInput = document.getElementById('exportEndDate');
@@ -2542,7 +2699,6 @@ async function executeExportRekapRange() {
   }
 }
 
-// Background Auto-Sync Polling (12 Detik) Agar Seluruh User Selalu Menerima Update Garis
 async function loadCloudWorkOrders() {
   try {
     const res = await fetch(`${WEB_APP_URL}?action=GET_CLOUD_WO`);
@@ -2559,6 +2715,8 @@ async function loadCloudWorkOrders() {
         });
       }
       refreshWorkOrderMapDisplay();
+      renderOutstandingList();
+      syncNotificationLogsFromCloud();
     }
   } catch (e) {
     console.warn("Gagal sinkronisasi data cloud:", e);
@@ -2594,7 +2752,6 @@ function mulaiAnimasiIntroDanLoadData() {
   loadCloudWorkOrders();
   initSupabaseRealtime();
 
-  // Jalankan background sync tiap 12 detik sebagai fallback jaringan tambang
   setInterval(loadCloudWorkOrders, 12000);
 
   setTimeout(() => {
@@ -2645,6 +2802,7 @@ function toggleBasemapSatelit() {
   }
 }
 
+// Debounce zoom/moveend dengan Viewport Culling agar Leaflet tetap enteng
 let mapUpdateTimer = null;
 map.on('zoomend moveend', () => {
   clearTimeout(mapUpdateTimer);
@@ -2654,7 +2812,7 @@ map.on('zoomend moveend', () => {
     if (roadMapLayer && map.hasLayer(roadMapLayer)) roadMapLayer.setStyle(getRoadMapStyle);
     if (currentParam === 'crossfall' && currentMainTab === 'parameter') renderCrossfallSplitLayer();
     updateGradeLabelsVisibility();
-  }, 75);
+  }, 100);
 });
 
 function formatKeSTA(val) {
@@ -2720,13 +2878,14 @@ function calculatePolygonAngle(layer) {
   return 0;
 }
 
-// Styling Mode MAP (Centerline Garis Tunggal As Jalan Berdasarkan Tonase)
 function getRoadMapStyle(feature) {
   const props = feature.properties || {};
-  const payloadStr = (props.Kelas_Jalan || props["Kelas Jalan"] || props.Payload || "").toString().toLowerCase();
+  const payloadStr = (props.Kelas_Jalan || props["Kelas Jalan"] || props.Payload || props.Tipe || props.Nama_Jalan || "").toString().toLowerCase();
   
-  let strokeColor = '#38bdf8'; // Default 100 Ton = Biru Muda
-  if (payloadStr.includes('200')) {
+  let strokeColor = '#38bdf8';
+  if (payloadStr.includes('sarana')) {
+    strokeColor = '#ec4899'; // Jalur Sarana = Pink
+  } else if (payloadStr.includes('200')) {
     strokeColor = '#f97316'; // 200 Ton = Oranye
   } else if (payloadStr.includes('150')) {
     strokeColor = '#eab308'; // 150 Ton = Kuning
@@ -2760,7 +2919,6 @@ function getGradePolygonBlockStyle(feature) {
   return { color: "#000000", weight: 1.2, fillColor: fillColor, fillOpacity: 0.88 };
 }
 
-// Styling Mode Lebar Jalan (Slices Standard Hijau / Merah)
 function getWidthSliceStyle(feature) {
   const props = feature.properties || {};
   const meterVal = parseMeterSTA(props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || 0));
@@ -2782,7 +2940,7 @@ function getWidthSliceStyle(feature) {
 }
 
 // ==========================================
-// 7C. CROSSFALL SPLIT LAYER: BELAH 2 & PANAH ALIRAN AIR
+// 7C. CROSSFALL SPLIT LAYER: BELAH 2 & VIEW ALL
 // ==========================================
 function renderCrossfallSplitLayer() {
   crossfallVisualLayer.clearLayers();
@@ -2790,30 +2948,31 @@ function renderCrossfallSplitLayer() {
 
   const currentZoom = map ? map.getZoom() : 15;
   const baseWeight = currentZoom >= 18 ? 5.5 : (currentZoom >= 16 ? 4 : 3);
+  const bounds = map.getBounds().pad(0.2); // Viewport Culling Aktif
 
   rawWidthFeatures.forEach(feature => {
     const props = feature.properties || {};
     const coords = feature.geometry ? feature.geometry.coordinates : null;
     if (!coords || coords.length < 2) return;
 
+    const pt1 = L.latLng(coords[0][1], coords[0][0]);
+    const pt2 = L.latLng(coords[1][1], coords[1][0]);
+
+    // Viewport Culling: Lewati slice di luar layar HP
+    if (!bounds.contains(pt1) && !bounds.contains(pt2)) return;
+
     const rawSta = props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || 0);
     const meterVal = parseMeterSTA(rawSta);
     const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
 
-    if (roadVal.toLowerCase() !== activeRoad.toLowerCase()) return;
+    const mid = L.latLng((pt1.lat + pt2.lat) / 2, (pt1.lng + pt2.lng) / 2);
 
-    const pt1 = L.latLng(coords[0][1], coords[0][0]); // Tepi 1 (Kiri)
-    const pt2 = L.latLng(coords[1][1], coords[1][0]); // Tepi 2 (Kanan)
-    const mid = L.latLng((pt1.lat + pt2.lat) / 2, (pt1.lng + pt2.lng) / 2); // As Jalan
-
-    // Ambil Data Kemiringan Melintang
     const row = monitoringData.find(d => (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.toLowerCase() && parseMeterSTA(d["STA"]) === meterVal);
     const cfL = row ? Math.abs(parseFloat(row["Crossfall Kiri (%)"]) || 0) : 0;
     const cfR = row ? Math.abs(parseFloat(row["Crossfall Kanan (%)"]) || 0) : 0;
 
     const isSelected = isMeterSelected(meterVal, roadVal);
 
-    // Evaluasi Status Segmen Kiri & Kanan (Compliant: 2.0% - 4.0%)
     let colorLeft = (cfL >= 2.0 && cfL <= 4.0) ? "#22c55e" : "#e11d48";
     let colorRight = (cfR >= 2.0 && cfR <= 4.0) ? "#22c55e" : "#e11d48";
 
@@ -2822,7 +2981,6 @@ function renderCrossfallSplitLayer() {
       colorRight = "#00f0ff";
     }
 
-    // 1. Gambar Garis Belah Dua Sisi
     const lineLeft = L.polyline([mid, pt1], {
       color: colorLeft,
       weight: isSelected ? baseWeight + 3 : baseWeight,
@@ -2844,7 +3002,6 @@ function renderCrossfallSplitLayer() {
     crossfallVisualLayer.addLayer(lineLeft);
     crossfallVisualLayer.addLayer(lineRight);
 
-    // 2. Tentukan Panah Aliran Air Berdasarkan Elevasi As Jalan
     const keyTarget = `${roadVal}_${formatKeSTA(meterVal)}`;
     const pts = crossSectionData.filter(d => (d["Key"] || "").trim() === keyTarget);
     const ptLeftData = pts.find(p => p["Point"] && p["Point"].includes("Kiri"));
@@ -2855,12 +3012,10 @@ function renderCrossfallSplitLayer() {
     const elevLeft = ptLeftData ? parseFloat(ptLeftData["Elevasi_RL"]) : (elevAs - 0.2);
     const elevRight = ptRightData ? parseFloat(ptRightData["Elevasi_RL"]) : (elevAs - 0.2);
 
-    // Aliran Sisi Kiri (Tinggi ke Rendah)
     const fromLeft = (elevAs >= elevLeft) ? mid : pt1;
     const toLeft = (elevAs >= elevLeft) ? pt1 : mid;
     const arrowLeftPos = L.latLng((mid.lat + pt1.lat) / 2, (mid.lng + pt1.lng) / 2);
 
-    // Aliran Sisi Kanan (Tinggi ke Rendah)
     const fromRight = (elevAs >= elevRight) ? mid : pt2;
     const toRight = (elevAs >= elevRight) ? pt2 : mid;
     const arrowRightPos = L.latLng((mid.lat + pt2.lat) / 2, (mid.lng + pt2.lng) / 2);
@@ -2896,7 +3051,6 @@ function createCrossfallArrowMarker(pos, from, to, color) {
   });
 }
 
-// Kontrol Anotasi: Hanya Muncul jika Toggle Anotasi = ON
 function updateGradeLabelsVisibility() {
   if (!isAnnotationActive) {
     gradeLabelsLayer.clearLayers();
@@ -2933,7 +3087,6 @@ function resetSegmentSelection() {
 }
 
 function refreshVisibleLayers() {
-  // 1. Mode MAP
   if (currentMainTab === 'map') {
     if (roadGradeLayer && map.hasLayer(roadGradeLayer)) map.removeLayer(roadGradeLayer);
     if (roadWidthLayer && map.hasLayer(roadWidthLayer)) map.removeLayer(roadWidthLayer);
@@ -2949,7 +3102,6 @@ function refreshVisibleLayers() {
     if (roadNonSaranaLayer) roadNonSaranaLayer.bringToFront();
 
   } else {
-    // 2. Mode PARAMETER
     if (roadMapLayer && map.hasLayer(roadMapLayer)) map.removeLayer(roadMapLayer);
     if (roadNonSaranaLayer && map.hasLayer(roadNonSaranaLayer)) map.removeLayer(roadNonSaranaLayer);
 
@@ -2979,7 +3131,6 @@ function refreshVisibleLayers() {
     }
   }
 
-  // Lapisan Work Order Selalu Berada Paling Depan
   if (map.hasLayer(workOrderDrawingsLayer)) workOrderDrawingsLayer.bringToFront();
   if (map.hasLayer(workOrderMarkersLayer)) workOrderMarkersLayer.bringToFront();
 
@@ -3041,7 +3192,6 @@ map.on('click', (e) => {
 });
 
 async function loadAllVectorLayers() {
-  // 1. Layer Poligon Grade
   try {
     const resGrade = await fetch('data/Road_Grade_Polygons.geojson');
     if (resGrade.ok) {
@@ -3089,7 +3239,6 @@ async function loadAllVectorLayers() {
     console.warn("Info Layer Grade:", err.message);
   }
 
-  // 2. Layer Road_Map.geojson (Garis Tunggal As Jalan Centerline)
   try {
     const resMap = await fetch('data/Road_Map.geojson');
     if (resMap.ok) {
@@ -3124,10 +3273,9 @@ async function loadAllVectorLayers() {
       });
     }
   } catch (e) {
-    console.warn("Layer Road_Map.geojson standby menunggu upload data GIS.");
+    console.warn("Layer Road_Map.geojson standby.");
   }
 
-  // 3. Layer Jalur Khusus Non-Sarana Tambang
   try {
     const resNonSarana = await fetch('data/Road_Non_Sarana.geojson');
     if (resNonSarana.ok) {
@@ -3148,7 +3296,6 @@ async function loadAllVectorLayers() {
     console.warn("Layer Road_Non_Sarana.geojson standby.");
   }
 
-  // 4. Layer Slices Lebar & Crossfall (Road_Layers.geojson)
   try {
     const resWidth = await fetch('data/Road_Layers.geojson');
     if (resWidth.ok) {
@@ -3226,10 +3373,14 @@ function renderGradeSummary() {
   const panelTitle = document.getElementById('panel-title');
   if (!panelBody || !panelTitle) return;
 
-  const roadSelectHtml = `<select onchange="changeRoad(this.value)" style="font-size:11px; font-weight:bold; padding:2px 4px; border-radius:4px;">${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}</select>`;
+  const roadSelectHtml = `
+    <select onchange="changeRoad(this.value)" style="font-size:12px; font-weight:bold; padding:4px 8px; border-radius:6px; background:#f1f5f9; border:1px solid #cbd5e1; color:#0f172a; outline:none; cursor:pointer;">
+      ${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}
+    </select>
+  `;
   const roadData = getFilteredRoadData();
 
-  panelTitle.innerHTML = `Profil Memanjang: ${roadSelectHtml}`;
+  panelTitle.innerHTML = roadSelectHtml;
   panelBody.innerHTML = `
     <div style="font-size:11px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
       <span style="color:#555;">Kuning: <b>Warning (&gt;8%)</b> | Merah: <b>Overgrade (&gt;9%)</b></span>
@@ -3248,8 +3399,12 @@ function renderLebarSummary() {
   const panelTitle = document.getElementById('panel-title');
   if (!panelBody || !panelTitle) return;
 
-  const roadSelectHtml = `<select onchange="changeRoad(this.value)" style="font-size:11px; font-weight:bold; padding:2px 4px; border-radius:4px;">${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}</select>`;
-  panelTitle.innerHTML = `Audit Lebar Jalan: ${roadSelectHtml}`;
+  const roadSelectHtml = `
+    <select onchange="changeRoad(this.value)" style="font-size:12px; font-weight:bold; padding:4px 8px; border-radius:6px; background:#f1f5f9; border:1px solid #cbd5e1; color:#0f172a; outline:none; cursor:pointer;">
+      ${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}
+    </select>
+  `;
+  panelTitle.innerHTML = roadSelectHtml;
 
   const activeStdLebar = getActiveRoadStandardWidth(activeRoad);
 
@@ -3266,7 +3421,6 @@ function renderLebarSummary() {
 
       const pStart = matchFeature ? matchFeature.properties : {};
       const lebarAktual = parseFloat(pStart.Lebar_m || 0).toFixed(2);
-      
       const lebarStandarNum = pStart.Standar_m !== undefined ? parseFloat(pStart.Standar_m) : activeStdLebar;
       const lebarStandar = lebarStandarNum.toFixed(2);
       const isSempit = parseFloat(lebarAktual) < lebarStandarNum;
@@ -3432,7 +3586,7 @@ function renderTabContent() {
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
 
   const roadSelectHtml = `
-    <select onchange="changeRoad(this.value)" style="font-size:11px; font-weight:bold; padding:2px 4px; border-radius:4px;">
+    <select onchange="changeRoad(this.value)" style="font-size:12px; font-weight:bold; padding:4px 8px; border-radius:6px; background:#f1f5f9; border:1px solid #cbd5e1; color:#0f172a; outline:none; cursor:pointer;">
       ${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}
     </select>
   `;
@@ -3442,7 +3596,7 @@ function renderTabContent() {
   } else if (currentParam === 'lebar') {
     renderLebarSummary();
   } else if (currentParam === 'crossfall') {
-    panelTitle.innerHTML = `Cross Section 3 Titik: ${roadSelectHtml}`;
+    panelTitle.innerHTML = roadSelectHtml;
     panelBody.innerHTML = `
       <div style="font-size:11px; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
         <span>Pilih STA:</span>
@@ -3456,7 +3610,6 @@ function renderTabContent() {
   }
 }
 
-// Chart Profil Memanjang dengan Posisi Nilai Grade di Tengah Bentang (Midpoint)
 function drawLongSectionChart(dataSubset) {
   const ctx = document.getElementById('chartCanvas');
   if (!ctx) return;
@@ -3949,6 +4102,57 @@ async function executeExportPDF() {
     }
   }
 }
+
+// Expose fungsi ke window agar siap dipanggil event onclick di HTML
+window.toggleOutstandingDrawer = toggleOutstandingDrawer;
+window.flyToOutstandingWo = flyToOutstandingWo;
+window.renderOutstandingList = renderOutstandingList;
+window.toggleWorkOrderFloating = toggleWorkOrderFloating;
+window.toggleInspectorSubmenu = toggleInspectorSubmenu;
+window.setWoTool = setWoTool;
+window.finalizeDrawLine = finalizeDrawLine;
+window.hapusGarisDraw = hapusGarisDraw;
+window.openCreateWoModal = openCreateWoModal;
+window.openEditWoModal = openEditWoModal;
+window.openViewWoModal = openViewWoModal;
+window.closeWoModal = closeWoModal;
+window.submitWorkOrder = submitWorkOrder;
+window.deleteCurrentWorkOrder = deleteCurrentWorkOrder;
+window.openJobUpdateModal = openJobUpdateModal;
+window.closeJobUpdateModal = closeJobUpdateModal;
+window.submitJobUpdate = submitJobUpdate;
+window.addNewJobItem = addNewJobItem;
+window.removeJobItem = removeJobItem;
+window.openProgressTimelineModal = openProgressTimelineModal;
+window.closeProgressTimelineModal = closeProgressTimelineModal;
+window.filterTimelineByJob = filterTimelineByJob;
+window.openImageLightbox = openImageLightbox;
+window.closeImageLightbox = closeImageLightbox;
+window.openCalendarFilterModal = openCalendarFilterModal;
+window.closeCalendarFilterModal = closeCalendarFilterModal;
+window.applyCalendarDateFilter = applyCalendarDateFilter;
+window.resetCalendarToToday = resetCalendarToToday;
+window.executeExportRekapRange = executeExportRekapRange;
+window.toggleBasemapSatelit = toggleBasemapSatelit;
+window.toggleAnnotationVisibility = toggleAnnotationVisibility;
+window.toggleNotificationDrawer = toggleNotificationDrawer;
+window.toggleLegendDrawer = toggleLegendDrawer;
+window.switchMainTab = switchMainTab;
+window.toggleParameterDropdown = toggleParameterDropdown;
+window.selectParameter = selectParameter;
+window.handleDataUpdateClick = handleDataUpdateClick;
+window.closeAdminDataUpdateModal = closeAdminDataUpdateModal;
+window.saveAdminDataUpdateDate = saveAdminDataUpdateDate;
+window.changeRoad = changeRoad;
+window.changeYInterval = changeYInterval;
+window.resetSegmentSelection = resetSegmentSelection;
+window.openPdfModal = openPdfModal;
+window.closePdfModal = closePdfModal;
+window.executeExportPDF = executeExportPDF;
+window.locateUser = locateUser;
+window.handlePanelHeaderClick = handlePanelHeaderClick;
+window.removeMainQueueFile = removeMainQueueFile;
+window.removeJobQueueFile = removeJobQueueFile;
 
 // ==========================================
 // 8. DAFTARKAN PWA SERVICE WORKER
