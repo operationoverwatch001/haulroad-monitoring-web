@@ -196,6 +196,45 @@ body, html {
   opacity: 1;
 }
 
+/* ========================================== */
+/* NOTIFICATION DRAWER / CHAT BOX (1/4 LAYAR) */
+/* ========================================== */
+#notificationDrawer {
+  position: fixed !important;
+  top: 102px !important;
+  left: 10px !important;
+  width: 290px !important;
+  max-width: 85vw !important;
+  height: 28vh !important;
+  max-height: 28vh !important;
+  background: rgba(15, 23, 42, 0.96) !important;
+  border: 1px solid #334155 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8) !important;
+  z-index: 100001 !important;
+  display: none;
+  flex-direction: column !important;
+  backdrop-filter: blur(8px) !important;
+  overflow: hidden !important;
+  transform: none !important;
+  animation: fadeInDrawer 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+#notificationDrawer.active-drawer {
+  display: flex !important;
+}
+
+@keyframes fadeInDrawer {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ========================================================== */
 /* BOTTOM PANEL AUTO-HIDE & MEMORY DRAG (MAX 1/2 LAYAR)       */
 /* ========================================================== */
