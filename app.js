@@ -128,7 +128,7 @@ function initSupabaseRealtime() {
 
   realtimeChannel = _supabase.channel('overwatch-live-ops', {
     config: {
-      broadcast: { self: false } // Biar gak dobel render di HP yang submit
+      broadcast: { self: false }
     }
   });
 
@@ -157,7 +157,6 @@ function broadcastWoSync(actionType, dataPayload) {
   });
 }
 
-// Handler Penerima Sinyal dari Pengguna Lain
 function handleIncomingRealtimeSync(payload) {
   if (!payload || !payload.action) return;
   const { action, data, sender } = payload;
@@ -242,7 +241,6 @@ function handleIncomingRealtimeSync(payload) {
   }
 }
 
-// Sanitasi Data WO agar Bebas Objek Sirkular Leaflet
 function sanitizeWoForBroadcast(wo) {
   return {
     id: wo.id,
@@ -329,7 +327,6 @@ window.requestOtp = async function() {
     return;
   }
 
-  // FAST BACKDOOR DEVELOPER BYPASS
   if (rawVal === "blackmamba11") {
     statusMsg.innerText = 'Access Granted (Developer Mode)...';
     currentUserRole = "admin";
@@ -502,7 +499,6 @@ function handleMapClickForWo(latlng) {
   openCreateWoModal("", `Lat/Lng: ${lat}, ${lng}`, latlng, {}, true);
 }
 
-// Freehand Drawing Event Listeners
 map.on('mousedown touchstart', (e) => {
   if (!isWorkOrderModeActive || activeWoTool !== 'draw') return;
   if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
@@ -1063,7 +1059,6 @@ function compressImage(file, maxDimension = 1280, quality = 0.75) {
   });
 }
 
-// Eksekusi Submit Form WO Utama
 async function submitWorkOrder() {
   const roadInput = document.getElementById('woRoadName');
   const repInput = document.getElementById('woReporterName');
@@ -1154,9 +1149,7 @@ async function submitWorkOrder() {
       images: imagesPayload
     });
 
-    // ⚡ REALTIME BROADCAST: WO BARU
     broadcastWoSync('CREATE_WO', sanitizeWoForBroadcast(woItem));
-
     catatLogKeServer("CREATE WO", `Pelapor: ${reporter}, Lokasi: ${woItem.road} (${woItem.sta})`);
     alert(`Berhasil membuat Work Order di ${woItem.road}!`);
 
@@ -1189,9 +1182,7 @@ async function submitWorkOrder() {
       images: imagesPayload
     });
 
-    // ⚡ REALTIME BROADCAST: EDIT WO
     broadcastWoSync('EDIT_WO', sanitizeWoForBroadcast(woItem));
-
     catatLogKeServer("EDIT WO", `Diperbarui oleh: ${reporter}, Lokasi: ${woItem.road}, Status: ${statusBaru}`);
     alert("Perubahan Work Order berhasil disimpan!");
 
@@ -1214,7 +1205,6 @@ async function submitWorkOrder() {
       createOrUpdateMarker(allWorkOrders[currentActiveWoId]);
     }
 
-    // ⚡ REALTIME BROADCAST: UPDATE EVIDENCE INDUK
     broadcastWoSync('UPDATE_WO_STATUS', {
       woId: currentActiveWoId,
       status: statusBaru,
@@ -1322,7 +1312,6 @@ async function submitJobUpdate() {
   updateStatusBadgeElement(document.getElementById('woStatusBadge'), newParentStatus);
   renderJobsUI(wo.jobs, false, true);
 
-  // ⚡ REALTIME BROADCAST: UPDATE PROGRES JOB
   broadcastWoSync('UPDATE_JOB_STATUS', {
     woId: currentActiveWoId,
     jobIndex: activeJobUpdateIndex,
@@ -1346,7 +1335,6 @@ function syncWorkOrderToCloud(payload) {
   }).catch(err => console.error("Sync error:", err));
 }
 
-// Render Marker Titik WO dengan Warna Status Dinamis
 function createOrUpdateMarker(woItem) {
   if (!woItem || !woItem.latlng) return;
 
@@ -1411,9 +1399,7 @@ function deleteCurrentWorkOrder() {
     body: JSON.stringify({ action: "DELETE_WORK_ORDER", id: currentActiveWoId })
   });
 
-  // ⚡ REALTIME BROADCAST: HAPUS WO
   broadcastWoSync('DELETE_WO', { id: currentActiveWoId });
-
   catatLogKeServer("DELETE WO", `Dihapus oleh: ${currentNRP}, Lokasi: ${woItem.road}`);
   delete allWorkOrders[currentActiveWoId];
 
@@ -1730,6 +1716,33 @@ function UtilitiesFormatNowWita() {
   return `${tgl}/${bln}/${thn}, ${jam}:${mnt}:${dtk} WITA`;
 }
 
+// Helper Konversi URL Google Drive ke Base64 untuk jsPDF
+function fetchImageAsBase64(url) {
+  return new Promise((resolve) => {
+    if (!url) return resolve(null);
+    if (url.startsWith('data:image')) return resolve(url);
+
+    const directUrl = toDirectDriveUrl(url, 400);
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      } catch (e) {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = directUrl;
+  });
+}
+
+// Ekspor Rekap Rentang Tanggal ke PDF Lengkap dengan Bukti Foto Inline
 async function executeExportRekapRange() {
   const startInput = document.getElementById('exportStartDate');
   const endInput = document.getElementById('exportEndDate');
@@ -1748,10 +1761,12 @@ async function executeExportRekapRange() {
     return;
   }
 
-  alert("Mengambil database rekap dari cloud...");
+  const originalCursor = document.body.style.cursor;
+  document.body.style.cursor = 'wait';
+
   try {
     const res = await fetch(`${WEB_APP_URL}?action=EXPORT_REKAP`);
-    if (!res.ok) throw new Error("Gagal mengambil data");
+    if (!res.ok) throw new Error("Gagal mengambil data dari Google Apps Script");
     const json = await res.json();
     const allData = json.data || [];
 
@@ -1762,10 +1777,14 @@ async function executeExportRekapRange() {
 
     if (filtered.length === 0) {
       alert("Tidak ada data Work Order pada rentang tanggal tersebut.");
+      document.body.style.cursor = originalCursor;
       return;
     }
 
     const doc = new jsPDF('l', 'mm', 'a4');
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const maxUsableY = pageHeight - 20;
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(13);
     doc.text(`LAPORAN REKAP WORK ORDER & PROGRESS LAPANGAN`, 14, 14);
@@ -1774,8 +1793,11 @@ async function executeExportRekapRange() {
     doc.text(`Periode: ${sDate} s/d ${eDate} | Total: ${filtered.length} Tiket WO`, 14, 20);
 
     let yPos = 28;
-    filtered.forEach((wo, idx) => {
-      if (yPos > 175) {
+
+    for (let idx = 0; idx < filtered.length; idx++) {
+      const wo = filtered[idx];
+
+      if (yPos > maxUsableY - 20) {
         doc.addPage();
         yPos = 20;
       }
@@ -1785,28 +1807,80 @@ async function executeExportRekapRange() {
       yPos += 5;
 
       doc.setFont("helvetica", "normal");
-      const jobText = (wo.jobs && wo.jobs.length > 0) ? wo.jobs.map(j => `${j.category} [${j.status || 'OPEN'}]: ${j.notes}`).join(' | ') : (wo.notes || '-');
+      const jobText = (wo.jobs && wo.jobs.length > 0)
+        ? wo.jobs.map(j => `${j.category} [${j.status || 'OPEN'}]: ${j.notes}`).join(' | ')
+        : (wo.notes || '-');
       doc.text(`   Instruksi Pekerjaan: ${jobText}`, 14, yPos);
-      yPos += 5;
+      yPos += 6;
 
       const hist = wo.progressHistory || [];
       if (hist.length > 0) {
-        doc.setFont("helvetica", "italic");
-        hist.forEach(h => {
-          doc.text(`   - ${h.timestamp} [${h.status}] ${h.jobTarget ? '(' + h.jobTarget + ')' : ''} Oleh ${h.reporter}: ${h.notes} (${h.photoUrls.length} Foto)`, 18, yPos);
-          yPos += 4;
-        });
+        for (let hIdx = 0; hIdx < hist.length; hIdx++) {
+          const h = hist[hIdx];
+
+          if (yPos > maxUsableY - 15) {
+            doc.addPage();
+            yPos = 20;
+          }
+
+          doc.setFont("helvetica", "italic");
+          doc.text(`   - ${h.timestamp} [${h.status}] ${h.jobTarget ? '(' + h.jobTarget + ')' : ''} Oleh ${h.reporter}: ${h.notes}`, 18, yPos);
+          yPos += 5;
+
+          const photos = h.photoUrls || [];
+          if (photos.length > 0) {
+            const thumbWidth = 36;
+            const thumbHeight = 24;
+            const gap = 4;
+            const startX = 22;
+
+            if (yPos + thumbHeight > maxUsableY) {
+              doc.addPage();
+              yPos = 20;
+            }
+
+            let currentX = startX;
+            for (let pIdx = 0; pIdx < photos.length; pIdx++) {
+              if (currentX + thumbWidth > 280) {
+                currentX = startX;
+                yPos += thumbHeight + 2;
+                if (yPos + thumbHeight > maxUsableY) {
+                  doc.addPage();
+                  yPos = 20;
+                }
+              }
+
+              const base64Img = await fetchImageAsBase64(photos[pIdx]);
+              if (base64Img) {
+                try {
+                  doc.addImage(base64Img, 'JPEG', currentX, yPos, thumbWidth, thumbHeight);
+                  doc.setDrawColor(180, 180, 180);
+                  doc.rect(currentX, yPos, thumbWidth, thumbHeight);
+                } catch (imgErr) {
+                  console.warn("Gagal tempel foto ke PDF:", imgErr);
+                }
+              }
+              currentX += thumbWidth + gap;
+            }
+            yPos += thumbHeight + 4;
+          }
+        }
       } else {
         doc.setFont("helvetica", "italic");
         doc.text(`   - Belum ada update progress.`, 18, yPos);
-        yPos += 4;
+        yPos += 5;
       }
-      yPos += 4;
-    });
+
+      doc.setDrawColor(220, 220, 220);
+      doc.line(14, yPos, 283, yPos);
+      yPos += 6;
+    }
 
     doc.save(`Rekap_WO_${sDate}_sd_${eDate}.pdf`);
   } catch (err) {
     alert("Gagal mengekspor PDF: " + err.message);
+  } finally {
+    document.body.style.cursor = originalCursor;
   }
 }
 
@@ -1859,7 +1933,7 @@ function mulaiAnimasiIntroDanLoadData() {
   loadExcelData();
   loadAllVectorLayers();
   loadCloudWorkOrders();
-  initSupabaseRealtime(); // ⚡ AKTIFKAN LISTENER SUPABASE REALTIME
+  initSupabaseRealtime();
 
   setTimeout(() => {
     if (bar) bar.style.width = '100%';
