@@ -47,7 +47,7 @@ let roadGradeLayer = null;
 let roadMapLayer = null;
 let roadNonSaranaLayer = null;       
 let gradeLabelsLayer = L.layerGroup();  
-let crossfallVisualLayer = L.layerGroup(); // Layer Khusus Belah 2 Crossfall + Panah Air
+let crossfallVisualLayer = L.layerGroup();
 let allStaMarkers = []; 
 let allRoadNameMarkers = [];
 
@@ -91,16 +91,21 @@ let watchId = null;
 let isPanelOpen = false;
 let lastPanelHeight = 220;
 let toastTimeout = null;
+let syncStatusTimeout = null;
 
 // Channel Realtime Supabase
 let realtimeChannel = null;
 
 Chart.register(ChartDataLabels);
 
-// Inisialisasi Peta Leaflet
+// Engine Canvas Mandiri untuk Optimasi Performa Maksimal
+const canvasRenderer = L.canvas({ padding: 0.35 });
+
+// Inisialisasi Peta Leaflet (Canvas Driven)
 const map = L.map('map', { 
   zoomControl: false,
-  preferCanvas: true 
+  preferCanvas: true,
+  renderer: canvasRenderer
 }).setView([-2.169338, 115.572115], 15);
 
 const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -137,7 +142,7 @@ if (pmtilesLib) {
           [header.maxLat, header.maxLon]
         ]);
       }
-    }).catch(e => console.warn("Tidak dapat membaca header PMTiles:", e));
+    }).catch(e => console.warn("Header PMTiles load warn:", e));
 
   } catch (err) {
     console.error("Gagal mounting layer PMTiles:", err);
@@ -145,7 +150,54 @@ if (pmtilesLib) {
 }
 
 // ==========================================
-// 1B. SUPABASE REALTIME BROADCAST & PRESENCE
+// 1B. BADGE NOTIFIKASI SINKRONISASI (FOTO 6)
+// ==========================================
+function setSyncStatus(status) {
+  const badge = document.getElementById('syncStatusBadge');
+  const dot = document.getElementById('syncStatusDot');
+  const text = document.getElementById('syncStatusText');
+  if (!badge || !dot || !text) return;
+
+  clearTimeout(syncStatusTimeout);
+
+  if (!navigator.onLine || status === 'offline') {
+    badge.className = "px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md transition-all duration-300 pointer-events-auto flex items-center gap-1.5 sync-offline";
+    dot.className = "w-2 h-2 rounded-full bg-white blip-pulsing";
+    text.innerText = "Offline !";
+    badge.style.display = "flex";
+    return;
+  }
+
+  if (status === 'updating') {
+    badge.className = "px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md transition-all duration-300 pointer-events-auto flex items-center gap-1.5 sync-updating";
+    dot.className = "w-2 h-2 rounded-full bg-slate-950 blip-pulsing";
+    text.innerText = "Updating !";
+    badge.style.display = "flex";
+  } else if (status === 'updated') {
+    badge.className = "px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md transition-all duration-300 pointer-events-auto flex items-center gap-1.5 sync-updated";
+    dot.className = "w-2 h-2 rounded-full bg-slate-950";
+    text.innerText = "Updated !";
+    badge.style.display = "flex";
+
+    syncStatusTimeout = setTimeout(() => {
+      badge.style.display = "none";
+    }, 3000);
+  } else if (status === 'hide') {
+    badge.style.display = "none";
+  }
+}
+
+window.addEventListener('online', () => {
+  setSyncStatus('updating');
+  loadCloudWorkOrders();
+});
+
+window.addEventListener('offline', () => {
+  setSyncStatus('offline');
+});
+
+// ==========================================
+// 1C. SUPABASE REALTIME BROADCAST & PRESENCE
 // ==========================================
 function initSupabaseRealtime() {
   if (realtimeChannel) return;
@@ -175,7 +227,7 @@ function initSupabaseRealtime() {
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          console.log('⚡ [Realtime] Terhubung ke gelombang Overwatch Live Sync!');
+          console.log('⚡ [Realtime] Overwatch Live Sync Connected');
           await realtimeChannel.track({
             user: currentNRP,
             role: currentUserRole,
@@ -212,7 +264,9 @@ function broadcastWoSync(actionType, dataPayload, notificationMsg = "") {
 function handleIncomingRealtimeSync(payload) {
   if (!payload || !payload.action) return;
   const { action, data, sender, message } = payload;
-  console.log(`⚡ [Realtime Sync] ${action} diterima dari ${sender}:`, data);
+  console.log(`⚡ [Realtime Sync] ${action} dari ${sender}:`, data);
+
+  setSyncStatus('updating');
 
   if (message) {
     showToastNotification(message);
@@ -221,18 +275,6 @@ function handleIncomingRealtimeSync(payload) {
 
   switch (action) {
     case 'CREATE_WO':
-      if (data && data.id) {
-        allWorkOrders[data.id] = data;
-        if (isWorkOrderModeActive) {
-          createOrUpdateMarker(data);
-          if (data.linkedLineId && allDrawLines[data.linkedLineId]) {
-            renderDrawLineOnMap(allDrawLines[data.linkedLineId]);
-          }
-        }
-        renderOutstandingList();
-      }
-      break;
-
     case 'EDIT_WO':
       if (data && data.id) {
         allWorkOrders[data.id] = data;
@@ -314,9 +356,10 @@ function handleIncomingRealtimeSync(payload) {
       }
       break;
   }
+
+  setSyncStatus('updated');
 }
 
-// Toast Notifikasi 3.5 Detik
 function showToastNotification(text) {
   const toast = document.getElementById('toastNotification');
   if (!toast) return;
@@ -329,7 +372,7 @@ function showToastNotification(text) {
 }
 
 // ==========================================
-// 1C. SINKRONISASI LOG 48 JAM MULTI-DEVICE
+// 1D. SINKRONISASI LOG 48 JAM MULTI-DEVICE
 // ==========================================
 function parseTimestampToMs(ts) {
   if (!ts) return null;
@@ -459,7 +502,7 @@ function toggleNotificationDrawer() {
 }
 
 // ==========================================
-// 1D. OUTSTANDING DRAWER & LIST (MAX 5 BARIS SCROLL)
+// 1E. OUTSTANDING WO (MURNI NAMA JALAN - FOTO 5)
 // ==========================================
 function toggleOutstandingDrawer() {
   const drawer = document.getElementById('outstandingDrawer');
@@ -467,11 +510,9 @@ function toggleOutstandingDrawer() {
 
   if (drawer.classList.contains('active-drawer')) {
     drawer.classList.remove('active-drawer');
-    drawer.style.display = 'none';
   } else {
     renderOutstandingList();
     drawer.classList.add('active-drawer');
-    drawer.style.display = 'flex';
   }
 }
 
@@ -499,13 +540,15 @@ function renderOutstandingList() {
   listContainer.innerHTML = outstandingWos.map(wo => {
     const st = (wo.status || 'OPEN').toUpperCase();
     const stColor = st === 'PROGRESS' ? '#eab308' : '#e11d48';
-    const road = wo.road || 'Ruas Tambang';
-    const sta = wo.sta ? ` (${wo.sta})` : '';
+    
+    // Hilangkan teks dalam tanda kurung (Foto 5)
+    let cleanRoad = (wo.road || 'Ruas Tambang').replace(/\s*\(.*?\)/g, '').trim();
+    if (!cleanRoad) cleanRoad = 'Ruas Tambang';
 
     return `
       <div onclick="flyToOutstandingWo('${wo.id}')" class="bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 p-2 rounded-lg cursor-pointer transition flex items-center justify-between gap-2">
         <div class="truncate">
-          <div class="text-[11px] font-bold text-slate-200 truncate">${road}${sta}</div>
+          <div class="text-[11px] font-bold text-slate-200 truncate">${cleanRoad}</div>
           <div class="text-[9px] text-slate-400 font-mono">${wo.createdTime ? wo.createdTime.split(',')[0] : '-'}</div>
         </div>
         <span class="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0" style="background:${stColor}; color:#000;">${st}</span>
@@ -535,7 +578,6 @@ function flyToOutstandingWo(woId) {
   const drawer = document.getElementById('outstandingDrawer');
   if (drawer && window.innerWidth < 768) {
     drawer.classList.remove('active-drawer');
-    drawer.style.display = 'none';
   }
 }
 
@@ -598,7 +640,7 @@ function updateLegendUI() {
         </div>
       `;
     } else if (currentParam === 'lebar') {
-      title.innerText = 'LEGENDA: AUDIT LEBAR JALAN';
+      title.innerText = 'LEGENDA: LEBAR JALAN';
       content.innerHTML = `
         <div class="flex items-center gap-2">
           <span class="w-5 h-1.5 rounded-sm bg-[#22c55e]"></span>
@@ -614,7 +656,7 @@ function updateLegendUI() {
         </div>
       `;
     } else {
-      title.innerText = 'LEGENDA: CROSS SECTION 3 TITIK';
+      title.innerText = 'LEGENDA: CROSS SECTION';
       content.innerHTML = `
         <div class="flex items-center gap-2">
           <span class="w-5 h-1.5 rounded-sm bg-[#22c55e]"></span>
@@ -699,6 +741,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   
   notificationLogs = loadStoredNotificationLogs();
   renderNotificationDrawerList();
+
+  if (!navigator.onLine) {
+    setSyncStatus('offline');
+  }
 
   const savedSession = checkStoredSession();
   if (savedSession) {
@@ -877,7 +923,7 @@ window.verifyOtp = async function() {
 };
 
 // ==========================================
-// 2B. KONTROL HEADER TANGGAL & ROLE ADMIN UPDATE DATA
+// 2B. KONTROL HEADER TANGGAL & ROLE ADMIN
 // ==========================================
 function updateActiveWoDateButtonText() {
   const label = document.getElementById('labelActiveWoDate');
@@ -940,7 +986,7 @@ function saveAdminDataUpdateDate() {
 }
 
 // ==========================================
-// 2C. RESTRUKTURISASI TAB MENU: MAP & PARAMETER
+// 2C. RESTRUKTURISASI TAB MENU: MAP & PARAMETER (FOTO 4)
 // ==========================================
 function switchMainTab(tabKey) {
   currentMainTab = tabKey;
@@ -990,10 +1036,11 @@ function selectParameter(paramKey) {
     paramBtn.className = "font-bold text-xs px-3 py-1 rounded-md transition duration-150 bg-amber-400 text-slate-950 shadow flex items-center gap-1 flex-shrink-0";
   }
 
+  // Penulisan Parameter Ringkas (Foto 4)
   const nameMap = {
     'grade': 'GRADE',
-    'lebar': 'LEBAR',
-    'crossfall': 'CROSSFALL'
+    'lebar': 'LEBAR JALAN',
+    'crossfall': 'CROSS SECTION'
   };
   if (paramLabel) paramLabel.innerText = nameMap[paramKey] || 'PARAMETER';
 
@@ -1365,17 +1412,19 @@ function hapusGarisDraw(lineId) {
   }
   delete allDrawLines[lineId];
 
+  setSyncStatus('updating');
   fetch(WEB_APP_URL, {
     method: 'POST',
     mode: 'no-cors',
     body: JSON.stringify({ action: "DELETE_DRAW_LINE", id: lineId })
-  });
+  }).then(() => setSyncStatus('updated')).catch(() => setSyncStatus('updated'));
 
   broadcastWoSync('DELETE_DRAW_LINE', { id: lineId }, `${currentNRP} Menghapus sketsa garis.`);
   catatLogKeServer("DELETE DRAW", `Menghapus sketsa garis ID: ${lineId}`);
 }
 
 function syncDrawLineToCloud(lineItem) {
+  setSyncStatus('updating');
   fetch(WEB_APP_URL, {
     method: 'POST',
     mode: 'no-cors',
@@ -1386,7 +1435,7 @@ function syncDrawLineToCloud(lineItem) {
       points: lineItem.points,
       reporter: lineItem.reporter
     })
-  });
+  }).then(() => setSyncStatus('updated')).catch(() => setSyncStatus('updated'));
 }
 
 function handleMapClickForWo(latlng) {
@@ -1903,6 +1952,8 @@ async function submitWorkOrder() {
     }
   }
 
+  setSyncStatus('updating');
+
   if (currentWoMode === 'create') {
     const woId = 'wo_' + Date.now();
     const jobs = collectJobsFromUI();
@@ -2102,6 +2153,8 @@ async function submitJobUpdate() {
 
   const jobTargetName = `Job ${activeJobUpdateIndex + 1}`;
 
+  setSyncStatus('updating');
+
   syncWorkOrderToCloud({
     action: "SUBMIT_EVIDENCE",
     woId: currentActiveWoId,
@@ -2152,7 +2205,10 @@ function syncWorkOrderToCloud(payload) {
     method: 'POST',
     mode: 'no-cors',
     body: JSON.stringify(payload)
-  }).catch(err => console.error("Sync error:", err));
+  }).then(() => setSyncStatus('updated')).catch(err => {
+    console.error("Sync error:", err);
+    setSyncStatus('updated');
+  });
 }
 
 function createOrUpdateMarker(woItem) {
@@ -2213,11 +2269,12 @@ function deleteCurrentWorkOrder() {
     workOrderMarkersLayer.removeLayer(woItem.markerLayer);
   }
 
+  setSyncStatus('updating');
   fetch(WEB_APP_URL, {
     method: 'POST',
     mode: 'no-cors',
     body: JSON.stringify({ action: "DELETE_WORK_ORDER", id: currentActiveWoId })
-  });
+  }).then(() => setSyncStatus('updated')).catch(() => setSyncStatus('updated'));
 
   const notifMsg = `${currentNRP} Menghapus WO di ${woItem.road}`;
   broadcastWoSync('DELETE_WO', { id: currentActiveWoId }, notifMsg);
@@ -2505,7 +2562,7 @@ function parseWitaToDateTimeLocal(ts) {
     const dateParts = parts[0].split('/');
     const timeParts = parts[1].split(':');
     return `${dateParts[2]}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}T${timeParts[0].padStart(2, '0')}:${timeParts[1].padStart(2, '0')}`;
-  } catch(e) {
+  } catch (e) {
     return getNowDateTimeLocalWita();
   }
 }
@@ -2520,7 +2577,7 @@ function parseTimestampToYMD(ts) {
   }
   try {
     return new Date(ts).toISOString().split('T')[0];
-  } catch(e) {
+  } catch (e) {
     return "";
   }
 }
@@ -2699,7 +2756,15 @@ async function executeExportRekapRange() {
   }
 }
 
+// Background Cloud Polling dengan Integrasi Indikator Sync
 async function loadCloudWorkOrders() {
+  if (!navigator.onLine) {
+    setSyncStatus('offline');
+    return;
+  }
+
+  setSyncStatus('updating');
+
   try {
     const res = await fetch(`${WEB_APP_URL}?action=GET_CLOUD_WO`);
     if (res.ok) {
@@ -2717,14 +2782,19 @@ async function loadCloudWorkOrders() {
       refreshWorkOrderMapDisplay();
       renderOutstandingList();
       syncNotificationLogsFromCloud();
+      setSyncStatus('updated');
+    } else {
+      setSyncStatus('updated');
     }
   } catch (e) {
     console.warn("Gagal sinkronisasi data cloud:", e);
+    if (!navigator.onLine) setSyncStatus('offline');
+    else setSyncStatus('updated');
   }
 }
 
 // ==========================================
-// 7. HELPER WEBGIS, CHART & VIEWPORT OPTIMASI
+// 7. HELPER WEBGIS & VIEWPORT OPTIMASI TINGGI
 // ==========================================
 function mulaiAnimasiIntroDanLoadData() {
   const splash = document.getElementById('intro-splash');
@@ -2802,17 +2872,28 @@ function toggleBasemapSatelit() {
   }
 }
 
-// Debounce zoom/moveend dengan Viewport Culling agar Leaflet tetap enteng
+// Optimasi Panning & Zooming Leaflet (Bebas Lag & CPU Friendly - Foto 3)
+let lastZoomLevel = map.getZoom();
 let mapUpdateTimer = null;
-map.on('zoomend moveend', () => {
-  clearTimeout(mapUpdateTimer);
-  mapUpdateTimer = setTimeout(() => {
+
+map.on('zoomend', () => {
+  const currentZoom = map.getZoom();
+  if (currentZoom !== lastZoomLevel) {
+    lastZoomLevel = currentZoom;
     if (roadWidthLayer && map.hasLayer(roadWidthLayer)) roadWidthLayer.setStyle(getWidthSliceStyle);
-    if (roadGradeLayer && map.hasLayer(roadGradeLayer)) roadGradeLayer.setStyle(getGradePolygonBlockStyle);
-    if (roadMapLayer && map.hasLayer(roadMapLayer)) roadMapLayer.setStyle(getRoadMapStyle);
     if (currentParam === 'crossfall' && currentMainTab === 'parameter') renderCrossfallSplitLayer();
     updateGradeLabelsVisibility();
-  }, 100);
+  }
+});
+
+map.on('moveend', () => {
+  clearTimeout(mapUpdateTimer);
+  mapUpdateTimer = setTimeout(() => {
+    if (currentParam === 'crossfall' && currentMainTab === 'parameter') {
+      renderCrossfallSplitLayer();
+    }
+    updateGradeLabelsVisibility();
+  }, 80);
 });
 
 function formatKeSTA(val) {
@@ -2884,11 +2965,11 @@ function getRoadMapStyle(feature) {
   
   let strokeColor = '#38bdf8';
   if (payloadStr.includes('sarana')) {
-    strokeColor = '#ec4899'; // Jalur Sarana = Pink
+    strokeColor = '#ec4899';
   } else if (payloadStr.includes('200')) {
-    strokeColor = '#f97316'; // 200 Ton = Oranye
+    strokeColor = '#f97316';
   } else if (payloadStr.includes('150')) {
-    strokeColor = '#eab308'; // 150 Ton = Kuning
+    strokeColor = '#eab308';
   }
 
   return {
@@ -2940,31 +3021,31 @@ function getWidthSliceStyle(feature) {
 }
 
 // ==========================================
-// 7C. CROSSFALL SPLIT LAYER: BELAH 2 & VIEW ALL
+// 7C. CROSSFALL SPLIT LAYER (CANVAS & VIEW ALL)
 // ==========================================
 function renderCrossfallSplitLayer() {
   crossfallVisualLayer.clearLayers();
   if (currentMainTab !== 'parameter' || currentParam !== 'crossfall') return;
 
   const currentZoom = map ? map.getZoom() : 15;
+  if (currentZoom < 14) return; // Zoom threshold agar tetap ringan di overview
+
   const baseWeight = currentZoom >= 18 ? 5.5 : (currentZoom >= 16 ? 4 : 3);
-  const bounds = map.getBounds().pad(0.2); // Viewport Culling Aktif
+  const bounds = map.getBounds().pad(0.15); // Viewport Culling Aktif
 
   rawWidthFeatures.forEach(feature => {
-    const props = feature.properties || {};
     const coords = feature.geometry ? feature.geometry.coordinates : null;
     if (!coords || coords.length < 2) return;
 
     const pt1 = L.latLng(coords[0][1], coords[0][0]);
     const pt2 = L.latLng(coords[1][1], coords[1][0]);
 
-    // Viewport Culling: Lewati slice di luar layar HP
     if (!bounds.contains(pt1) && !bounds.contains(pt2)) return;
 
+    const props = feature.properties || {};
     const rawSta = props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || 0);
     const meterVal = parseMeterSTA(rawSta);
     const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
-
     const mid = L.latLng((pt1.lat + pt2.lat) / 2, (pt1.lng + pt2.lng) / 2);
 
     const row = monitoringData.find(d => (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.toLowerCase() && parseMeterSTA(d["STA"]) === meterVal);
@@ -2972,7 +3053,6 @@ function renderCrossfallSplitLayer() {
     const cfR = row ? Math.abs(parseFloat(row["Crossfall Kanan (%)"]) || 0) : 0;
 
     const isSelected = isMeterSelected(meterVal, roadVal);
-
     let colorLeft = (cfL >= 2.0 && cfL <= 4.0) ? "#22c55e" : "#e11d48";
     let colorRight = (cfR >= 2.0 && cfR <= 4.0) ? "#22c55e" : "#e11d48";
 
@@ -2984,12 +3064,14 @@ function renderCrossfallSplitLayer() {
     const lineLeft = L.polyline([mid, pt1], {
       color: colorLeft,
       weight: isSelected ? baseWeight + 3 : baseWeight,
-      opacity: 0.95
+      opacity: 0.95,
+      renderer: canvasRenderer
     });
     const lineRight = L.polyline([mid, pt2], {
       color: colorRight,
       weight: isSelected ? baseWeight + 3 : baseWeight,
-      opacity: 0.95
+      opacity: 0.95,
+      renderer: canvasRenderer
     });
 
     const clickHandler = (e) => {
@@ -3002,25 +3084,25 @@ function renderCrossfallSplitLayer() {
     crossfallVisualLayer.addLayer(lineLeft);
     crossfallVisualLayer.addLayer(lineRight);
 
-    const keyTarget = `${roadVal}_${formatKeSTA(meterVal)}`;
-    const pts = crossSectionData.filter(d => (d["Key"] || "").trim() === keyTarget);
-    const ptLeftData = pts.find(p => p["Point"] && p["Point"].includes("Kiri"));
-    const ptAsData = pts.find(p => p["Point"] && p["Point"].includes("As"));
-    const ptRightData = pts.find(p => p["Point"] && p["Point"].includes("Kanan"));
-
-    const elevAs = ptAsData ? parseFloat(ptAsData["Elevasi_RL"]) : (row ? parseFloat(row["Elevasi As (m)"]) : 100);
-    const elevLeft = ptLeftData ? parseFloat(ptLeftData["Elevasi_RL"]) : (elevAs - 0.2);
-    const elevRight = ptRightData ? parseFloat(ptRightData["Elevasi_RL"]) : (elevAs - 0.2);
-
-    const fromLeft = (elevAs >= elevLeft) ? mid : pt1;
-    const toLeft = (elevAs >= elevLeft) ? pt1 : mid;
-    const arrowLeftPos = L.latLng((mid.lat + pt1.lat) / 2, (mid.lng + pt1.lng) / 2);
-
-    const fromRight = (elevAs >= elevRight) ? mid : pt2;
-    const toRight = (elevAs >= elevRight) ? pt2 : mid;
-    const arrowRightPos = L.latLng((mid.lat + pt2.lat) / 2, (mid.lng + pt2.lng) / 2);
-
     if (currentZoom >= 16) {
+      const keyTarget = `${roadVal}_${formatKeSTA(meterVal)}`;
+      const pts = crossSectionData.filter(d => (d["Key"] || "").trim() === keyTarget);
+      const ptLeftData = pts.find(p => p["Point"] && p["Point"].includes("Kiri"));
+      const ptAsData = pts.find(p => p["Point"] && p["Point"].includes("As"));
+      const ptRightData = pts.find(p => p["Point"] && p["Point"].includes("Kanan"));
+
+      const elevAs = ptAsData ? parseFloat(ptAsData["Elevasi_RL"]) : (row ? parseFloat(row["Elevasi As (m)"]) : 100);
+      const elevLeft = ptLeftData ? parseFloat(ptLeftData["Elevasi_RL"]) : (elevAs - 0.2);
+      const elevRight = ptRightData ? parseFloat(ptRightData["Elevasi_RL"]) : (elevAs - 0.2);
+
+      const fromLeft = (elevAs >= elevLeft) ? mid : pt1;
+      const toLeft = (elevAs >= elevLeft) ? pt1 : mid;
+      const arrowLeftPos = L.latLng((mid.lat + pt1.lat) / 2, (mid.lng + pt1.lng) / 2);
+
+      const fromRight = (elevAs >= elevRight) ? mid : pt2;
+      const toRight = (elevAs >= elevRight) ? pt2 : mid;
+      const arrowRightPos = L.latLng((mid.lat + pt2.lat) / 2, (mid.lng + pt2.lng) / 2);
+
       crossfallVisualLayer.addLayer(createCrossfallArrowMarker(arrowLeftPos, fromLeft, toLeft, colorLeft));
       crossfallVisualLayer.addLayer(createCrossfallArrowMarker(arrowRightPos, fromRight, toRight, colorRight));
     }
@@ -3052,7 +3134,7 @@ function createCrossfallArrowMarker(pos, from, to, color) {
 }
 
 function updateGradeLabelsVisibility() {
-  if (!isAnnotationActive) {
+  if (!isAnnotationActive || map.getZoom() < 16) {
     gradeLabelsLayer.clearLayers();
     if (map.hasLayer(gradeLabelsLayer)) map.removeLayer(gradeLabelsLayer);
     return;
@@ -3096,7 +3178,6 @@ function refreshVisibleLayers() {
     if (roadNonSaranaLayer && !map.hasLayer(roadNonSaranaLayer)) roadNonSaranaLayer.addTo(map);
     
     if (roadMapLayer) {
-      roadMapLayer.setStyle(getRoadMapStyle);
       roadMapLayer.bringToFront();
     }
     if (roadNonSaranaLayer) roadNonSaranaLayer.bringToFront();
@@ -3200,6 +3281,7 @@ async function loadAllVectorLayers() {
 
       roadGradeLayer = L.geoJSON(geojsonGrade, {
         style: getGradePolygonBlockStyle,
+        renderer: canvasRenderer,
         onEachFeature: function(feature, layer) {
           const props = feature.properties || {};
           const sta = props.STA_Akhir || formatKeSTA(props.Station_m || props.STA_Awal || 0);
@@ -3247,6 +3329,7 @@ async function loadAllVectorLayers() {
 
       roadMapLayer = L.geoJSON(geojsonMap, {
         style: getRoadMapStyle,
+        renderer: canvasRenderer,
         onEachFeature: function(feature, layer) {
           const props = feature.properties || {};
           const road = props.Nama_Jalan || props["Nama Jalan"] || "Ruas Tambang";
@@ -3281,6 +3364,7 @@ async function loadAllVectorLayers() {
     if (resNonSarana.ok) {
       const geojsonNonSarana = await resNonSarana.json();
       roadNonSaranaLayer = L.geoJSON(geojsonNonSarana, {
+        renderer: canvasRenderer,
         style: {
           color: "#ef4444",
           weight: 7.5,
@@ -3305,6 +3389,7 @@ async function loadAllVectorLayers() {
       if (roadWidthLayer) map.removeLayer(roadWidthLayer);
       roadWidthLayer = L.geoJSON(geojsonWidth, {
         style: getWidthSliceStyle,
+        renderer: canvasRenderer,
         onEachFeature: function(feature, layer) {
           layer.on('click', (e) => {
             L.DomEvent.stopPropagation(e);
@@ -3368,6 +3453,7 @@ function getFilteredRoadData() {
   return roadData;
 }
 
+// Render Summary dengan Dropdown Rata Kiri Paten (Foto 2)
 function renderGradeSummary() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
@@ -4103,10 +4189,11 @@ async function executeExportPDF() {
   }
 }
 
-// Expose fungsi ke window agar siap dipanggil event onclick di HTML
+// Expose fungsi ke window
 window.toggleOutstandingDrawer = toggleOutstandingDrawer;
 window.flyToOutstandingWo = flyToOutstandingWo;
 window.renderOutstandingList = renderOutstandingList;
+window.setSyncStatus = setSyncStatus;
 window.toggleWorkOrderFloating = toggleWorkOrderFloating;
 window.toggleInspectorSubmenu = toggleInspectorSubmenu;
 window.setWoTool = setWoTool;
