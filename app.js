@@ -68,6 +68,9 @@ let userAccuracyCircle = null;
 let isTracking = false;
 let watchId = null;
 
+// Channel Realtime Supabase
+let realtimeChannel = null;
+
 Chart.register(ChartDataLabels);
 
 // Inisialisasi Peta Leaflet
@@ -115,6 +118,154 @@ if (pmtilesLib) {
   } catch (err) {
     console.error("Gagal mounting layer PMTiles:", err);
   }
+}
+
+// ==========================================
+// 1B. SUPABASE REALTIME BROADCAST ENGINE ⚡
+// ==========================================
+function initSupabaseRealtime() {
+  if (realtimeChannel) return;
+
+  realtimeChannel = _supabase.channel('overwatch-live-ops', {
+    config: {
+      broadcast: { self: false } // Biar gak dobel render di HP yang submit
+    }
+  });
+
+  realtimeChannel
+    .on('broadcast', { event: 'WO_LIVE_SYNC' }, (eventPayload) => {
+      handleIncomingRealtimeSync(eventPayload.payload);
+    })
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        console.log('⚡ [Realtime] Terhubung ke gelombang Overwatch Live Sync!');
+      }
+    });
+}
+
+function broadcastWoSync(actionType, dataPayload) {
+  if (!realtimeChannel) return;
+  realtimeChannel.send({
+    type: 'broadcast',
+    event: 'WO_LIVE_SYNC',
+    payload: {
+      action: actionType,
+      data: dataPayload,
+      sender: currentNRP,
+      timestamp: Date.now()
+    }
+  });
+}
+
+// Handler Penerima Sinyal dari Pengguna Lain
+function handleIncomingRealtimeSync(payload) {
+  if (!payload || !payload.action) return;
+  const { action, data, sender } = payload;
+  console.log(`⚡ [Realtime Sync] ${action} diterima dari ${sender}:`, data);
+
+  switch (action) {
+    case 'CREATE_WO':
+      if (data && data.id) {
+        allWorkOrders[data.id] = data;
+        if (isWorkOrderModeActive) {
+          createOrUpdateMarker(data);
+          if (data.linkedLineId && allDrawLines[data.linkedLineId]) {
+            renderDrawLineOnMap(allDrawLines[data.linkedLineId]);
+          }
+        }
+      }
+      break;
+
+    case 'EDIT_WO':
+      if (data && data.id) {
+        allWorkOrders[data.id] = data;
+        if (isWorkOrderModeActive) {
+          createOrUpdateMarker(data);
+        }
+      }
+      break;
+
+    case 'UPDATE_WO_STATUS':
+      if (data && data.woId && allWorkOrders[data.woId]) {
+        const targetWo = allWorkOrders[data.woId];
+        targetWo.status = data.status;
+        if (targetWo.jobs && targetWo.jobs[0]) {
+          targetWo.jobs[0].status = data.status;
+        }
+        if (isWorkOrderModeActive) {
+          createOrUpdateMarker(targetWo);
+        }
+      }
+      break;
+
+    case 'UPDATE_JOB_STATUS':
+      if (data && data.woId && allWorkOrders[data.woId]) {
+        const targetWo = allWorkOrders[data.woId];
+        if (targetWo.jobs && targetWo.jobs[data.jobIndex]) {
+          targetWo.jobs[data.jobIndex].status = data.status;
+        }
+        targetWo.status = data.parentStatus || calculateParentStatus(targetWo.jobs);
+        if (isWorkOrderModeActive) {
+          createOrUpdateMarker(targetWo);
+        }
+      }
+      break;
+
+    case 'DELETE_WO':
+      if (data && data.id && allWorkOrders[data.id]) {
+        const woItem = allWorkOrders[data.id];
+        if (woItem.markerLayer && workOrderMarkersLayer.hasLayer(woItem.markerLayer)) {
+          workOrderMarkersLayer.removeLayer(woItem.markerLayer);
+        }
+        delete allWorkOrders[data.id];
+      }
+      break;
+
+    case 'CREATE_DRAW_LINE':
+      if (data && data.id) {
+        allDrawLines[data.id] = data;
+        if (isWorkOrderModeActive) {
+          renderDrawLineOnMap(data);
+        }
+      }
+      break;
+
+    case 'DELETE_DRAW_LINE':
+      if (data && data.id && allDrawLines[data.id]) {
+        const lineItem = allDrawLines[data.id];
+        if (lineItem.layer && workOrderDrawingsLayer.hasLayer(lineItem.layer)) {
+          workOrderDrawingsLayer.removeLayer(lineItem.layer);
+        }
+        delete allDrawLines[data.id];
+      }
+      break;
+  }
+}
+
+// Sanitasi Data WO agar Bebas Objek Sirkular Leaflet
+function sanitizeWoForBroadcast(wo) {
+  return {
+    id: wo.id,
+    createdTime: wo.createdTime,
+    road: wo.road,
+    sta: wo.sta,
+    latlng: wo.latlng,
+    jobs: wo.jobs,
+    notes: wo.notes,
+    reporter: wo.reporter,
+    photoUrls: wo.photoUrls || [],
+    status: wo.status,
+    linkedLineId: wo.linkedLineId || ""
+  };
+}
+
+function sanitizeDrawLineForBroadcast(line) {
+  return {
+    id: line.id,
+    road: line.road,
+    points: line.points,
+    reporter: line.reporter
+  };
 }
 
 // ==========================================
@@ -303,7 +454,6 @@ function toggleWorkOrderFloating() {
     if (plusBtn) plusBtn.style.display = 'none';
     if (submenu) submenu.style.display = 'none';
 
-    // AUTO-RESET TOOL MARK & DRAW JADI NONAKTIF
     activeWoTool = null;
     document.querySelectorAll('.wo-sub-btn').forEach(b => b.classList.remove('active-tool'));
     selectedLineForWo = null;
@@ -341,7 +491,6 @@ function setWoTool(toolName) {
   }
 }
 
-// Handler Klik Peta untuk Titik Mark WO Bebas
 function handleMapClickForWo(latlng) {
   if (!isWorkOrderModeActive) return;
   if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
@@ -387,6 +536,7 @@ map.on('mouseup touchend', (e) => {
     renderDrawLineOnMap(lineItem);
 
     syncDrawLineToCloud(lineItem);
+    broadcastWoSync('CREATE_DRAW_LINE', sanitizeDrawLineForBroadcast(lineItem));
     catatLogKeServer("DRAW WO", `Inspector membuat sketsa garis di ${lineItem.road}`);
   }
 
@@ -397,7 +547,6 @@ map.on('mouseup touchend', (e) => {
   currentDrawPoints = [];
 });
 
-// Render Garis Sketsa dengan Fitur Kunci Biru Neon saat di-Mark
 function renderDrawLineOnMap(lineItem) {
   const isLocked = Object.values(allWorkOrders).some(wo => wo.linkedLineId === lineItem.id);
   const strokeColor = isLocked ? '#00f0ff' : '#ff2b54';
@@ -412,7 +561,6 @@ function renderDrawLineOnMap(lineItem) {
   polyLine.on('click', function(e) {
     L.DomEvent.stopPropagation(e);
 
-    // Kunci Garis & KOSONGKAN NAMA JALAN AGAR USER KETIK SENDIRI (FOTO 2)
     if (isWorkOrderModeActive && activeWoTool === 'mark' && (currentUserRole === 'admin' || currentUserRole === 'inspector')) {
       selectedLineForWo = lineItem;
       polyLine.setStyle({ color: '#00f0ff', weight: 6 });
@@ -421,7 +569,6 @@ function renderDrawLineOnMap(lineItem) {
       return;
     }
 
-    // Opsi Hapus Garis untuk Inspector / Admin
     if (currentUserRole === 'admin' || currentUserRole === 'inspector') {
       const popupContent = `
         <div style="font-size:11px; text-align:center; padding:4px; min-width:110px;">
@@ -450,6 +597,8 @@ function hapusGarisDraw(lineId) {
     mode: 'no-cors',
     body: JSON.stringify({ action: "DELETE_DRAW_LINE", id: lineId })
   });
+
+  broadcastWoSync('DELETE_DRAW_LINE', { id: lineId });
   catatLogKeServer("DELETE DRAW", `Menghapus sketsa garis ID: ${lineId}`);
 }
 
@@ -615,7 +764,6 @@ function setupModalUI(cfg) {
   if (title) title.innerText = cfg.title;
   if (sub) sub.innerText = cfg.sub;
 
-  // Waktu WO Interaktif (Bisa Backdate, Anti Masa Depan - Foto 3)
   const maxTime = getNowDateTimeLocalWita();
   if (dateInput) {
     dateInput.max = maxTime;
@@ -627,7 +775,6 @@ function setupModalUI(cfg) {
     dateInput.disabled = (currentWoMode === 'view');
   }
 
-  // Update Badge Status Induk
   updateStatusBadgeElement(statusBadge, cfg.status);
 
   if (roadInput) roadInput.value = cfg.roadName || "";
@@ -660,10 +807,7 @@ function setupModalUI(cfg) {
   if (fileInput) fileInput.value = '';
   renderQueueThumbnails(mainUploadFilesQueue, 'woImagePreviewContainer', 'removeMainQueueFile');
 
-  // Render Kartu-kartu Job
   renderJobsUI(cfg.jobs, cfg.showJobsEdit, currentWoMode === 'view');
-
-  // Render Foto Acuan Awal Direct CDN (Foto 1 & 7)
   renderRefPhotosUI(cfg.photoUrls, cfg.showRefPhotos);
 
   if (modal) modal.style.display = 'flex';
@@ -701,7 +845,6 @@ function closeWoModal() {
   mainUploadFilesQueue = [];
 }
 
-// Multi-Job Dynamic DOM Handler (Foto 5)
 function renderJobsUI(jobsList, isEditable, isViewMode = false) {
   const container = document.getElementById('woJobsContainer');
   const addBtn = document.getElementById('btnAddJobBtn');
@@ -789,7 +932,6 @@ function collectJobsFromUI() {
   return list.length > 0 ? list : [{ category: "Overgrade / Tanjakan Curam", notes: "", status: "OPEN" }];
 }
 
-// Konverter URL Google Drive ke Direct Stream CDN (Anti Foto Pecah - Foto 1 & 7)
 function toDirectDriveUrl(url, size = 600) {
   if (!url) return '';
   if (url.startsWith('data:image')) return url;
@@ -800,7 +942,6 @@ function toDirectDriveUrl(url, size = 600) {
   return url;
 }
 
-// Render Foto Acuan / Stage Plan Desain (Foto 7)
 function renderRefPhotosUI(urls, isVisible) {
   const wrap = document.getElementById('woRefPhotosSection');
   const gallery = document.getElementById('woRefPhotosGallery');
@@ -817,7 +958,7 @@ function renderRefPhotosUI(urls, isVisible) {
 
   urls.forEach((u, i) => {
     const img = document.createElement('img');
-    img.src = toDirectDriveUrl(u, 240); // Direct Stream CDN
+    img.src = toDirectDriveUrl(u, 240);
     img.alt = `Stage Plan #${i + 1}`;
     img.style.width = '100%';
     img.style.height = '65px';
@@ -885,7 +1026,6 @@ function removeJobQueueFile(index) {
   renderQueueThumbnails(jobUpdateFilesQueue, 'jobUpdatePreviewContainer', 'removeJobQueueFile');
 }
 
-// Helper Kompresi Gambar
 function compressImage(file, maxDimension = 1280, quality = 0.75) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -938,7 +1078,6 @@ async function submitWorkOrder() {
   const detailLoc = locDetail ? locDetail.value : "";
   const statusBaru = statusSelect ? statusSelect.value : "PROGRESS";
 
-  // VALIDASI KETAT NAMA RUAS JALAN (FOTO 2)
   if (!roadName) {
     alert("Nama Ruas Jalan wajib diisi, bre!");
     if (roadInput) roadInput.focus();
@@ -950,7 +1089,6 @@ async function submitWorkOrder() {
     return;
   }
 
-  // Waktu WO Fleksibel (Backdate + Anti Masa Depan)
   let chosenTimeWita = UtilitiesFormatNowWita();
   if (dateInput && dateInput.value) {
     if (dateInput.value > getNowDateTimeLocalWita()) {
@@ -961,7 +1099,6 @@ async function submitWorkOrder() {
     chosenTimeWita = formatDateTimeLocalToWita(dateInput.value);
   }
 
-  // Proses Unggah Gambar dari Antrean Akumulasi
   const imagesPayload = [];
   for (let i = 0; i < mainUploadFilesQueue.length; i++) {
     const file = mainUploadFilesQueue[i];
@@ -1017,6 +1154,9 @@ async function submitWorkOrder() {
       images: imagesPayload
     });
 
+    // ⚡ REALTIME BROADCAST: WO BARU
+    broadcastWoSync('CREATE_WO', sanitizeWoForBroadcast(woItem));
+
     catatLogKeServer("CREATE WO", `Pelapor: ${reporter}, Lokasi: ${woItem.road} (${woItem.sta})`);
     alert(`Berhasil membuat Work Order di ${woItem.road}!`);
 
@@ -1049,6 +1189,9 @@ async function submitWorkOrder() {
       images: imagesPayload
     });
 
+    // ⚡ REALTIME BROADCAST: EDIT WO
+    broadcastWoSync('EDIT_WO', sanitizeWoForBroadcast(woItem));
+
     catatLogKeServer("EDIT WO", `Diperbarui oleh: ${reporter}, Lokasi: ${woItem.road}, Status: ${statusBaru}`);
     alert("Perubahan Work Order berhasil disimpan!");
 
@@ -1071,6 +1214,14 @@ async function submitWorkOrder() {
       createOrUpdateMarker(allWorkOrders[currentActiveWoId]);
     }
 
+    // ⚡ REALTIME BROADCAST: UPDATE EVIDENCE INDUK
+    broadcastWoSync('UPDATE_WO_STATUS', {
+      woId: currentActiveWoId,
+      status: statusBaru,
+      notes: notes,
+      reporter: reporter
+    });
+
     catatLogKeServer("SUBMIT EVIDENCE", `Pelapor: ${reporter}, Lokasi: ${roadName}, Status: ${statusBaru}, Keterangan: ${notes}`);
     alert(`Evidence progres berhasil dikirim oleh ${reporter} dengan status: ${statusBaru}!`);
   }
@@ -1079,7 +1230,7 @@ async function submitWorkOrder() {
 }
 
 // ==========================================
-// 4C. MODAL UPDATE PROGRESS KHUSUS PER-JOB (FOTO 5)
+// 4C. MODAL UPDATE PROGRESS KHUSUS PER-JOB
 // ==========================================
 function openJobUpdateModal(jobIndex) {
   if (!currentActiveWoId || !allWorkOrders[currentActiveWoId]) return;
@@ -1134,7 +1285,6 @@ async function submitJobUpdate() {
     return;
   }
 
-  // Unggah Gambar Antrean Khusus Job
   const imagesPayload = [];
   for (let i = 0; i < jobUpdateFilesQueue.length; i++) {
     const file = jobUpdateFilesQueue[i];
@@ -1164,15 +1314,23 @@ async function submitJobUpdate() {
     images: imagesPayload
   });
 
-  // Update State Lokal
   wo.jobs[activeJobUpdateIndex].status = statusBaru;
   const newParentStatus = calculateParentStatus(wo.jobs);
   wo.status = newParentStatus;
 
-  // Refresh Tampilan Modal & Peta
   createOrUpdateMarker(wo);
   updateStatusBadgeElement(document.getElementById('woStatusBadge'), newParentStatus);
   renderJobsUI(wo.jobs, false, true);
+
+  // ⚡ REALTIME BROADCAST: UPDATE PROGRES JOB
+  broadcastWoSync('UPDATE_JOB_STATUS', {
+    woId: currentActiveWoId,
+    jobIndex: activeJobUpdateIndex,
+    status: statusBaru,
+    parentStatus: newParentStatus,
+    notes: notes,
+    reporter: reporter
+  });
 
   catatLogKeServer("SUBMIT JOB EVIDENCE", `Pelapor: ${reporter}, Lokasi: ${wo.road}, ${jobTargetName}, Status: ${statusBaru}`);
   alert(`Berhasil mengupdate progress ${jobTargetName} menjadi: ${statusBaru}!`);
@@ -1197,9 +1355,9 @@ function createOrUpdateMarker(woItem) {
   }
 
   const status = (woItem.status || "OPEN").toUpperCase();
-  let pinColor = '#e11d48'; // OPEN = Merah
-  if (status === 'PROGRESS') pinColor = '#eab308'; // PROGRESS = Kuning
-  if (status === 'CLOSED') pinColor = '#22c55e'; // CLOSED = Hijau
+  let pinColor = '#e11d48'; 
+  if (status === 'PROGRESS') pinColor = '#eab308'; 
+  if (status === 'CLOSED') pinColor = '#22c55e'; 
 
   const customIcon = L.divIcon({
     className: 'custom-wo-marker',
@@ -1253,6 +1411,9 @@ function deleteCurrentWorkOrder() {
     body: JSON.stringify({ action: "DELETE_WORK_ORDER", id: currentActiveWoId })
   });
 
+  // ⚡ REALTIME BROADCAST: HAPUS WO
+  broadcastWoSync('DELETE_WO', { id: currentActiveWoId });
+
   catatLogKeServer("DELETE WO", `Dihapus oleh: ${currentNRP}, Lokasi: ${woItem.road}`);
   delete allWorkOrders[currentActiveWoId];
 
@@ -1283,7 +1444,6 @@ async function openProgressTimelineModal() {
     emptyNotice.style.display = 'none';
   }
 
-  // Setup Tombol Tab Filter Job (Foto 5)
   if (filterTabs && wo && wo.jobs && wo.jobs.length > 1) {
     filterTabs.style.display = 'flex';
     filterTabs.innerHTML = `
@@ -1391,7 +1551,6 @@ function closeProgressTimelineModal() {
   if (modal) modal.style.display = 'none';
 }
 
-// Lightbox Modal Zoom & Download Foto (Anti Foto Pecah - Foto 1 & 7)
 function openImageLightbox(url) {
   const modal = document.getElementById('imageLightboxModal');
   const img = document.getElementById('lightboxImg');
@@ -1422,7 +1581,7 @@ function openCalendarFilterModal() {
   const dateInput = document.getElementById('mapCalendarDateInput');
   const todayYMD = getTodayYMDWita();
   if (dateInput) {
-    dateInput.max = todayYMD; // Anti-Masa Depan
+    dateInput.max = todayYMD;
     dateInput.value = calendarFilterDate || todayYMD;
   }
   if (modal) modal.style.display = 'flex';
@@ -1463,7 +1622,6 @@ function resetCalendarToToday() {
   alert("Peta kembali ke tampilan hari ini (Live Real-Time)!");
 }
 
-// Refresh Tampilan Peta Berdasarkan Tanggal Kalender
 function refreshWorkOrderMapDisplay() {
   if (!isWorkOrderModeActive) return;
 
@@ -1572,7 +1730,6 @@ function UtilitiesFormatNowWita() {
   return `${tgl}/${bln}/${thn}, ${jam}:${mnt}:${dtk} WITA`;
 }
 
-// Ekspor Rekap Rentang Tanggal ke PDF
 async function executeExportRekapRange() {
   const startInput = document.getElementById('exportStartDate');
   const endInput = document.getElementById('exportEndDate');
@@ -1653,7 +1810,6 @@ async function executeExportRekapRange() {
   }
 }
 
-// Sinkronisasi WO & Sketsa Draw dari Cloud saat Buka WebGIS
 async function loadCloudWorkOrders() {
   try {
     const res = await fetch(`${WEB_APP_URL}?action=GET_CLOUD_WO`);
@@ -1703,6 +1859,7 @@ function mulaiAnimasiIntroDanLoadData() {
   loadExcelData();
   loadAllVectorLayers();
   loadCloudWorkOrders();
+  initSupabaseRealtime(); // ⚡ AKTIFKAN LISTENER SUPABASE REALTIME
 
   setTimeout(() => {
     if (bar) bar.style.width = '100%';
@@ -1751,7 +1908,6 @@ function toggleBasemapSatelit() {
   }
 }
 
-// OPTIMASI EVENT PETA: DEBOUNCED UPDATE
 let mapUpdateTimer = null;
 map.on('zoomend moveend', () => {
   clearTimeout(mapUpdateTimer);
@@ -1867,7 +2023,6 @@ function getWidthSliceStyle(feature) {
   return { color: "#00e5ff", weight: baseWeight, opacity: 0.85 };
 }
 
-// OPTIMASI RINGAN: VIEWPORT CULLING LABEL STA
 function updateGradeLabelsVisibility() {
   if (currentTab !== 'grade' || map.getZoom() < 16) {
     gradeLabelsLayer.clearLayers();
@@ -1876,7 +2031,6 @@ function updateGradeLabelsVisibility() {
   }
   if (!map.hasLayer(gradeLabelsLayer)) map.addLayer(gradeLabelsLayer);
 
-  // Hanya render label STA yang berada dalam area pandang layar
   const bounds = map.getBounds().pad(0.1);
   gradeLabelsLayer.clearLayers();
   for (let i = 0; i < allStaMarkers.length; i++) {
@@ -2739,7 +2893,10 @@ async function executeExportPDF() {
     }
   }
 }
-// Daftarkan PWA Service Worker
+
+// ==========================================
+// 8. DAFTARKAN PWA SERVICE WORKER
+// ==========================================
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then((reg) => {
