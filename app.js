@@ -21,6 +21,7 @@ let currentUserRole = "viewer";
 // Navigasi & Tab State
 let currentMainTab = 'map'; // 'map' atau 'parameter'
 let currentParam = 'grade'; // 'grade', 'lebar', atau 'crossfall'
+let currentTab = 'grade';
 let isAnnotationActive = false; // Default Anotasi Label: OFF
 
 // State Data Tanggal & Survey
@@ -80,7 +81,7 @@ let watchId = null;
 
 // State Bottom Panel Memory
 let isPanelOpen = false;
-let lastPanelHeight = 220; // Memory ketinggian terakhir panel saat dibuka
+let lastPanelHeight = 220;
 let toastTimeout = null;
 
 // Channel Realtime Supabase
@@ -136,62 +137,64 @@ if (pmtilesLib) {
 }
 
 // ==========================================
-// 1B. SUPABASE REALTIME BROADCAST & PRESENCE ⚡
+// 1B. SUPABASE REALTIME BROADCAST & PRESENCE
 // ==========================================
 function initSupabaseRealtime() {
   if (realtimeChannel) return;
 
-  realtimeChannel = _supabase.channel('overwatch-live-ops', {
-    config: {
-      broadcast: { self: false },
-      presence: { key: currentNRP }
-    }
-  });
-
-  // 1. Broadcast Listener Aktivitas WO
-  realtimeChannel
-    .on('broadcast', { event: 'WO_LIVE_SYNC' }, (eventPayload) => {
-      handleIncomingRealtimeSync(eventPayload.payload);
-    })
-    .on('broadcast', { event: 'DATA_UPDATE_SYNC' }, (eventPayload) => {
-      if (eventPayload.payload && eventPayload.payload.newDate) {
-        updateDataDateUI(eventPayload.payload.newDate, false);
+  try {
+    realtimeChannel = _supabase.channel('overwatch-live-ops', {
+      config: {
+        broadcast: { self: false },
+        presence: { key: currentNRP }
       }
     });
 
-  // 2. Presence Listener (Online Counter)
-  realtimeChannel
-    .on('presence', { event: 'sync' }, () => {
-      const state = realtimeChannel.presenceState();
-      const onlineCount = Object.keys(state).length || 1;
-      const counterElem = document.getElementById('onlineCounterText');
-      if (counterElem) counterElem.innerText = `Online: ${onlineCount}`;
-    })
-    .subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        console.log('⚡ [Realtime] Terhubung ke gelombang Overwatch Live Sync!');
-        await realtimeChannel.track({
-          user: currentNRP,
-          role: currentUserRole,
-          online_at: new Date().toISOString()
-        });
-      }
-    });
+    realtimeChannel
+      .on('broadcast', { event: 'WO_LIVE_SYNC' }, (eventPayload) => {
+        handleIncomingRealtimeSync(eventPayload.payload);
+      })
+      .on('broadcast', { event: 'DATA_UPDATE_SYNC' }, (eventPayload) => {
+        if (eventPayload.payload && eventPayload.payload.newDate) {
+          updateDataDateUI(eventPayload.payload.newDate, false);
+        }
+      })
+      .on('presence', { event: 'sync' }, () => {
+        const state = realtimeChannel.presenceState();
+        const onlineCount = Object.keys(state).length || 1;
+        const counterElem = document.getElementById('onlineCounterText');
+        if (counterElem) counterElem.innerText = `Online: ${onlineCount}`;
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('⚡ [Realtime] Terhubung ke gelombang Overwatch Live Sync!');
+          await realtimeChannel.track({
+            user: currentNRP,
+            role: currentUserRole,
+            online_at: new Date().toISOString()
+          });
+        }
+      });
+  } catch (err) {
+    console.warn("Realtime standby mode:", err.message);
+  }
 }
 
 function broadcastWoSync(actionType, dataPayload, notificationMsg = "") {
   if (!realtimeChannel) return;
-  realtimeChannel.send({
-    type: 'broadcast',
-    event: 'WO_LIVE_SYNC',
-    payload: {
-      action: actionType,
-      data: dataPayload,
-      sender: currentNRP,
-      message: notificationMsg,
-      timestamp: Date.now()
-    }
-  });
+  try {
+    realtimeChannel.send({
+      type: 'broadcast',
+      event: 'WO_LIVE_SYNC',
+      payload: {
+        action: actionType,
+        data: dataPayload,
+        sender: currentNRP,
+        message: notificationMsg,
+        timestamp: Date.now()
+      }
+    });
+  } catch (e) {}
 
   if (notificationMsg) {
     recordNotification(notificationMsg);
@@ -305,7 +308,6 @@ function showToastNotification(text) {
   }, 3500);
 }
 
-// Simpan Catatan ke Drawer Riwayat Notifikasi
 function recordNotification(text) {
   const timeNow = UtilitiesFormatNowWita().split(', ')[1] || '';
   notificationLogs.unshift({ text, time: timeNow });
@@ -411,13 +413,25 @@ function updateLegendUI() {
           <span class="w-5 h-1.5 rounded-sm bg-[#e11d48]"></span>
           <span>Non-Standar (Sempit)</span>
         </div>
+        <div class="flex items-center gap-2">
+          <span class="w-5 h-1.5 rounded-sm bg-[#00f0ff]"></span>
+          <span>STA Terpilih (Highlight)</span>
+        </div>
       `;
     } else {
-      title.innerText = 'LEGENDA: CROSS SECTION';
+      title.innerText = 'LEGENDA: CROSS SECTION 3 TITIK';
       content.innerHTML = `
         <div class="flex items-center gap-2">
-          <span class="w-4 h-4 rounded-full bg-[#ffc000] border border-[#1f4e79]"></span>
-          <span>Crossfall Normal: 2.00% - 4.00%</span>
+          <span class="w-5 h-1.5 rounded-sm bg-[#22c55e]"></span>
+          <span>Compliant (Normal: 2.0% - 4.0%)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-5 h-1.5 rounded-sm bg-[#e11d48]"></span>
+          <span>Non-Compliant (&lt; 2.0% / &gt; 4.0%)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-5 h-1.5 rounded-sm bg-[#00f0ff]"></span>
+          <span>STA Terpilih (Highlight)</span>
         </div>
       `;
     }
@@ -623,11 +637,13 @@ function updateDataDateUI(newDateStr, shouldBroadcast = true) {
   if (label) label.innerText = newDateStr;
 
   if (shouldBroadcast && realtimeChannel) {
-    realtimeChannel.send({
-      type: 'broadcast',
-      event: 'DATA_UPDATE_SYNC',
-      payload: { newDate: newDateStr }
-    });
+    try {
+      realtimeChannel.send({
+        type: 'broadcast',
+        event: 'DATA_UPDATE_SYNC',
+        payload: { newDate: newDateStr }
+      });
+    } catch (e) {}
   }
 }
 
@@ -725,7 +741,6 @@ function selectParameter(paramKey) {
   renderTabContent();
   updateLegendUI();
 
-  // Buka bottom panel otomatis ke memory height jika sedang tertutup
   if (!isPanelOpen) {
     setBottomPanelHeight(lastPanelHeight);
   }
@@ -736,19 +751,19 @@ function renderMapOverviewSummary() {
   const panelTitle = document.getElementById('panel-title');
   if (!panelBody || !panelTitle) return;
 
-  panelTitle.innerHTML = `Peta Operasional Tambang (Live Road Map)`;
+  panelTitle.innerHTML = `Peta Operasional Tambang (Live Centerline Map)`;
   panelBody.innerHTML = `
     <div style="font-size:11px; color:#64748b; margin-bottom:6px;">
-      💡 <i>Menampilkan jalur jalan haulage terintegrasi, kelas tonase hauler, serta jalur khusus non-sarana. Klik pada ruas jalan untuk membuat Work Order.</i>
+      💡 <i>Menampilkan garis as jalan haulage operasional, klasifikasi tonase hauler, serta jalur khusus non-sarana.</i>
     </div>
     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:6px;">
       <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #38bdf8; padding:6px 10px; border-radius:4px;">
         <div style="font-size:10px; color:#64748b;">Kelas Hauler</div>
-        <div style="font-size:12px; font-weight:bold; color:#1e293b;">100 & 200 Ton</div>
+        <div style="font-size:12px; font-weight:bold; color:#1e293b;">100, 150 & 200 Ton</div>
       </div>
       <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #ef4444; padding:6px 10px; border-radius:4px;">
         <div style="font-size:10px; color:#64748b;">Jalur Non-Sarana</div>
-        <div style="font-size:12px; font-weight:bold; color:#ef4444;">Aktif Terpantau</div>
+        <div style="font-size:12px; font-weight:bold; color:#ef4444;">Monitoring Aktif</div>
       </div>
     </div>
   `;
@@ -886,7 +901,6 @@ map.on('mouseup touchend', (e) => {
 
   const touchDuration = Date.now() - lastTouchDownTime;
 
-  // Jika berupa tarikan drag panjang, langsung selesaikan garis
   if (currentDrawPoints.length > 2 && touchDuration > 300) {
     finalizeDrawLine();
   }
@@ -923,9 +937,8 @@ function finalizeDrawLine() {
 }
 
 function renderDrawLineOnMap(lineItem) {
-  // Hubungkan warna sketsa garis dengan status WO terikat
   const linkedWo = Object.values(allWorkOrders).find(wo => wo.linkedLineId === lineItem.id);
-  let strokeColor = '#ff2b54'; // Belum terikat = Merah default
+  let strokeColor = '#ff2b54'; 
   let strokeWeight = 4;
 
   if (linkedWo) {
@@ -935,7 +948,7 @@ function renderDrawLineOnMap(lineItem) {
     } else if (st === 'PROGRESS') {
       strokeColor = '#eab308'; // PROGRESS = Kuning
     } else {
-      strokeColor = '#e11d48'; // OPEN = Merah Solid
+      strokeColor = '#e11d48'; // OPEN = Merah
     }
     strokeWeight = 5;
   }
@@ -2129,7 +2142,7 @@ function UtilitiesFormatNowWita() {
   return `${tgl}/${bln}/${thn}, ${jam}:${mnt}:${dtk} WITA`;
 }
 
-// Helper Konversi URL Google Drive ke Base64 via Backend Google Apps Script (Anti-CORS 100%)
+// Helper Konversi URL Google Drive ke Base64 via Backend Google Apps Script (Anti-CORS)
 async function fetchImageAsBase64(url) {
   if (!url) return null;
   if (url.startsWith('data:image')) return url;
@@ -2253,7 +2266,6 @@ async function executeExportRekapRange() {
                 }
               }
 
-              // Konversi foto via Google Apps Script (Bebas CORS)
               const base64Img = await fetchImageAsBase64(photoUrl);
               if (base64Img) {
                 try {
@@ -2265,7 +2277,6 @@ async function executeExportRekapRange() {
                 }
               }
 
-              // Tambahkan Link Google Drive Asli yang Bisa Diklik Langsung
               doc.setTextColor(2, 132, 199);
               doc.setFontSize(8);
               doc.textWithLink("[Link Drive]", currentX + 6, yPos + thumbHeight + 4, { url: photoUrl });
@@ -2361,7 +2372,6 @@ function mulaiAnimasiIntroDanLoadData() {
         splash.style.display = 'none';
         splash.remove();
         if (map) map.invalidateSize(true);
-        // Default Buka Pertama: Tab MAP
         switchMainTab('map');
       }, 400);
     }
@@ -2470,10 +2480,10 @@ function calculatePolygonAngle(layer) {
   return 0;
 }
 
-// Styling Mode MAP (Klasifikasi Tonase)
+// Styling Mode MAP (Centerline Garis Tunggal As Jalan Berdasarkan Tonase)
 function getRoadMapStyle(feature) {
   const props = feature.properties || {};
-  const payloadStr = (props.Payload || props.Kelas_Jala || "").toString().toLowerCase();
+  const payloadStr = (props.Kelas_Jalan || props["Kelas Jalan"] || props.Payload || "").toString().toLowerCase();
   
   let strokeColor = '#38bdf8'; // Default 100 Ton = Biru Muda
   if (payloadStr.includes('200')) {
@@ -2484,9 +2494,7 @@ function getRoadMapStyle(feature) {
 
   return {
     color: strokeColor,
-    weight: 4.5,
-    fillColor: strokeColor,
-    fillOpacity: 0.65,
+    weight: 5.5,
     opacity: 0.95
   };
 }
@@ -2512,25 +2520,65 @@ function getGradePolygonBlockStyle(feature) {
   return { color: "#000000", weight: 1.2, fillColor: fillColor, fillOpacity: 0.88 };
 }
 
+// Status Warna Crossfall (Hijau = Compliant 2-4%, Merah = Non-Compliant)
+function getCrossfallStatusColor(meterVal, roadVal) {
+  const targetRoad = (roadVal || activeRoad).trim().toLowerCase();
+  const row = monitoringData.find(d => {
+    const r = (d["Nama Jalan"] || "").trim().toLowerCase();
+    const m = parseMeterSTA(d["STA"]);
+    return r === targetRoad && m === meterVal;
+  });
+
+  if (row) {
+    const st = (row["Status Crossfall"] || row["Status_Cro"] || "").toString().toUpperCase();
+    if (st.includes("NON") || st.includes("TIDAK") || st.includes("WARNING") || st.includes("OVER")) {
+      return "#e11d48"; // Non-compliant / Merah
+    }
+    if (st.includes("STANDAR") || st.includes("COMPLIANT") || st.includes("NORMAL")) {
+      return "#22c55e"; // Compliant / Hijau
+    }
+
+    const cfL = Math.abs(parseFloat(row["Crossfall Kiri (%)"]) || 0);
+    const cfR = Math.abs(parseFloat(row["Crossfall Kanan (%)"]) || 0);
+    if ((cfL > 0 && (cfL < 2.0 || cfL > 4.0)) || (cfR > 0 && (cfR < 2.0 || cfR > 4.0))) {
+      return "#e11d48";
+    }
+    return "#22c55e";
+  }
+
+  return "#22c55e";
+}
+
 function getWidthSliceStyle(feature) {
   const props = feature.properties || {};
   const meterVal = parseMeterSTA(props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || 0));
   const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
   const currentZoom = map ? map.getZoom() : 15;
-  let baseWeight = currentZoom >= 18 ? 6 : (currentZoom >= 16 ? 4 : (currentZoom >= 14 ? 2.5 : 1.2));
+  let baseWeight = currentZoom >= 18 ? 6 : (currentZoom >= 16 ? 4.5 : (currentZoom >= 14 ? 3.5 : 2.5));
 
+  // Jika Sedang Diklik / Diseleksi: Highlight Cyan (#00f0ff)
   if (isMeterSelected(meterVal, roadVal)) {
-    return { color: "#00f0ff", weight: baseWeight + 3, opacity: 1 };
+    return { color: "#00f0ff", weight: baseWeight + 3.5, opacity: 1 };
   }
 
-  if (currentTab === 'lebar') {
+  // 1. Mode AUDIT LEBAR JALAN
+  if (currentParam === 'lebar') {
     const lebarAktual = parseFloat(props.Lebar_m !== undefined ? props.Lebar_m : (props.Shape_Leng || 0));
     const lebarStandar = props.Standar_m !== undefined ? parseFloat(props.Standar_m) : getActiveRoadStandardWidth(roadVal);
-    let color = "#22c55e";
-    if (!isNaN(lebarAktual) && lebarAktual > 0 && lebarAktual < lebarStandar) color = "#e11d48";
-    return { color: color, weight: color === "#e11d48" ? baseWeight + 1.5 : baseWeight, opacity: 0.9 };
+    let color = "#22c55e"; // Standar = Hijau
+    if (!isNaN(lebarAktual) && lebarAktual > 0 && lebarAktual < lebarStandar) {
+      color = "#e11d48"; // Sempit / Non-standar = Merah
+    }
+    return { color: color, weight: color === "#e11d48" ? baseWeight + 1.5 : baseWeight, opacity: 0.95 };
   }
-  return { color: "#00e5ff", weight: baseWeight, opacity: 0.85 };
+
+  // 2. Mode CROSSFALL (KEMIRINGAN MELINTANG) - Hijau Standar, Merah Non-Compliant
+  if (currentParam === 'crossfall') {
+    const color = getCrossfallStatusColor(meterVal, roadVal);
+    return { color: color, weight: color === "#e11d48" ? baseWeight + 1.5 : baseWeight, opacity: 0.95 };
+  }
+
+  return { color: "#22c55e", weight: baseWeight, opacity: 0.9 };
 }
 
 // Kontrol Anotasi: Hanya Muncul jika Toggle Anotasi = ON
@@ -2546,14 +2594,12 @@ function updateGradeLabelsVisibility() {
   gradeLabelsLayer.clearLayers();
 
   if (currentMainTab === 'map') {
-    // Mode MAP: Tampilkan Label Nama Jalan
     for (let i = 0; i < allRoadNameMarkers.length; i++) {
       if (bounds.contains(allRoadNameMarkers[i].getLatLng())) {
         gradeLabelsLayer.addLayer(allRoadNameMarkers[i]);
       }
     }
   } else {
-    // Mode Parameter: Tampilkan Label STA Rotasi
     for (let i = 0; i < allStaMarkers.length; i++) {
       if (bounds.contains(allStaMarkers[i].getLatLng())) {
         gradeLabelsLayer.addLayer(allStaMarkers[i]);
@@ -2573,30 +2619,42 @@ function resetSegmentSelection() {
 
 function refreshVisibleLayers() {
   if (currentMainTab === 'map') {
-    // Sembunyikan layer parameter audit
     if (roadGradeLayer && map.hasLayer(roadGradeLayer)) map.removeLayer(roadGradeLayer);
     if (roadWidthLayer && map.hasLayer(roadWidthLayer)) map.removeLayer(roadWidthLayer);
 
-    // Tampilkan layer Road Map Tonase & Non-Sarana
     if (roadMapLayer && !map.hasLayer(roadMapLayer)) roadMapLayer.addTo(map);
     if (roadNonSaranaLayer && !map.hasLayer(roadNonSaranaLayer)) roadNonSaranaLayer.addTo(map);
-    if (roadMapLayer) roadMapLayer.setStyle(getRoadMapStyle);
+    
+    if (roadMapLayer) {
+      roadMapLayer.setStyle(getRoadMapStyle);
+      roadMapLayer.bringToFront();
+    }
+    if (roadNonSaranaLayer) roadNonSaranaLayer.bringToFront();
 
   } else {
-    // Sembunyikan layer MAP
     if (roadMapLayer && map.hasLayer(roadMapLayer)) map.removeLayer(roadMapLayer);
     if (roadNonSaranaLayer && map.hasLayer(roadNonSaranaLayer)) map.removeLayer(roadNonSaranaLayer);
 
     if (currentParam === 'grade') {
       if (roadWidthLayer && map.hasLayer(roadWidthLayer)) map.removeLayer(roadWidthLayer);
       if (roadGradeLayer && !map.hasLayer(roadGradeLayer)) roadGradeLayer.addTo(map);
-      if (roadGradeLayer) roadGradeLayer.setStyle(getGradePolygonBlockStyle);
-    } else {
+      if (roadGradeLayer) {
+        roadGradeLayer.setStyle(getGradePolygonBlockStyle);
+        roadGradeLayer.bringToFront();
+      }
+    } else if (currentParam === 'lebar' || currentParam === 'crossfall') {
       if (roadGradeLayer && map.hasLayer(roadGradeLayer)) map.removeLayer(roadGradeLayer);
       if (roadWidthLayer && !map.hasLayer(roadWidthLayer)) roadWidthLayer.addTo(map);
-      if (roadWidthLayer) roadWidthLayer.setStyle(getWidthSliceStyle);
+      if (roadWidthLayer) {
+        roadWidthLayer.setStyle(getWidthSliceStyle);
+        roadWidthLayer.bringToFront();
+      }
     }
   }
+
+  // Work Order Layer Selalu Paling Depan
+  if (map.hasLayer(workOrderDrawingsLayer)) workOrderDrawingsLayer.bringToFront();
+  if (map.hasLayer(workOrderMarkersLayer)) workOrderMarkersLayer.bringToFront();
 
   updateGradeLabelsVisibility();
 }
@@ -2633,6 +2691,11 @@ function handleFeatureClick(feature) {
       if (currentParam === 'lebar') renderLebarSummary();
       else if (currentParam === 'grade') renderGradeSummary();
     } else if (currentParam === 'crossfall') {
+      // Highlight Cyan pada Slice yang Diklik
+      selectedStartMeter = meterVal;
+      selectedEndMeter = null;
+      refreshVisibleLayers();
+      
       const sta = formatKeSTA(meterVal);
       const staSelect = document.getElementById('select-sta-cs');
       if (staSelect) staSelect.value = sta;
@@ -2652,14 +2715,13 @@ map.on('click', (e) => {
 });
 
 async function loadAllVectorLayers() {
+  // 1. Layer Poligon Grade
   try {
     const resGrade = await fetch('data/Road_Grade_Polygons.geojson');
     if (resGrade.ok) {
       const geojsonGrade = await resGrade.json();
       allStaMarkers = [];
-      allRoadNameMarkers = [];
 
-      // Layer Mode Grade
       roadGradeLayer = L.geoJSON(geojsonGrade, {
         style: getGradePolygonBlockStyle,
         onEachFeature: function(feature, layer) {
@@ -2696,14 +2758,24 @@ async function loadAllVectorLayers() {
           });
         }
       });
+    }
+  } catch (err) {
+    console.warn("Info Layer Grade:", err.message);
+  }
 
-      // Layer Mode MAP (Klasifikasi Tonase Jalan)
-      roadMapLayer = L.geoJSON(geojsonGrade, {
+  // 2. Layer Road_Map.geojson (Garis Tunggal As Jalan Centerline)
+  try {
+    const resMap = await fetch('data/Road_Map.geojson');
+    if (resMap.ok) {
+      const geojsonMap = await resMap.json();
+      allRoadNameMarkers = [];
+
+      roadMapLayer = L.geoJSON(geojsonMap, {
         style: getRoadMapStyle,
         onEachFeature: function(feature, layer) {
           const props = feature.properties || {};
-          const road = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
-          const payload = props.Payload || props.Kelas_Jala || "Hauler Road";
+          const road = props.Nama_Jalan || props["Nama Jalan"] || "Ruas Tambang";
+          const payload = props.Kelas_Jalan || props["Kelas Jalan"] || props.Payload || "Hauler Road";
 
           layer.bindTooltip(`<b>${road}</b><br>Kelas: <b>${payload}</b>`, { sticky: true });
 
@@ -2725,11 +2797,11 @@ async function loadAllVectorLayers() {
         }
       });
     }
-  } catch (err) {
-    console.warn("Info Layer Grade:", err.message);
+  } catch (e) {
+    console.warn("Layer Road_Map.geojson standby menunggu upload data GIS.");
   }
 
-  // Dukungan Layer Jalur Non-Sarana Tambang
+  // 3. Layer Jalur Khusus Non-Sarana Tambang
   try {
     const resNonSarana = await fetch('data/Road_Non_Sarana.geojson');
     if (resNonSarana.ok) {
@@ -2738,7 +2810,7 @@ async function loadAllVectorLayers() {
         style: {
           color: "#ef4444",
           weight: 7.5,
-          opacity: 0.88,
+          opacity: 0.9,
           lineCap: "round"
         },
         onEachFeature: function(feature, layer) {
@@ -2747,9 +2819,10 @@ async function loadAllVectorLayers() {
       });
     }
   } catch (e) {
-    console.warn("Layer Road_Non_Sarana belum tersedia, standby.");
+    console.warn("Layer Road_Non_Sarana.geojson standby.");
   }
 
+  // 4. Layer Slices Lebar & Crossfall (Road_Layers.geojson)
   try {
     const resWidth = await fetch('data/Road_Layers.geojson');
     if (resWidth.ok) {
@@ -3119,7 +3192,6 @@ function drawLongSectionChart(dataSubset) {
             }
           }
         },
-        // Posisi Nilai Grade Tepat di Tengah Garis Bentang (Midpoint antar-STA)
         datalabels: {
           anchor: 'center',
           align: (context) => {
@@ -3352,10 +3424,8 @@ function setBottomPanelHeight(heightPx, animate = true) {
 function handlePanelHeaderClick(e) {
   if (['SELECT', 'OPTION', 'BUTTON'].includes(e.target.tagName)) return;
   if (isPanelOpen) {
-    // Tutup / Auto-Hide ke 38px
     setBottomPanelHeight(38, true);
   } else {
-    // Buka meluncur ke tinggi memory terakhir
     const targetH = Math.min(lastPanelHeight || 220, window.innerHeight * 0.5);
     setBottomPanelHeight(targetH, true);
   }
@@ -3366,7 +3436,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const panelHeader = document.querySelector('.panel-header');
   if (!bottomPanel || !panelHeader) return;
 
-  // Default posisi web buka: Auto-Hide
   setBottomPanelHeight(38, false);
 
   let isDragging = false;
@@ -3389,7 +3458,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let newHeight = startHeight + deltaY;
 
     const minHeight = 38;
-    const maxHeight = window.innerHeight * 0.5; // Kunci Maksimal 50% Layar
+    const maxHeight = window.innerHeight * 0.5;
 
     if (newHeight < minHeight) newHeight = minHeight;
     if (newHeight > maxHeight) newHeight = maxHeight;
