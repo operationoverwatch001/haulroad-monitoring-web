@@ -746,7 +746,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     setSyncStatus('offline');
   }
 
-  initGeotaggingCameraModule(); // Pemasangan modul Kamera Geotagging & Viewfinder
+  initGeotaggingCameraModule();
 
   const savedSession = checkStoredSession();
   if (savedSession) {
@@ -1257,7 +1257,6 @@ function findNearbyDrawLine(latlng, maxPixelDist = 25) {
   return null;
 }
 
-// Interaksi Menggambar Bebas & Click-to-Point dengan Render SVG Instan
 map.on('mousedown touchstart', (e) => {
   if (!isWorkOrderModeActive || activeWoTool !== 'draw') return;
   if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
@@ -1276,7 +1275,6 @@ map.on('mousedown touchstart', (e) => {
     }
   }
 
-  // Filter jitter sentuhan mikro (abaikan sentuhan bertumpuk < 5px)
   if (currentDrawPoints.length > 0) {
     const lastPt = map.latLngToContainerPoint(currentDrawPoints[currentDrawPoints.length - 1]);
     const currPt = map.latLngToContainerPoint(e.latlng);
@@ -4221,19 +4219,12 @@ async function executeExportPDF() {
 }
 
 // ==========================================================
-// 9. MODUL GEOTAGGING KAMERA, EXIF, HUD & RADAR OVERWATCH
+// 9. MODUL GEOTAGGING KAMERA NATIVE, EXIF & TACTICAL RADAR
 // ==========================================================
 let currentCapturedMetadata = null;
 let currentWatermarkedBase64 = null;
 let currentPendingPhotoFile = null;
 let currentRawImageElement = null;
-
-// State Live Video Camera Viewfinder
-let liveCameraStream = null;
-let currentCameraFacingMode = 'environment';
-let liveCameraClockInterval = null;
-let liveGpsWatchId = null;
-let currentLiveGpsPos = null;
 
 function generatePhotoId() {
   const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar" }));
@@ -4316,151 +4307,133 @@ function loadImageAsync(src) {
   });
 }
 
-// CANVAS STAMPING DENGAN RADAR TACTICAL FALLBACK ANTI-HITAM
+// CANVAS WATERMARKING ANTI-KEPOTONG DENGAN RADAR TACTICAL FULL GRAPHIC
 async function renderWatermarkedEvidence(imgElement, meta) {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   
-  const w = imgElement.naturalWidth || imgElement.videoWidth || imgElement.width || 1280;
-  const h = imgElement.naturalHeight || imgElement.videoHeight || imgElement.height || 720;
+  const w = imgElement.naturalWidth || imgElement.width || 1280;
+  const h = imgElement.naturalHeight || imgElement.height || 720;
   canvas.width = w;
   canvas.height = h;
 
   ctx.drawImage(imgElement, 0, 0, w, h);
 
+  const isPortrait = h > w;
+
   // 1. Logo Perusahaan di Pojok Kanan Atas
   try {
     const logoImg = await loadImageAsync('./Logo_Alamtri.png');
-    const logoW = Math.round(w * 0.16);
+    const logoW = Math.round(w * (isPortrait ? 0.20 : 0.15));
     const logoH = Math.round(logoImg.naturalHeight * (logoW / logoImg.naturalWidth));
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.75)';
-    ctx.shadowBlur = 8;
-    ctx.drawImage(logoImg, w - logoW - 20, 20, logoW, logoH);
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = Math.round(w * 0.008);
+    ctx.drawImage(logoImg, w - logoW - Math.round(w * 0.025), Math.round(h * 0.02), logoW, logoH);
     ctx.restore();
   } catch (err) {
     console.warn("File Logo_Alamtri.png standby:", err.message);
   }
 
-  // 2. Pita Watermark Gelap di 22% Area Bawah
-  const ribbonH = Math.max(160, Math.round(h * 0.22));
-  const ribbonY = h - ribbonH;
+  // 2. Perhitungan Proporsional Geometri Ribbon Bawah (Anti-Kepotong)
+  const mapBoxX = Math.round(w * 0.025);
+  const mapBoxSize = Math.max(120, Math.round(w * (isPortrait ? 0.26 : 0.20)));
+  const textX = mapBoxX + mapBoxSize + Math.round(w * 0.025);
+  const availTextWidth = w - textX - Math.round(w * 0.03);
 
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+  // Ukuran font dihitung presisi agar karakter teks waktu & ID pas di lebar layar HP
+  let baseFontSize = Math.floor(availTextWidth / 24);
+  baseFontSize = Math.max(12, Math.min(baseFontSize, Math.round(w * 0.027)));
+  const lineHeight = Math.round(baseFontSize * 1.45);
+
+  // Tinggi pita disesuaikan dengan kebutuhan 5 baris teks + ruang radar
+  const requiredTextHeight = lineHeight * 5 + Math.round(baseFontSize * 1.2);
+  const ribbonH = Math.max(mapBoxSize + 28, requiredTextHeight + 28);
+  const ribbonY = h - ribbonH;
+  const mapBoxY = ribbonY + Math.round((ribbonH - mapBoxSize) / 2);
+
+  // Background Ribbon Gelap Solid
+  ctx.fillStyle = 'rgba(10, 15, 29, 0.92)';
   ctx.fillRect(0, ribbonY, w, ribbonH);
 
   ctx.strokeStyle = '#00f0ff';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = Math.max(2, Math.round(w * 0.0025));
   ctx.beginPath();
   ctx.moveTo(0, ribbonY);
   ctx.lineTo(w, ribbonY);
   ctx.stroke();
 
-  // 3. Mini Map Radar di Pojok Kiri Bawah
-  const mapBoxSize = ribbonH - 24;
-  const mapBoxX = 20;
-  const mapBoxY = ribbonY + 12;
-
-  ctx.fillStyle = '#060a12';
+  // 3. Mini Map Radar di Pojok Kiri Bawah (Tactical Radar Full Graphic)
+  ctx.fillStyle = '#050a14';
   ctx.fillRect(mapBoxX, mapBoxY, mapBoxSize, mapBoxSize);
   ctx.strokeStyle = '#00f0ff';
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = Math.max(1.5, Math.round(mapBoxSize * 0.012));
   ctx.strokeRect(mapBoxX, mapBoxY, mapBoxSize, mapBoxSize);
 
-  let mapRendered = false;
+  // Tactical Radar Grafis (Dijamin Terisi Penuh, Gak Pernah Hitam Kosong)
+  const cx = mapBoxX + mapBoxSize / 2;
+  const cy = mapBoxY + mapBoxSize / 2;
+  const r = mapBoxSize / 2 - Math.max(6, Math.round(mapBoxSize * 0.07));
+  const radarLineW = Math.max(1.5, Math.round(mapBoxSize * 0.012));
 
-  // Coba ambil cuplikan peta Leaflet jika titik GPS berada dalam jangkauan layar
-  try {
-    if (meta.latlng && map && map.getBounds().contains(meta.latlng)) {
-      const leafletCanvas = document.querySelector('#map canvas');
-      if (leafletCanvas) {
-        const pt = map.latLngToContainerPoint(meta.latlng);
-        const halfCrop = 75;
-        ctx.drawImage(
-          leafletCanvas,
-          Math.max(0, pt.x - halfCrop),
-          Math.max(0, pt.y - halfCrop),
-          halfCrop * 2,
-          halfCrop * 2,
-          mapBoxX,
-          mapBoxY,
-          mapBoxSize,
-          mapBoxSize
-        );
-        mapRendered = true;
-      }
-    }
-  } catch (e) {
-    mapRendered = false;
-  }
+  // Lingkaran Konsentris Sonar Radar
+  ctx.strokeStyle = 'rgba(0, 240, 255, 0.65)';
+  ctx.lineWidth = radarLineW;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.arc(cx, cy, r * 0.66, 0, Math.PI * 2);
+  ctx.arc(cx, cy, r * 0.33, 0, Math.PI * 2);
+  ctx.stroke();
 
-  // JIKA DI LUAR PIT / CANVAS KOSONG: Render Tampilan Radar Digital Canggih
-  if (!mapRendered) {
-    const cx = mapBoxX + mapBoxSize / 2;
-    const cy = mapBoxY + mapBoxSize / 2;
-    const r = mapBoxSize / 2 - 8;
+  // Garis Silang Crosshair
+  ctx.beginPath();
+  ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
+  ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
+  ctx.stroke();
 
-    // Lingkaran Radar Grid
-    ctx.strokeStyle = 'rgba(0, 240, 255, 0.25)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.arc(cx, cy, r * 0.65, 0, Math.PI * 2);
-    ctx.arc(cx, cy, r * 0.35, 0, Math.PI * 2);
-    ctx.stroke();
+  // Efek Kerucut Sonar Sweep
+  const sweepGrad = ctx.createRadialGradient(cx, cy, 2, cx, cy, r);
+  sweepGrad.addColorStop(0, 'rgba(0, 240, 255, 0.45)');
+  sweepGrad.addColorStop(1, 'rgba(0, 240, 255, 0.03)');
+  ctx.fillStyle = sweepGrad;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.arc(cx, cy, r, -Math.PI / 4, Math.PI / 4);
+  ctx.closePath();
+  ctx.fill();
 
-    // Garis Silang Crosshair
-    ctx.beginPath();
-    ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
-    ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
-    ctx.stroke();
-
-    // Efek Cone Radar Sweep
-    const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, r);
-    grad.addColorStop(0, 'rgba(0, 240, 255, 0.4)');
-    grad.addColorStop(1, 'rgba(0, 240, 255, 0.02)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, r, -Math.PI / 4, Math.PI / 4);
-    ctx.closePath();
-    ctx.fill();
-
-    // Label Arah Utara (N)
-    ctx.fillStyle = '#eab308';
-    ctx.font = 'bold 9px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('N', cx, cy - r + 8);
-    ctx.textAlign = 'left';
-  }
+  // Arah Mata Angin Utara (N)
+  ctx.fillStyle = '#facc15';
+  ctx.font = `bold ${Math.max(9, Math.round(mapBoxSize * 0.09))}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText('▲ N', cx, cy - r + Math.round(mapBoxSize * 0.11));
+  ctx.textAlign = 'left';
 
   // Pin Titik Pengawas di Tengah Radar
-  const centerMapX = mapBoxX + mapBoxSize / 2;
-  const centerMapY = mapBoxY + mapBoxSize / 2;
+  const centerRadarX = mapBoxX + mapBoxSize / 2;
+  const centerRadarY = mapBoxY + mapBoxSize / 2;
+  const pinRadius = Math.max(4, Math.round(mapBoxSize * 0.035));
+
   ctx.fillStyle = '#ef4444';
   ctx.beginPath();
-  ctx.arc(centerMapX, centerMapY, 4.5, 0, Math.PI * 2);
+  ctx.arc(centerRadarX, centerRadarY, pinRadius, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = Math.max(1.5, Math.round(pinRadius * 0.4));
   ctx.stroke();
 
   // Header Teks Radar
   ctx.fillStyle = '#00f0ff';
-  ctx.font = `bold ${Math.round(ribbonH * 0.075)}px monospace`;
-  ctx.fillText("RADAR OVERWATCH", mapBoxX + 6, mapBoxY + 13);
+  ctx.font = `bold ${Math.max(9, Math.round(mapBoxSize * 0.075))}px monospace`;
+  ctx.fillText("RADAR OVERWATCH", mapBoxX + 6, mapBoxY + Math.round(mapBoxSize * 0.11));
 
-  // 4. Data Teks Telemetri Bersih di Pojok Kanan
-  const textX = mapBoxX + mapBoxSize + 22;
-  const baseFontSize = Math.max(13, Math.round(ribbonH * 0.092));
-  const lineHeight = Math.round(baseFontSize * 1.52);
-
-  let curY = ribbonY + 26;
+  // 4. Data Teks Telemetri di Pojok Kanan
+  let curY = ribbonY + Math.round(baseFontSize * 1.35) + 6;
 
   ctx.fillStyle = '#ffffff';
   ctx.font = `bold ${Math.round(baseFontSize * 1.15)}px sans-serif`;
-  ctx.fillText((meta.notes || "Inspeksi Lapangan").substring(0, 80), textX, curY);
-  curY += lineHeight + 4;
+  ctx.fillText((meta.notes || "Inspeksi Lapangan").substring(0, 75), textX, curY);
+  curY += lineHeight + 3;
 
   ctx.font = `bold ${baseFontSize}px monospace`;
   ctx.fillStyle = '#facc15';
@@ -4479,15 +4452,33 @@ async function renderWatermarkedEvidence(imgElement, meta) {
   ctx.font = `bold ${baseFontSize}px monospace`;
   ctx.fillText(`Photo ID   : ${meta.photoId || generatePhotoId()}`, textX, curY);
 
-  return canvas.toDataURL('image/jpeg', 0.85);
+  return canvas.toDataURL('image/jpeg', 0.88);
 }
 
-// Inisialisasi Modul Kamera Geotagging
+// Inisialisasi Modul Kamera Native
 function initGeotaggingCameraModule() {
-  const uploadInput = document.getElementById('geoInputUploadFile');
-  if (uploadInput) {
-    uploadInput.addEventListener('change', handleGalleryFileChosen);
+  let takeInput = document.getElementById('geoInputTakeFile');
+  if (!takeInput) {
+    takeInput = document.createElement('input');
+    takeInput.type = 'file';
+    takeInput.id = 'geoInputTakeFile';
+    takeInput.accept = 'image/*';
+    takeInput.capture = 'environment';
+    takeInput.style.display = 'none';
+    document.body.appendChild(takeInput);
   }
+  takeInput.addEventListener('change', handleCameraNativeFileChosen);
+
+  let uploadInput = document.getElementById('geoInputUploadFile');
+  if (!uploadInput) {
+    uploadInput = document.createElement('input');
+    uploadInput.type = 'file';
+    uploadInput.id = 'geoInputUploadFile';
+    uploadInput.accept = 'image/*';
+    uploadInput.style.display = 'none';
+    document.body.appendChild(uploadInput);
+  }
+  uploadInput.addEventListener('change', handleGalleryFileChosen);
 }
 
 function openCameraActionChooser() {
@@ -4500,205 +4491,74 @@ function closeCameraActionChooser() {
   if (modal) modal.style.display = 'none';
 }
 
+function triggerDirectCameraCapture() {
+  closeCameraActionChooser();
+  const input = document.getElementById('geoInputTakeFile');
+  if (input) input.click();
+}
+
 function triggerGalleryUploadCapture() {
   closeCameraActionChooser();
   const input = document.getElementById('geoInputUploadFile');
   if (input) input.click();
 }
 
-// ==========================================================
-// 9B. ENGINE LIVE CAMERA VIEWFINDER (ALA FOTO 5 - WEBRTC)
-// ==========================================================
-async function openLiveCameraViewfinder() {
-  closeCameraActionChooser();
-  const overlay = document.getElementById('geoLiveCameraOverlay');
-  const video = document.getElementById('geoLiveVideoFeed');
-  if (!overlay || !video) return;
+// PEMOTRETAN LANGSUNG (KAMERA BAWAAN HP) DENGAN SEAMLESS GPS TANPA MODAL
+async function handleCameraNativeFileChosen(e) {
+  const file = e.target.files ? e.target.files[0] : null;
+  if (!file) return;
+  currentPendingPhotoFile = file;
+  currentRawImageElement = await fileToImageElement(file);
 
-  overlay.style.display = 'flex';
+  let lat = null;
+  let lng = null;
+  let takenTime = UtilitiesFormatNowWita();
 
-  // Mulai Live Clock WITA
-  updateLiveCameraClockDisplay();
-  clearInterval(liveCameraClockInterval);
-  liveCameraClockInterval = setInterval(updateLiveCameraClockDisplay, 1000);
-
-  // Ambil Live GPS di Latar Belakang (Seamless)
-  startLiveGpsWatcherForCamera();
-
-  // Buka Lensa Kamera Belakang HP
-  try {
-    if (liveCameraStream) {
-      liveCameraStream.getTracks().forEach(t => t.stop());
+  if (window.exifr) {
+    try {
+      const exif = await exifr.parse(file, { gps: true, tiff: true });
+      if (exif && exif.latitude && exif.longitude) {
+        lat = exif.latitude;
+        lng = exif.longitude;
+      }
+      if (exif && exif.DateTimeOriginal) {
+        const dt = new Date(exif.DateTimeOriginal);
+        const tgl = String(dt.getDate()).padStart(2, '0');
+        const bln = String(dt.getMonth() + 1).padStart(2, '0');
+        const thn = dt.getFullYear();
+        const jam = String(dt.getHours()).padStart(2, '0');
+        const mnt = String(dt.getMinutes()).padStart(2, '0');
+        takenTime = `${tgl}/${bln}/${thn}, ${jam}:${mnt}:00 WITA`;
+      }
+    } catch (err) {
+      console.warn("EXIF read warn:", err);
     }
-
-    const constraints = {
-      video: {
-        facingMode: { ideal: currentCameraFacingMode },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      },
-      audio: false
-    };
-
-    liveCameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-    video.srcObject = liveCameraStream;
-    await video.play();
-  } catch (err) {
-    console.warn("Gagal membuka kamera WebRTC, mengalihkan ke mode capture:", err);
-    closeLiveCameraViewfinder();
-    triggerDirectFallbackCapture();
   }
-}
 
-function updateLiveCameraClockDisplay() {
-  const clockElem = document.getElementById('liveCameraClock');
-  if (!clockElem) return;
-  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar" }));
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
-  const ss = String(now.getSeconds()).padStart(2, '0');
-  clockElem.innerText = `${hh}:${mm}:${ss} WITA`;
-}
-
-function startLiveGpsWatcherForCamera() {
-  const gpsInfo = document.getElementById('liveCameraGpsInfo');
-  const roadInfo = document.getElementById('liveCameraRoadTarget');
-
-  if (!navigator.geolocation) {
-    if (gpsInfo) gpsInfo.innerText = "GPS HP Tidak Didukung";
+  // JIKA GPS FOTO KOSONG: AMBIL LOKASI HP SEAMLESS (TANPA MODAL PERINGATAN)
+  if (!lat || !lng) {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          proceedWithPhotoLocation(pos.coords.latitude, pos.coords.longitude, takenTime, currentRawImageElement);
+        },
+        () => {
+          const c = map.getCenter();
+          proceedWithPhotoLocation(c.lat, c.lng, takenTime, currentRawImageElement);
+        },
+        { enableHighAccuracy: true, timeout: 6000 }
+      );
+    } else {
+      const c = map.getCenter();
+      proceedWithPhotoLocation(c.lat, c.lng, takenTime, currentRawImageElement);
+    }
     return;
   }
 
-  if (liveGpsWatchId !== null) navigator.geolocation.clearWatch(liveGpsWatchId);
-
-  liveGpsWatchId = navigator.geolocation.watchPosition(
-    (pos) => {
-      currentLiveGpsPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      if (gpsInfo) {
-        gpsInfo.innerText = `GPS: ${currentLiveGpsPos.lat.toFixed(6)}, ${currentLiveGpsPos.lng.toFixed(6)} (±${Math.round(pos.coords.accuracy)}m)`;
-      }
-      
-      const matched = findNearestActiveWo(currentLiveGpsPos, 60);
-      if (roadInfo) {
-        if (matched) {
-          roadInfo.innerText = `Area: ${matched.road} [WO AKTIF]`;
-          roadInfo.style.color = "#22c55e";
-        } else {
-          roadInfo.innerText = `Area: Laporan Temuan Lapangan (Ad-Hoc)`;
-          roadInfo.style.color = "#facc15";
-        }
-      }
-    },
-    (err) => {
-      console.warn("Live GPS camera warn:", err.message);
-      if (gpsInfo) gpsInfo.innerText = "Mencari sinyal GPS tambang...";
-    },
-    { enableHighAccuracy: true, maximumAge: 1000, timeout: 7000 }
-  );
+  proceedWithPhotoLocation(lat, lng, takenTime, currentRawImageElement);
 }
 
-async function switchCameraLens() {
-  currentCameraFacingMode = currentCameraFacingMode === 'environment' ? 'user' : 'environment';
-  await openLiveCameraViewfinder();
-}
-
-function closeLiveCameraViewfinder() {
-  const overlay = document.getElementById('geoLiveCameraOverlay');
-  const video = document.getElementById('geoLiveVideoFeed');
-  if (overlay) overlay.style.display = 'none';
-
-  if (liveCameraStream) {
-    liveCameraStream.getTracks().forEach(t => t.stop());
-    liveCameraStream = null;
-  }
-  if (video) video.srcObject = null;
-
-  clearInterval(liveCameraClockInterval);
-  if (liveGpsWatchId !== null) {
-    navigator.geolocation.clearWatch(liveGpsWatchId);
-    liveGpsWatchId = null;
-  }
-}
-
-// SNAPSHOT DARI LIVE VIEWFINDER
-async function capturePhotoFromLiveViewfinder() {
-  const video = document.getElementById('geoLiveVideoFeed');
-  const canvas = document.getElementById('geoCaptureCanvas');
-  const overlay = document.getElementById('geoLiveCameraOverlay');
-  if (!video || !canvas) return;
-
-  // Efek Flash Shutter Putih
-  const flash = document.createElement('div');
-  flash.className = 'camera-flash-active';
-  overlay.appendChild(flash);
-  setTimeout(() => flash.remove(), 220);
-
-  const vw = video.videoWidth || 1280;
-  const vh = video.videoHeight || 720;
-  canvas.width = vw;
-  canvas.height = vh;
-
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, vw, vh);
-
-  const img = new Image();
-  img.src = canvas.toDataURL('image/jpeg', 0.92);
-  await new Promise(r => { img.onload = r; });
-  currentRawImageElement = img;
-
-  closeLiveCameraViewfinder();
-
-  // Logika Seamless: Pastikan GPS langsung dapat tanpa modal
-  let lat = currentLiveGpsPos ? currentLiveGpsPos.lat : null;
-  let lng = currentLiveGpsPos ? currentLiveGpsPos.lng : null;
-
-  if (!lat || !lng) {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        proceedWithPhotoLocation(pos.coords.latitude, pos.coords.longitude, UtilitiesFormatNowWita(), currentRawImageElement);
-      },
-      () => {
-        // Fallback titik tengah Leaflet jika GPS hardware tertutup tebing pit
-        const c = map.getCenter();
-        proceedWithPhotoLocation(c.lat, c.lng, UtilitiesFormatNowWita(), currentRawImageElement);
-      },
-      { enableHighAccuracy: true, timeout: 4000 }
-    );
-  } else {
-    proceedWithPhotoLocation(lat, lng, UtilitiesFormatNowWita(), currentRawImageElement);
-  }
-}
-
-// Fallback Kamera Native jika browser memblokir WebRTC
-function triggerDirectFallbackCapture() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.capture = 'environment';
-  input.onchange = async (e) => {
-    const file = e.target.files ? e.target.files[0] : null;
-    if (!file) return;
-    currentPendingPhotoFile = file;
-    currentRawImageElement = await fileToImageElement(file);
-
-    // Ambil GPS HP langsung di latar belakang secara seamless
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        proceedWithPhotoLocation(pos.coords.latitude, pos.coords.longitude, UtilitiesFormatNowWita(), currentRawImageElement);
-      },
-      () => {
-        const c = map.getCenter();
-        proceedWithPhotoLocation(c.lat, c.lng, UtilitiesFormatNowWita(), currentRawImageElement);
-      },
-      { enableHighAccuracy: true, timeout: 5000 }
-    );
-  };
-  input.click();
-}
-
-// ==========================================================
-// 9C. EKSTRAKSI EXIF FOTO DARI GALERI HP
-// ==========================================================
+// UPLOAD DARI GALERI HP
 async function handleGalleryFileChosen(e) {
   const file = e.target.files ? e.target.files[0] : null;
   if (!file) return;
@@ -4730,7 +4590,7 @@ async function handleGalleryFileChosen(e) {
     }
   }
 
-  // Khusus upload foto dari galeri: Jika EXIF kosong baru munculkan modal pilihan darurat
+  // Khusus upload foto galeri: Jika EXIF kosong, baru munculkan modal pilihan darurat
   if (!lat || !lng) {
     const warn = document.getElementById('geoExifWarningModal');
     if (warn) warn.style.display = 'flex';
@@ -4777,15 +4637,12 @@ function closeGeoExifWarningModal() {
   if (modal) modal.style.display = 'none';
 }
 
-// ==========================================================
-// 9D. PEMROSESAN LOKASI & FORM DINAMIS RUAS JALAN AD-HOC
-// ==========================================================
+// PEMROSESAN LOKASI & FORM DINAMIS (RUAS JALAN TIDAK DI-FREEZE - FOTO 1)
 async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   const latlng = { lat: lat, lng: lng };
   const matchedWo = findNearestActiveWo(latlng, 60);
   const photoId = generatePhotoId();
   
-  // Jika Ad-Hoc: Biarkan nama jalan kosong agar diisi manual oleh pengawas di form
   const initialRoad = matchedWo ? matchedWo.road : "";
 
   currentCapturedMetadata = {
@@ -4812,16 +4669,25 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   if (repInput) repInput.value = currentNRP;
   if (notesInput) notesInput.value = "";
 
-  if (matchedWo) {
-    // 1. Kondisi di Dalam Kotakan WO
-    if (roadInput) {
-      roadInput.value = matchedWo.road;
-      roadInput.readOnly = true;
-      roadInput.style.background = "#1e293b";
-      roadInput.style.borderColor = "#334155";
-      roadInput.style.color = "#94a3b8";
-    }
+  // FORM RUAS JALAN TETAP BISA DIEDIT (TIDAK DI-FREEZE - FOTO 1)
+  if (roadInput) {
+    roadInput.readOnly = false; // Selalu dapat diubah oleh pengawas
+    roadInput.style.background = "#090d16";
 
+    if (matchedWo) {
+      roadInput.value = matchedWo.road;
+      roadInput.style.borderColor = "#22c55e";
+      roadInput.style.color = "#22c55e";
+    } else {
+      roadInput.value = "";
+      roadInput.placeholder = "Ketik Nama Ruas Jalan (Wajib diisi)...";
+      roadInput.style.borderColor = "#facc15";
+      roadInput.style.color = "#facc15";
+      setTimeout(() => roadInput.focus(), 250);
+    }
+  }
+
+  if (matchedWo) {
     if (woBox) {
       woBox.innerHTML = `
         <div style="color:#22c55e; font-weight:bold; margin-bottom:2px;">📍 Terdeteksi di Area WO: ${matchedWo.road}</div>
@@ -4839,21 +4705,10 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
       `;
     }
   } else {
-    // 2. Kondisi Ad-Hoc / Temuan Bebas
-    if (roadInput) {
-      roadInput.value = "";
-      roadInput.readOnly = false;
-      roadInput.placeholder = "Ketik Nama Ruas Jalan (Wajib diisi)...";
-      roadInput.style.background = "#090d16";
-      roadInput.style.borderColor = "#facc15";
-      roadInput.style.color = "#facc15";
-      setTimeout(() => roadInput.focus(), 300);
-    }
-
     if (woBox) {
       woBox.innerHTML = `
         <div style="color:#f59e0b; font-weight:bold; margin-bottom:2px;">⚠️ Laporan Temuan Lapangan (Ad-Hoc)</div>
-        <div style="color:#94a3b8; font-size:10px;">Lokasi berada di luar sketsa WO aktif. Silakan ketik nama ruas jalan di bawah. Pin temuan baru akan dibuat otomatis.</div>
+        <div style="color:#94a3b8; font-size:10px;">Lokasi berada di luar sketsa WO aktif. Masukkan nama ruas jalan di bawah. Pin temuan baru akan dibuat otomatis.</div>
       `;
     }
     if (jobWrap) jobWrap.innerHTML = '';
@@ -4885,7 +4740,8 @@ function closeGeoPreviewModal() {
   currentRawImageElement = null;
 }
 
-function executeSaveGeoToGalleryOnly() {
+// SIMPAN SAJA KE GALERI HP
+async function executeSaveGeoToGalleryOnly() {
   if (!currentWatermarkedBase64 || !currentCapturedMetadata) return;
   const roadInput = document.getElementById('geoReportRoadName');
   const cleanRoad = roadInput && roadInput.value.trim() ? roadInput.value.trim() : "Area_Tambang";
@@ -4896,7 +4752,7 @@ function executeSaveGeoToGalleryOnly() {
   closeGeoPreviewModal();
 }
 
-// SUBMIT EVIDENCE / AD-HOC HAZARD KE SPREADSHEET & PETA
+// SUBMIT EVIDENCE / AD-HOC HAZARD KE SPREADSHEET & WEBGIS
 async function executeSubmitGeoEvidence() {
   if (!currentCapturedMetadata || !currentRawImageElement) return;
 
@@ -4912,7 +4768,6 @@ async function executeSubmitGeoEvidence() {
   const status = statusSelect ? statusSelect.value : "PROGRESS";
   const matchedWo = currentCapturedMetadata.matchedWo;
 
-  // Validasi Input Form
   if (!finalRoadName) {
     alert("Nama Ruas Jalan wajib diisi, bre!");
     if (roadInput) roadInput.focus();
@@ -4929,7 +4784,7 @@ async function executeSubmitGeoEvidence() {
     return;
   }
 
-  // Stempel Ulang Kanvas agar Nama Jalan & Keterangan yang Diketik Pengawas Masuk ke Watermark
+  // Stempel Ulang Kanvas agar Nama Ruas Jalan & Catatan Tercetak Sempurna di Foto
   currentCapturedMetadata.road = finalRoadName;
   currentCapturedMetadata.notes = notes;
   currentCapturedMetadata.reporter = reporter;
@@ -5079,13 +4934,10 @@ window.handlePanelHeaderClick = handlePanelHeaderClick;
 window.removeMainQueueFile = removeMainQueueFile;
 window.removeJobQueueFile = removeJobQueueFile;
 
-// Expose Geotagging & Live Camera Functions
+// Expose Geotagging Functions
 window.openCameraActionChooser = openCameraActionChooser;
 window.closeCameraActionChooser = closeCameraActionChooser;
-window.openLiveCameraViewfinder = openLiveCameraViewfinder;
-window.closeLiveCameraViewfinder = closeLiveCameraViewfinder;
-window.switchCameraLens = switchCameraLens;
-window.capturePhotoFromLiveViewfinder = capturePhotoFromLiveViewfinder;
+window.triggerDirectCameraCapture = triggerDirectCameraCapture;
 window.triggerGalleryUploadCapture = triggerGalleryUploadCapture;
 window.closeGeoPreviewModal = closeGeoPreviewModal;
 window.executeSaveGeoToGalleryOnly = executeSaveGeoToGalleryOnly;
