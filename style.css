@@ -530,7 +530,7 @@ body, html {
 
 /* ========================================================== */
 /* ANOTASI TEKS & LABEL BADGE LEAFLET                         */
-/* ========================================== */
+/* ========================================================== */
 .leaflet-tooltip.sta-rotated-label,
 .leaflet-tooltip.grade-badge-label {
   background: transparent !important;
@@ -599,7 +599,7 @@ body, html {
 }
 
 /* ========================================================== */
-/* MODAL GEOTAGGING RESPONSIVE STYLING                        */
+/* MODAL GEOTAGGING RESPONSIVE & FORM AD-HOC ROAD INPUT       */
 /* ========================================================== */
 #geoPreviewReportModal,
 #geoCameraChooserModal,
@@ -614,6 +614,60 @@ body, html {
   outline: none;
   border-color: #00f0ff !important;
   box-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+}
+
+/* Sorot Ruas Jalan Ad-Hoc saat wajib diisi */
+#geoReportRoadName:focus {
+  border-color: #facc15 !important;
+  box-shadow: 0 0 10px rgba(250, 204, 21, 0.5) !important;
+}
+
+/* ========================================================== */
+/* LIVE VIEWFINDER KAMERA & SHUTTER BUTTON (ALA FOTO 5)       */
+/* ========================================================== */
+#geoLiveCameraOverlay {
+  animation: fadeInViewfinder 0.25s ease forwards;
+}
+
+@keyframes fadeInViewfinder {
+  from { opacity: 0; transform: scale(1.02); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Tombol Shutter Kamera Tactile */
+.camera-shutter-ring {
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.35);
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.camera-shutter-ring:hover {
+  transform: scale(1.06);
+  box-shadow: 0 0 22px rgba(255, 255, 255, 0.6);
+}
+
+.camera-shutter-ring:active {
+  transform: scale(0.92);
+}
+
+.camera-shutter-ring:active div {
+  transform: scale(0.85);
+  background: #e2e8f0;
+}
+
+/* Efek Kilat / Flash Kamera saat memotret */
+.camera-flash-active {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+  z-index: 99;
+  opacity: 0.85;
+  animation: flashFade 0.22s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes flashFade {
+  0% { opacity: 0.85; }
+  100% { opacity: 0; }
 }
 
 /* ========================================================== */
