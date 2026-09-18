@@ -74,6 +74,7 @@ let tempDrawPolyline = null;
 let selectedLineForWo = null; 
 let lastTouchDownTime = 0;
 let finishDrawBtn = null;
+const drawSvgRenderer = L.svg(); // Renderer SVG instan anti-lag kanvas
 
 // State Antrean Akumulasi Multi-Foto & Update Per-Job
 let mainUploadFilesQueue = [];
@@ -150,7 +151,7 @@ if (pmtilesLib) {
 }
 
 // ==========================================
-// 1B. BADGE NOTIFIKASI SINKRONISASI (FOTO 6)
+// 1B. BADGE NOTIFIKASI SINKRONISASI
 // ==========================================
 function setSyncStatus(status) {
   const badge = document.getElementById('syncStatusBadge');
@@ -502,7 +503,7 @@ function toggleNotificationDrawer() {
 }
 
 // ==========================================
-// 1E. OUTSTANDING WO (MURNI NAMA JALAN - FOTO 5)
+// 1E. OUTSTANDING WO
 // ==========================================
 function toggleOutstandingDrawer() {
   const drawer = document.getElementById('outstandingDrawer');
@@ -541,7 +542,6 @@ function renderOutstandingList() {
     const st = (wo.status || 'OPEN').toUpperCase();
     const stColor = st === 'PROGRESS' ? '#eab308' : '#e11d48';
     
-    // Hilangkan teks dalam tanda kurung (Foto 5)
     let cleanRoad = (wo.road || 'Ruas Tambang').replace(/\s*\(.*?\)/g, '').trim();
     if (!cleanRoad) cleanRoad = 'Ruas Tambang';
 
@@ -745,6 +745,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (!navigator.onLine) {
     setSyncStatus('offline');
   }
+
+  initGeotaggingCameraModule(); // Pemasangan modul Kamera Geotagging
 
   const savedSession = checkStoredSession();
   if (savedSession) {
@@ -986,7 +988,7 @@ function saveAdminDataUpdateDate() {
 }
 
 // ==========================================
-// 2C. RESTRUKTURISASI TAB MENU: MAP & PARAMETER (FOTO 4)
+// 2C. RESTRUKTURISASI TAB MENU: MAP & PARAMETER
 // ==========================================
 function switchMainTab(tabKey) {
   currentMainTab = tabKey;
@@ -1036,7 +1038,6 @@ function selectParameter(paramKey) {
     paramBtn.className = "font-bold text-xs px-3 py-1 rounded-md transition duration-150 bg-amber-400 text-slate-950 shadow flex items-center gap-1 flex-shrink-0";
   }
 
-  // Penulisan Parameter Ringkas (Foto 4)
   const nameMap = {
     'grade': 'GRADE',
     'lebar': 'LEBAR JALAN',
@@ -1224,7 +1225,7 @@ function hideFinishDrawBtn() {
 function cancelOrFinishDrawing() {
   hideFinishDrawBtn();
   if (tempDrawPolyline) {
-    workOrderDrawingsLayer.removeLayer(tempDrawPolyline);
+    map.removeLayer(tempDrawPolyline);
     tempDrawPolyline = null;
   }
   currentDrawPoints = [];
@@ -1256,6 +1257,7 @@ function findNearbyDrawLine(latlng, maxPixelDist = 25) {
   return null;
 }
 
+// Interaksi Menggambar Bebas & Click-to-Point dengan Render SVG Instan
 map.on('mousedown touchstart', (e) => {
   if (!isWorkOrderModeActive || activeWoTool !== 'draw') return;
   if (currentUserRole !== 'admin' && currentUserRole !== 'inspector') return;
@@ -1267,19 +1269,33 @@ map.on('mousedown touchstart', (e) => {
     const firstPt = map.latLngToContainerPoint(currentDrawPoints[0]);
     const currPt = map.latLngToContainerPoint(e.latlng);
     const distFromStart = Math.sqrt(Math.pow(firstPt.x - currPt.x, 2) + Math.pow(firstPt.y - currPt.y, 2));
-    if (distFromStart <= 20) {
+    if (distFromStart <= 25) {
       currentDrawPoints.push(currentDrawPoints[0]);
       finalizeDrawLine();
       return;
     }
   }
 
+  // Filter jitter sentuhan mikro (abaikan sentuhan bertumpuk < 5px)
+  if (currentDrawPoints.length > 0) {
+    const lastPt = map.latLngToContainerPoint(currentDrawPoints[currentDrawPoints.length - 1]);
+    const currPt = map.latLngToContainerPoint(e.latlng);
+    if (Math.sqrt(Math.pow(lastPt.x - currPt.x, 2) + Math.pow(lastPt.y - currPt.y, 2)) < 5) return;
+  }
+
   currentDrawPoints.push(e.latlng);
 
   if (!tempDrawPolyline) {
-    tempDrawPolyline = L.polyline(currentDrawPoints, { color: '#ff2b54', weight: 4 }).addTo(workOrderDrawingsLayer);
+    tempDrawPolyline = L.polyline(currentDrawPoints, { 
+      color: '#ff2b54', 
+      weight: 4, 
+      renderer: drawSvgRenderer 
+    }).addTo(map);
+    tempDrawPolyline.bringToFront();
   } else {
     tempDrawPolyline.setLatLngs(currentDrawPoints);
+    tempDrawPolyline.redraw();
+    tempDrawPolyline.bringToFront();
   }
 
   if (currentDrawPoints.length > 1) {
@@ -1293,6 +1309,7 @@ map.on('mousemove touchmove', (e) => {
     currentDrawPoints.push(e.latlng);
     if (tempDrawPolyline) {
       tempDrawPolyline.setLatLngs(currentDrawPoints);
+      tempDrawPolyline.redraw();
     }
   }
 });
@@ -1370,8 +1387,8 @@ function renderDrawLineOnMap(lineItem) {
 
   const visiblePoly = L.polyline(lineItem.points, { 
     color: strokeColor, 
-    weight: strokeWeight,
-    interactive: false
+    weight: strokeWeight, 
+    interactive: false 
   });
 
   hitZone.on('click', function(e) {
@@ -1684,7 +1701,6 @@ function closeWoModal() {
   mainUploadFilesQueue = [];
 }
 
-// Render Jobs UI: Tombol UPDATE hanya muncul bila Multi-Job (Foto 1 Revisi)
 function renderJobsUI(jobsList, isEditable, isViewMode = false) {
   const container = document.getElementById('woJobsContainer');
   const addBtn = document.getElementById('btnAddJobBtn');
@@ -1723,7 +1739,6 @@ function renderJobsUI(jobsList, isEditable, isViewMode = false) {
       `;
     } else {
       let updateBtnHtml = '';
-      // HANYA MUNCUL JIKA LEBIH DARI 1 JOB
       if (isViewMode && jobs.length > 1) {
         updateBtnHtml = `
           <button type="button" onclick="openJobUpdateModal(${idx})" style="background:#ec4899; color:#fff; border:none; padding:4px 10px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer; box-shadow:0 2px 6px rgba(236,72,153,0.4);">UPDATE</button>
@@ -1904,6 +1919,7 @@ function compressImage(file, maxDimension = 1280, quality = 0.75) {
   });
 }
 
+// PERBAIKAN: SUBMIT WORK ORDER (FIX STATUS WO 1 JOB REVERT KE OPEN)
 async function submitWorkOrder() {
   const roadInput = document.getElementById('woRoadName');
   const repInput = document.getElementById('woReporterName');
@@ -2041,9 +2057,16 @@ async function submitWorkOrder() {
     alert("Perubahan Work Order berhasil disimpan!");
 
   } else if (currentWoMode === 'view') {
+    const targetWo = allWorkOrders[currentActiveWoId];
+    const firstJobCat = (targetWo && targetWo.jobs && targetWo.jobs[0]) ? targetWo.jobs[0].category : "Pekerjaan Lapangan";
+    const jobTargetText = `Job 1: ${firstJobCat}`;
+
+    // Suntikkan parameter jobIndex & jobTarget agar GAS update baris spreadsheet
     syncWorkOrderToCloud({
       action: "SUBMIT_EVIDENCE",
       woId: currentActiveWoId,
+      jobIndex: 0,
+      jobTarget: jobTargetText,
       road: roadName,
       status: statusBaru,
       notes: notes,
@@ -2064,12 +2087,14 @@ async function submitWorkOrder() {
 
     const hasPhoto = imagesPayload.length > 0;
     const notifMsg = hasPhoto
-      ? `${reporter} mengirim evidence ${roadName}. Status : ${statusBaru}`
-      : `${reporter} update ${roadName}. Status : ${statusBaru}`;
+      ? `${reporter} mengirim evidence ${jobTargetText} ${roadName}. Status : ${statusBaru}`
+      : `${reporter} update ${jobTargetText} ${roadName}. Status : ${statusBaru}`;
 
-    broadcastWoSync('UPDATE_WO_STATUS', {
+    broadcastWoSync('UPDATE_JOB_STATUS', {
       woId: currentActiveWoId,
+      jobIndex: 0,
       status: statusBaru,
+      parentStatus: statusBaru,
       notes: notes,
       reporter: reporter
     }, notifMsg);
@@ -2874,7 +2899,6 @@ function toggleBasemapSatelit() {
   }
 }
 
-// Optimasi Panning & Zooming Leaflet (Bebas Lag & CPU Friendly - Foto 3)
 let lastZoomLevel = map.getZoom();
 let mapUpdateTimer = null;
 
@@ -3023,7 +3047,7 @@ function getWidthSliceStyle(feature) {
 }
 
 // ==========================================
-// 7C. CROSSFALL SPLIT LAYER (CANVAS & VIEW ALL)
+// 7C. CROSSFALL SPLIT LAYER
 // ==========================================
 function renderCrossfallSplitLayer() {
   crossfallVisualLayer.clearLayers();
@@ -3455,7 +3479,6 @@ function getFilteredRoadData() {
   return roadData;
 }
 
-// Render Summary dengan Dropdown Rata Kiri Paten (Foto 2)
 function renderGradeSummary() {
   const panelBody = document.getElementById('panel-body');
   const panelTitle = document.getElementById('panel-title');
@@ -3919,8 +3942,10 @@ function locateUser() {
     userMarker = null;
     userAccuracyCircle = null;
     isTracking = false;
-    gpsBtn.style.background = '#0f172a';
-    gpsBtn.style.color = '#38bdf8';
+    if (gpsBtn) {
+      gpsBtn.style.background = '#0f172a';
+      gpsBtn.style.color = '#38bdf8';
+    }
     return;
   }
   if (!navigator.geolocation) {
@@ -3929,8 +3954,10 @@ function locateUser() {
   }
 
   isTracking = true;
-  gpsBtn.style.background = '#00f0ff';
-  gpsBtn.style.color = '#000000';
+  if (gpsBtn) {
+    gpsBtn.style.background = '#00f0ff';
+    gpsBtn.style.color = '#000000';
+  }
   catatLogKeServer("GPS LIVE", "Menyalakan live tracking GPS di lapangan.");
 
   watchId = navigator.geolocation.watchPosition(
@@ -3957,7 +3984,7 @@ function locateUser() {
 }
 
 // ==========================================================
-// 7B. BOTTOM PANEL: AUTO-HIDE, TAP & TOUCH DRAG DENGAN PANAH
+// 7B. BOTTOM PANEL: AUTO-HIDE, TAP & TOUCH DRAG
 // ==========================================================
 function setBottomPanelHeight(heightPx, animate = true) {
   const bottomPanel = document.getElementById('bottom-panel');
@@ -4194,7 +4221,591 @@ async function executeExportPDF() {
   }
 }
 
-// Expose fungsi ke window
+// ==========================================================
+// 9. MODUL GEOTAGGING KAMERA, EXIF & WATERMARKING OVERWATCH
+// ==========================================================
+let currentCapturedMetadata = null;
+let currentWatermarkedBase64 = null;
+let currentPendingPhotoFile = null;
+
+function generatePhotoId() {
+  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Makassar" }));
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `OW-${yy}${mm}${dd}-${rand}`;
+}
+
+function isPointInPolygon(point, vs) {
+  const x = point.lng, y = point.lat;
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const xi = vs[i].lng, yi = vs[i].lat;
+    const xj = vs[j].lng, yj = vs[j].lat;
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function findNearestActiveWo(latlng, maxMeterDist = 50) {
+  let matchedWo = null;
+  let minDist = Infinity;
+  const targetLatLng = L.latLng(latlng.lat, latlng.lng);
+
+  Object.values(allWorkOrders).forEach(wo => {
+    const st = (wo.status || 'OPEN').toUpperCase();
+    if (st === 'CLOSED') return;
+
+    if (wo.linkedLineId && allDrawLines[wo.linkedLineId]) {
+      const line = allDrawLines[wo.linkedLineId];
+      if (line.points && line.points.length >= 3) {
+        if (isPointInPolygon(latlng, line.points)) {
+          matchedWo = wo;
+          minDist = 0;
+          return;
+        }
+      }
+      if (line.points) {
+        for (let i = 0; i < line.points.length; i++) {
+          const d = targetLatLng.distanceTo(line.points[i]);
+          if (d < minDist) {
+            minDist = d;
+            if (d <= maxMeterDist) matchedWo = wo;
+          }
+        }
+      }
+    }
+
+    if (wo.latlng) {
+      const d = targetLatLng.distanceTo(wo.latlng);
+      if (d < minDist) {
+        minDist = d;
+        if (d <= maxMeterDist) matchedWo = wo;
+      }
+    }
+  });
+
+  return matchedWo;
+}
+
+function downloadBase64Image(dataUrl, filename) {
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = filename || `OVERWATCH_${Date.now()}.jpg`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function loadImageAsync(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = (e) => reject(e);
+    img.src = src;
+  });
+}
+
+async function renderWatermarkedEvidence(imgElement, meta) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  const w = imgElement.naturalWidth || imgElement.width || 1280;
+  const h = imgElement.naturalHeight || imgElement.height || 720;
+  canvas.width = w;
+  canvas.height = h;
+
+  ctx.drawImage(imgElement, 0, 0, w, h);
+
+  // 1. Logo Perusahaan di Pojok Kanan Atas
+  try {
+    const logoImg = await loadImageAsync('./Logo_Alamtri.png');
+    const logoW = Math.round(w * 0.16);
+    const logoH = Math.round(logoImg.naturalHeight * (logoW / logoImg.naturalWidth));
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.75)';
+    ctx.shadowBlur = 8;
+    ctx.drawImage(logoImg, w - logoW - 20, 20, logoW, logoH);
+    ctx.restore();
+  } catch (err) {
+    console.warn("File Logo_Alamtri.png belum termuat:", err.message);
+  }
+
+  // 2. Pita Watermark Gelap di 22% Bawah
+  const ribbonH = Math.max(160, Math.round(h * 0.22));
+  const ribbonY = h - ribbonH;
+
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+  ctx.fillRect(0, ribbonY, w, ribbonH);
+
+  ctx.strokeStyle = '#00f0ff';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, ribbonY);
+  ctx.lineTo(w, ribbonY);
+  ctx.stroke();
+
+  // 3. Mini Map Radar di Pojok Kiri Bawah
+  const mapBoxSize = ribbonH - 24;
+  const mapBoxX = 20;
+  const mapBoxY = ribbonY + 12;
+
+  ctx.fillStyle = '#090d16';
+  ctx.fillRect(mapBoxX, mapBoxY, mapBoxSize, mapBoxSize);
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(mapBoxX, mapBoxY, mapBoxSize, mapBoxSize);
+
+  try {
+    const leafletCanvas = document.querySelector('#map canvas');
+    if (leafletCanvas && meta.latlng) {
+      const pt = map.latLngToContainerPoint(meta.latlng);
+      const halfCrop = 90;
+      ctx.drawImage(
+        leafletCanvas,
+        Math.max(0, pt.x - halfCrop),
+        Math.max(0, pt.y - halfCrop),
+        halfCrop * 2,
+        halfCrop * 2,
+        mapBoxX,
+        mapBoxY,
+        mapBoxSize,
+        mapBoxSize
+      );
+    }
+  } catch (e) {}
+
+  const centerMapX = mapBoxX + mapBoxSize / 2;
+  const centerMapY = mapBoxY + mapBoxSize / 2;
+  ctx.fillStyle = '#ef4444';
+  ctx.beginPath();
+  ctx.arc(centerMapX, centerMapY, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#38bdf8';
+  ctx.font = `bold ${Math.round(ribbonH * 0.075)}px monospace`;
+  ctx.fillText("RADAR OVERWATCH", mapBoxX + 6, mapBoxY + 14);
+
+  // 4. Data Teks Telemetri Bersih di Pojok Kanan
+  const textX = mapBoxX + mapBoxSize + 25;
+  const baseFontSize = Math.max(14, Math.round(ribbonH * 0.095));
+  const lineHeight = Math.round(baseFontSize * 1.55);
+
+  let curY = ribbonY + 28;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${Math.round(baseFontSize * 1.15)}px sans-serif`;
+  ctx.fillText((meta.notes || "Inspeksi Lapangan").substring(0, 75), textX, curY);
+  curY += lineHeight + 4;
+
+  ctx.font = `bold ${baseFontSize}px monospace`;
+  ctx.fillStyle = '#facc15';
+  ctx.fillText(`Ruas Jalan : ${meta.road || 'Area Tambang'}`, textX, curY);
+  curY += lineHeight;
+
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = `${baseFontSize}px monospace`;
+  ctx.fillText(`Waktu      : ${meta.time || UtilitiesFormatNowWita()}`, textX, curY);
+  curY += lineHeight;
+
+  ctx.fillText(`Pengawas   : ${meta.reporter || currentNRP}`, textX, curY);
+  curY += lineHeight;
+
+  ctx.fillStyle = '#00f0ff';
+  ctx.font = `bold ${baseFontSize}px monospace`;
+  ctx.fillText(`Photo ID   : ${meta.photoId || generatePhotoId()}`, textX, curY);
+
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+function initGeotaggingCameraModule() {
+  const floatingGroup = document.getElementById('floatingActionGroup');
+  if (floatingGroup && !document.getElementById('floatingCameraBtn')) {
+    const camBtn = document.createElement('button');
+    camBtn.id = 'floatingCameraBtn';
+    camBtn.className = 'w-10 h-10 rounded-full bg-slate-900 border border-slate-700 text-amber-400 shadow-xl flex items-center justify-center text-lg hover:border-amber-400 transition';
+    camBtn.innerHTML = '📷';
+    camBtn.title = 'Ambil Foto Evidence / Quick Hazard';
+    camBtn.onclick = openCameraActionChooser;
+    floatingGroup.insertBefore(camBtn, floatingGroup.firstChild);
+  }
+
+  if (!document.getElementById('geoCameraChooserModal')) {
+    const chooser = document.createElement('div');
+    chooser.id = 'geoCameraChooserModal';
+    chooser.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.7); display:none; align-items:center; justify-content:center; z-index:10005;';
+    chooser.innerHTML = `
+      <div style="background:#0f172a; border:1px solid #334155; border-radius:12px; padding:20px; width:90%; max-width:320px; text-align:center;">
+        <h3 style="color:#00f0ff; font-weight:bold; font-size:14px; margin-bottom:12px;">PILIH METODE FOTO</h3>
+        <button onclick="triggerDirectCameraCapture()" style="width:100%; padding:10px; background:#eab308; color:#000; font-weight:bold; border-radius:8px; border:none; margin-bottom:8px; cursor:pointer;">📷 Buka Kamera (Take Photo)</button>
+        <button onclick="triggerGalleryUploadCapture()" style="width:100%; padding:10px; background:#1e293b; color:#fff; font-weight:bold; border-radius:8px; border:1px solid #475569; margin-bottom:12px; cursor:pointer;">🖼️ Pilih dari Galeri (Upload)</button>
+        <button onclick="closeCameraActionChooser()" style="width:100%; padding:6px; background:transparent; color:#94a3b8; border:none; font-size:11px; cursor:pointer;">Batal</button>
+      </div>
+      <input type="file" id="geoInputTakeFile" accept="image/*" capture="environment" style="display:none;">
+      <input type="file" id="geoInputUploadFile" accept="image/*" style="display:none;">
+    `;
+    document.body.appendChild(chooser);
+
+    document.getElementById('geoInputTakeFile').addEventListener('change', handleCameraFileChosen);
+    document.getElementById('geoInputUploadFile').addEventListener('change', handleCameraFileChosen);
+  }
+
+  if (!document.getElementById('geoPreviewReportModal')) {
+    const previewModal = document.createElement('div');
+    previewModal.id = 'geoPreviewReportModal';
+    previewModal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.85); display:none; align-items:center; justify-content:center; z-index:10006; padding:12px;';
+    previewModal.innerHTML = `
+      <div style="background:#0f172a; border:1px solid #334155; border-radius:10px; width:100%; max-width:480px; max-height:92vh; overflow-y:auto; padding:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h3 style="color:#00f0ff; font-weight:bold; font-size:13px;">DOKUMENTASI GEOTAGGING</h3>
+          <button onclick="closeGeoPreviewModal()" style="color:#ef4444; background:transparent; border:none; font-size:14px; cursor:pointer; font-weight:bold;">✕</button>
+        </div>
+
+        <img id="geoPreviewStampedImg" style="width:100%; border-radius:6px; border:1px solid #334155; margin-bottom:10px; max-height:210px; object-fit:contain; background:#000;">
+
+        <div id="geoDetectedWoBox" style="background:#1e293b; border:1px solid #3b82f6; border-radius:6px; padding:8px; font-size:11px; margin-bottom:10px;"></div>
+
+        <div id="geoJobSelectionWrapper" style="margin-bottom:10px;"></div>
+
+        <div style="margin-bottom:8px;">
+          <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:2px;">Keterangan / Temuan Lapangan:</label>
+          <input type="text" id="geoReportNotes" placeholder="Ketik keterangan pekerjaan..." style="width:100%; background:#090d16; border:1px solid #475569; padding:6px; border-radius:4px; color:#fff; font-size:11px;">
+        </div>
+
+        <div style="display:flex; gap:8px; margin-bottom:12px;">
+          <div style="flex:1;">
+            <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:2px;">Pengawas:</label>
+            <input type="text" id="geoReportReporter" style="width:100%; background:#090d16; border:1px solid #475569; padding:6px; border-radius:4px; color:#fff; font-size:11px;">
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:2px;">Status:</label>
+            <select id="geoReportStatus" style="width:100%; background:#090d16; border:1px solid #475569; padding:6px; border-radius:4px; color:#fff; font-size:11px;">
+              <option value="PROGRESS">PROGRESS</option>
+              <option value="CLOSED">CLOSED</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:8px;">
+          <button onclick="executeSaveGeoToGalleryOnly()" style="flex:1; padding:9px; background:#334155; color:#fff; font-weight:bold; border-radius:6px; border:none; font-size:11px; cursor:pointer;">💾 Simpan Saja</button>
+          <button onclick="executeSubmitGeoEvidence()" style="flex:1; padding:9px; background:#00f0ff; color:#000; font-weight:bold; border-radius:6px; border:none; font-size:11px; cursor:pointer;">🚀 Kirim Evidence</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(previewModal);
+  }
+
+  if (!document.getElementById('geoExifWarningModal')) {
+    const warnModal = document.createElement('div');
+    warnModal.id = 'geoExifWarningModal';
+    warnModal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.8); display:none; align-items:center; justify-content:center; z-index:10007; padding:16px;';
+    warnModal.innerHTML = `
+      <div style="background:#0f172a; border:1px solid #e11d48; border-radius:10px; width:100%; max-width:340px; padding:16px; text-align:center;">
+        <div style="font-size:26px; margin-bottom:6px;">⚠️</div>
+        <h3 style="color:#e11d48; font-weight:bold; font-size:14px; margin-bottom:6px;">GPS Foto Tidak Terdeteksi!</h3>
+        <p style="font-size:11px; color:#cbd5e1; line-height:1.4; margin-bottom:14px;">Foto ini tidak memiliki metadata koordinat GPS asli. Silakan pilih solusi darurat di bawah:</p>
+        <button onclick="chooseNewGeoPhoto()" style="width:100%; padding:8px; background:#334155; color:#fff; font-size:11px; font-weight:bold; border-radius:6px; border:none; margin-bottom:6px; cursor:pointer;">Pilih Foto Lain dari Galeri</button>
+        <button onclick="useCurrentLiveGpsFallback()" style="width:100%; padding:8px; background:#eab308; color:#000; font-size:11px; font-weight:bold; border-radius:6px; border:none; margin-bottom:6px; cursor:pointer;">Gunakan Lokasi HP Sekarang</button>
+        <button onclick="pickManualPointOnMapFallback()" style="width:100%; padding:8px; background:#00f0ff; color:#000; font-size:11px; font-weight:bold; border-radius:6px; border:none; margin-bottom:8px; cursor:pointer;">Tunjuk Titik di Peta</button>
+        <button onclick="closeGeoExifWarningModal()" style="background:transparent; color:#94a3b8; border:none; font-size:10px; cursor:pointer;">Batal</button>
+      </div>
+    `;
+    document.body.appendChild(warnModal);
+  }
+}
+
+function openCameraActionChooser() {
+  const modal = document.getElementById('geoCameraChooserModal');
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeCameraActionChooser() {
+  const modal = document.getElementById('geoCameraChooserModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function triggerDirectCameraCapture() {
+  closeCameraActionChooser();
+  const input = document.getElementById('geoInputTakeFile');
+  if (input) input.click();
+}
+
+function triggerGalleryUploadCapture() {
+  closeCameraActionChooser();
+  const input = document.getElementById('geoInputUploadFile');
+  if (input) input.click();
+}
+
+async function handleCameraFileChosen(e) {
+  const file = e.target.files ? e.target.files[0] : null;
+  if (!file) return;
+  currentPendingPhotoFile = file;
+
+  let lat = null;
+  let lng = null;
+  let takenTime = UtilitiesFormatNowWita();
+
+  // Pembacaan Metadata EXIF
+  if (window.exifr) {
+    try {
+      const exif = await exifr.parse(file, { gps: true, tiff: true });
+      if (exif && exif.latitude && exif.longitude) {
+        lat = exif.latitude;
+        lng = exif.longitude;
+      }
+      if (exif && exif.DateTimeOriginal) {
+        const dt = new Date(exif.DateTimeOriginal);
+        const tgl = String(dt.getDate()).padStart(2, '0');
+        const bln = String(dt.getMonth() + 1).padStart(2, '0');
+        const thn = dt.getFullYear();
+        const jam = String(dt.getHours()).padStart(2, '0');
+        const mnt = String(dt.getMinutes()).padStart(2, '0');
+        takenTime = `${tgl}/${bln}/${thn}, ${jam}:${mnt}:00 WITA`;
+      }
+    } catch (err) {
+      console.warn("Gagal membaca EXIF:", err);
+    }
+  }
+
+  // Jika GPS Kosong: Buka Peringatan
+  if (!lat || !lng) {
+    const warn = document.getElementById('geoExifWarningModal');
+    if (warn) warn.style.display = 'flex';
+    return;
+  }
+
+  proceedWithPhotoLocation(lat, lng, takenTime);
+}
+
+function chooseNewGeoPhoto() {
+  closeGeoExifWarningModal();
+  triggerGalleryUploadCapture();
+}
+
+function useCurrentLiveGpsFallback() {
+  closeGeoExifWarningModal();
+  if (!navigator.geolocation) {
+    alert("Perangkat tidak mendukung GPS.");
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      proceedWithPhotoLocation(pos.coords.latitude, pos.coords.longitude, UtilitiesFormatNowWita());
+    },
+    (err) => {
+      alert("Gagal membaca koordinat GPS: " + err.message);
+    },
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
+}
+
+function pickManualPointOnMapFallback() {
+  closeGeoExifWarningModal();
+  alert("Silakan ketuk titik lokasi jalan pada peta!");
+  const oneTimeClick = (e) => {
+    map.off('click', oneTimeClick);
+    proceedWithPhotoLocation(e.latlng.lat, e.latlng.lng, UtilitiesFormatNowWita());
+  };
+  map.on('click', oneTimeClick);
+}
+
+function closeGeoExifWarningModal() {
+  const modal = document.getElementById('geoExifWarningModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function proceedWithPhotoLocation(lat, lng, takenTime) {
+  const latlng = { lat: lat, lng: lng };
+  const matchedWo = findNearestActiveWo(latlng, 60);
+  const photoId = generatePhotoId();
+  const roadTarget = matchedWo ? matchedWo.road : (activeRoad || "Area Hauling");
+
+  currentCapturedMetadata = {
+    photoId: photoId,
+    latlng: latlng,
+    road: roadTarget,
+    time: takenTime,
+    reporter: currentNRP,
+    matchedWo: matchedWo,
+    notes: ""
+  };
+
+  const imgObj = await fileToImageElement(currentPendingPhotoFile);
+  currentWatermarkedBase64 = await renderWatermarkedEvidence(imgObj, currentCapturedMetadata);
+
+  const previewModal = document.getElementById('geoPreviewReportModal');
+  const imgElem = document.getElementById('geoPreviewStampedImg');
+  const repInput = document.getElementById('geoReportReporter');
+  const woBox = document.getElementById('geoDetectedWoBox');
+  const jobWrap = document.getElementById('geoJobSelectionWrapper');
+
+  if (imgElem) imgElem.src = currentWatermarkedBase64;
+  if (repInput) repInput.value = currentNRP;
+
+  if (matchedWo) {
+    woBox.innerHTML = `
+      <div style="color:#22c55e; font-weight:bold; margin-bottom:2px;">📍 Terdeteksi di Area WO: ${matchedWo.road}</div>
+      <div style="color:#94a3b8; font-size:10px;">Nomor/STA: ${matchedWo.sta || '-'} | Status: ${matchedWo.status}</div>
+    `;
+
+    const jobs = (matchedWo.jobs && matchedWo.jobs.length > 0) ? matchedWo.jobs : [{ category: "Pekerjaan Lapangan", status: "OPEN" }];
+    jobWrap.innerHTML = `
+      <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:4px;">Pilih Target Job Pekerjaan:</label>
+      <select id="geoSelectedJobIndex" style="width:100%; background:#090d16; border:1px solid #475569; padding:6px; border-radius:4px; color:#fff; font-size:11px;">
+        ${jobs.map((j, i) => `<option value="${i}">Job #${i + 1}: ${j.category} [${j.status || 'OPEN'}]</option>`).join('')}
+      </select>
+    `;
+  } else {
+    woBox.innerHTML = `
+      <div style="color:#f59e0b; font-weight:bold; margin-bottom:2px;">⚠️ Laporan Quick Hazard (Ad-Hoc)</div>
+      <div style="color:#94a3b8; font-size:10px;">Lokasi tidak berada di dalam kotakan sketsa WO aktif. Pin temuan baru akan dibuat otomatis.</div>
+    `;
+    jobWrap.innerHTML = '';
+  }
+
+  if (previewModal) previewModal.style.display = 'flex';
+}
+
+function fileToImageElement(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function closeGeoPreviewModal() {
+  const modal = document.getElementById('geoPreviewReportModal');
+  if (modal) modal.style.display = 'none';
+  currentCapturedMetadata = null;
+  currentWatermarkedBase64 = null;
+  currentPendingPhotoFile = null;
+}
+
+function executeSaveGeoToGalleryOnly() {
+  if (!currentWatermarkedBase64 || !currentCapturedMetadata) return;
+  const filename = `${currentCapturedMetadata.photoId}_${currentCapturedMetadata.road.replace(/\s+/g, '_')}.jpg`;
+  downloadBase64Image(currentWatermarkedBase64, filename);
+  alert("Foto berhasil diunduh dan disimpan ke Galeri HP!");
+  closeGeoPreviewModal();
+}
+
+async function executeSubmitGeoEvidence() {
+  if (!currentWatermarkedBase64 || !currentCapturedMetadata) return;
+
+  const notesInput = document.getElementById('geoReportNotes');
+  const repInput = document.getElementById('geoReportReporter');
+  const statusSelect = document.getElementById('geoReportStatus');
+  const jobSelect = document.getElementById('geoSelectedJobIndex');
+
+  const notes = notesInput ? notesInput.value.trim() : "";
+  const reporter = repInput ? repInput.value.trim() : currentNRP;
+  const status = statusSelect ? statusSelect.value : "PROGRESS";
+  const matchedWo = currentCapturedMetadata.matchedWo;
+
+  // 1. Eksekusi simpan ke galeri secara paralel
+  const filename = `${currentCapturedMetadata.photoId}_${currentCapturedMetadata.road.replace(/\s+/g, '_')}.jpg`;
+  downloadBase64Image(currentWatermarkedBase64, filename);
+
+  setSyncStatus('updating');
+
+  const imagePayload = [{
+    imageBase64: currentWatermarkedBase64,
+    imageName: filename,
+    imageMime: "image/jpeg"
+  }];
+
+  if (matchedWo) {
+    const jobIdx = jobSelect ? parseInt(jobSelect.value) : 0;
+    const targetJob = (matchedWo.jobs && matchedWo.jobs[jobIdx]) ? matchedWo.jobs[jobIdx] : { category: "Pekerjaan Lapangan" };
+    const jobTargetText = `Job ${jobIdx + 1}: ${targetJob.category}`;
+
+    syncWorkOrderToCloud({
+      action: "SUBMIT_EVIDENCE",
+      woId: matchedWo.id,
+      jobIndex: jobIdx,
+      jobTarget: jobTargetText,
+      road: matchedWo.road,
+      status: status,
+      notes: notes,
+      reporter: reporter,
+      photoId: currentCapturedMetadata.photoId,
+      images: imagePayload
+    });
+
+    if (matchedWo.jobs && matchedWo.jobs[jobIdx]) {
+      matchedWo.jobs[jobIdx].status = status;
+    }
+    matchedWo.status = calculateParentStatus(matchedWo.jobs);
+    createOrUpdateMarker(matchedWo);
+
+    broadcastWoSync('UPDATE_JOB_STATUS', {
+      woId: matchedWo.id,
+      jobIndex: jobIdx,
+      status: status,
+      parentStatus: matchedWo.status,
+      notes: notes,
+      reporter: reporter
+    }, `${reporter} kirim evidence ${jobTargetText} ${matchedWo.road}`);
+
+  } else {
+    // Mode Ad-Hoc Hazard (Bikin WO Baru Lepas)
+    const newWoId = 'wo_' + Date.now();
+    const newWo = {
+      id: newWoId,
+      createdTime: currentCapturedMetadata.time,
+      road: currentCapturedMetadata.road,
+      sta: "Temuan Lapangan",
+      latlng: currentCapturedMetadata.latlng,
+      jobs: [{ category: "Temuan Lapangan (Ad-Hoc)", notes: notes, status: status }],
+      notes: notes,
+      reporter: reporter,
+      photoUrls: [],
+      status: status,
+      linkedLineId: ""
+    };
+
+    allWorkOrders[newWoId] = newWo;
+    createOrUpdateMarker(newWo);
+
+    syncWorkOrderToCloud({
+      action: "SAVE_WORK_ORDER",
+      id: newWo.id,
+      createdTime: newWo.createdTime,
+      road: newWo.road,
+      sta: newWo.sta,
+      latlng: newWo.latlng,
+      jobs: newWo.jobs,
+      notes: newWo.notes,
+      reporter: newWo.reporter,
+      status: status,
+      linkedLineId: "",
+      photoId: currentCapturedMetadata.photoId,
+      images: imagePayload
+    });
+
+    broadcastWoSync('CREATE_WO', sanitizeWoForBroadcast(newWo), `${reporter} melaporkan temuan baru di ${newWo.road}`);
+  }
+
+  catatLogKeServer("GEOTAG EVIDENCE", `ID: ${currentCapturedMetadata.photoId}, Pelapor: ${reporter}, Lokasi: ${currentCapturedMetadata.road}`);
+  renderOutstandingList();
+  alert(`Laporan dan foto (${currentCapturedMetadata.photoId}) berhasil dikirim serta disimpan ke Galeri HP!`);
+  closeGeoPreviewModal();
+}
+
+// Expose fungsi ke scope window
 window.toggleOutstandingDrawer = toggleOutstandingDrawer;
 window.flyToOutstandingWo = flyToOutstandingWo;
 window.renderOutstandingList = renderOutstandingList;
@@ -4245,6 +4856,19 @@ window.locateUser = locateUser;
 window.handlePanelHeaderClick = handlePanelHeaderClick;
 window.removeMainQueueFile = removeMainQueueFile;
 window.removeJobQueueFile = removeJobQueueFile;
+
+// Expose Geotagging Functions
+window.openCameraActionChooser = openCameraActionChooser;
+window.closeCameraActionChooser = closeCameraActionChooser;
+window.triggerDirectCameraCapture = triggerDirectCameraCapture;
+window.triggerGalleryUploadCapture = triggerGalleryUploadCapture;
+window.closeGeoPreviewModal = closeGeoPreviewModal;
+window.executeSaveGeoToGalleryOnly = executeSaveGeoToGalleryOnly;
+window.executeSubmitGeoEvidence = executeSubmitGeoEvidence;
+window.chooseNewGeoPhoto = chooseNewGeoPhoto;
+window.useCurrentLiveGpsFallback = useCurrentLiveGpsFallback;
+window.pickManualPointOnMapFallback = pickManualPointOnMapFallback;
+window.closeGeoExifWarningModal = closeGeoExifWarningModal;
 
 // ==========================================
 // 8. DAFTARKAN PWA SERVICE WORKER
