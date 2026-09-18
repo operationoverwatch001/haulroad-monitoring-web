@@ -110,8 +110,10 @@ const map = L.map('map', {
   renderer: canvasRenderer
 }).setView([-2.169338, 115.572115], 15);
 
+// Satelit ESRI Dunia diberi zIndex 1
 const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
+  zIndex: 1,
   attribution: 'Tiles &copy; Esri'
 }).addTo(map);
 
@@ -131,9 +133,11 @@ if (pmtilesLib) {
     const p = new pmtilesLib.PMTiles(PMTILES_URL);
     protocol.add(p);
 
+    // Orthophoto Drone diberi zIndex 10 agar selalu tajam di atas satelit ESRI
     orthoLayer = pmtilesLib.leafletRasterLayer(p, {
       maxZoom: 22,
-      maxNativeZoom: 20, // Kunci native zoom drone, zoom atasnya di-stretch instan
+      maxNativeZoom: 20,
+      zIndex: 10,
       attribution: 'Drone Orthophoto'
     }).addTo(map);
 
@@ -745,11 +749,9 @@ async function logoutUser() {
     console.warn("Logout auth err:", err);
   }
 
-  // Tutup drawer
   const notifDrawer = document.getElementById('notificationDrawer');
   if (notifDrawer) notifDrawer.classList.remove('active-drawer');
 
-  // Reset tampilan modal login
   const emailSec = document.getElementById('email-section');
   const otpSec = document.getElementById('otp-section');
   const emailInput = document.getElementById('email-input');
@@ -2875,14 +2877,14 @@ function startSilentGpsTracking() {
         userAccuracyCircle.setLatLng(latlng);
         userAccuracyCircle.setRadius(accuracy);
       }
-      // Kamera Leaflet TIDAK dipaksa panTo di sini (viewport bebas merdeka!)
+      // Kamera Leaflet tidak dipaksa panTo di sini agar viewport bebas digeser
     },
     (err) => { console.warn(`GPS Silent Error: ${err.message}`); },
     { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 }
   );
 }
 
-// FUNGSI LOCATE USER: HANYA MELUNCUR KE POSISI AKTUAL SAAT TOMBOL DIKLIK (TANPA KUNCI VIEWPORT)
+// FUNGSI LOCATE USER: RE-CENTER SAAT DIKLIK (TANPA KUNCI VIEWPORT)
 function locateUser() {
   const gpsBtn = document.querySelector('.gps-btn');
   if (gpsBtn) {
@@ -2993,7 +2995,10 @@ function toggleBasemapSatelit() {
     catatLogKeServer("TOGGLE MAP", "Mematikan satelit luar.");
   } else {
     esriSatellite.addTo(map);
-    if (orthoLayer) orthoLayer.bringToFront();
+    if (orthoLayer) {
+      orthoLayer.setZIndex(10);
+      if (typeof orthoLayer.bringToFront === 'function') orthoLayer.bringToFront();
+    }
     btn.innerHTML = '🌍 Satelit: <b>ON</b>';
     btn.style.color = '#38bdf8';
     btn.style.borderColor = '#1e293b';
@@ -4276,7 +4281,7 @@ async function executeExportPDF() {
 
 // ==========================================================
 // 9. MODUL GEOTAGGING KAMERA NATIVE, EXIF & TACTICAL RADAR
-// ==========================================================
+// ==========================================
 let currentCapturedMetadata = null;
 let currentWatermarkedBase64 = null;
 let currentPendingPhotoFile = null;
@@ -4397,12 +4402,10 @@ async function renderWatermarkedEvidence(imgElement, meta) {
   const textX = mapBoxX + mapBoxSize + Math.round(w * 0.025);
   const availTextWidth = w - textX - Math.round(w * 0.03);
 
-  // Ukuran font dihitung presisi agar karakter teks waktu & ID pas di lebar layar HP
   let baseFontSize = Math.floor(availTextWidth / 24);
   baseFontSize = Math.max(12, Math.min(baseFontSize, Math.round(w * 0.027)));
   const lineHeight = Math.round(baseFontSize * 1.45);
 
-  // Tinggi pita disesuaikan dengan kebutuhan 5 baris teks + ruang radar
   const requiredTextHeight = lineHeight * 5 + Math.round(baseFontSize * 1.2);
   const ribbonH = Math.max(mapBoxSize + 28, requiredTextHeight + 28);
   const ribbonY = h - ribbonH;
@@ -4426,7 +4429,7 @@ async function renderWatermarkedEvidence(imgElement, meta) {
   ctx.lineWidth = Math.max(1.5, Math.round(mapBoxSize * 0.012));
   ctx.strokeRect(mapBoxX, mapBoxY, mapBoxSize, mapBoxSize);
 
-  // Tactical Radar Grafis (Dijamin Terisi Penuh, Gak Pernah Hitam Kosong)
+  // Tactical Radar Grafis
   const cx = mapBoxX + mapBoxSize / 2;
   const cy = mapBoxY + mapBoxSize / 2;
   const r = mapBoxSize / 2 - Math.max(6, Math.round(mapBoxSize * 0.07));
@@ -4559,7 +4562,7 @@ function triggerGalleryUploadCapture() {
   if (input) input.click();
 }
 
-// PEMOTRETAN LANGSUNG (KAMERA BAWAAN HP) DENGAN SEAMLESS GPS TANPA MODAL
+// PEMOTRETAN LANGSUNG DENGAN SEAMLESS GPS
 async function handleCameraNativeFileChosen(e) {
   const file = e.target.files ? e.target.files[0] : null;
   if (!file) return;
@@ -4591,7 +4594,6 @@ async function handleCameraNativeFileChosen(e) {
     }
   }
 
-  // JIKA GPS FOTO KOSONG: AMBIL LOKASI HP SEAMLESS (TANPA MODAL PERINGATAN)
   if (!lat || !lng) {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -4646,7 +4648,6 @@ async function handleGalleryFileChosen(e) {
     }
   }
 
-  // Khusus upload foto galeri: Jika EXIF kosong, baru munculkan modal pilihan darurat
   if (!lat || !lng) {
     const warn = document.getElementById('geoExifWarningModal');
     if (warn) warn.style.display = 'flex';
@@ -4693,7 +4694,7 @@ function closeGeoExifWarningModal() {
   if (modal) modal.style.display = 'none';
 }
 
-// PEMROSESAN LOKASI & FORM DINAMIS (RUAS JALAN TIDAK DI-FREEZE - EDITABLE)
+// PEMROSESAN LOKASI & FORM DINAMIS (RUAS JALAN EDITABLE)
 async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   const latlng = { lat: lat, lng: lng };
   const matchedWo = findNearestActiveWo(latlng, 60);
@@ -4725,7 +4726,6 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   if (repInput) repInput.value = currentNRP;
   if (notesInput) notesInput.value = "";
 
-  // FORM RUAS JALAN TETAP BISA DIEDIT (TIDAK DI-FREEZE)
   if (roadInput) {
     roadInput.readOnly = false;
     roadInput.style.background = "#090d16";
@@ -4840,14 +4840,12 @@ async function executeSubmitGeoEvidence() {
     return;
   }
 
-  // Stempel Ulang Kanvas agar Nama Ruas Jalan & Catatan Tercetak Sempurna di Foto
   currentCapturedMetadata.road = finalRoadName;
   currentCapturedMetadata.notes = notes;
   currentCapturedMetadata.reporter = reporter;
 
   currentWatermarkedBase64 = await renderWatermarkedEvidence(currentRawImageElement, currentCapturedMetadata);
 
-  // Simpan Otomatis ke Galeri HP Secara Paralel
   const filename = `${currentCapturedMetadata.photoId}_${finalRoadName.replace(/\s+/g, '_')}.jpg`;
   downloadBase64Image(currentWatermarkedBase64, filename);
 
@@ -4860,7 +4858,6 @@ async function executeSubmitGeoEvidence() {
   }];
 
   if (matchedWo) {
-    // Jalur Update WO Terkait
     const jobIdx = jobSelect ? parseInt(jobSelect.value) : 0;
     const targetJob = (matchedWo.jobs && matchedWo.jobs[jobIdx]) ? matchedWo.jobs[jobIdx] : { category: "Pekerjaan Lapangan" };
     const jobTargetText = `Job ${jobIdx + 1}: ${targetJob.category}`;
@@ -4894,7 +4891,6 @@ async function executeSubmitGeoEvidence() {
     }, `${reporter} kirim evidence ${jobTargetText} ${finalRoadName}`);
 
   } else {
-    // Jalur Laporan Temuan Lapangan Lepas (Ad-Hoc Hazard)
     const newWoId = 'wo_' + Date.now();
     const newWo = {
       id: newWoId,
@@ -4986,7 +4982,7 @@ window.openPdfModal = openPdfModal;
 window.closePdfModal = closePdfModal;
 window.executeExportPDF = executeExportPDF;
 window.locateUser = locateUser;
-window.logoutUser = logoutUser; // Expose fungsi logout
+window.logoutUser = logoutUser;
 window.handlePanelHeaderClick = handlePanelHeaderClick;
 window.removeMainQueueFile = removeMainQueueFile;
 window.removeJobQueueFile = removeJobQueueFile;
