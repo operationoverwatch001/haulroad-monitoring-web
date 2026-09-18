@@ -83,9 +83,10 @@ let activeJobUpdateIndex = null;
 let currentTimelineHistory = [];
 let notificationLogs = [];
 
+// State Realtime Silent GPS Tracker & Re-Center
 let userMarker = null;
 let userAccuracyCircle = null;
-let isTracking = false;
+let currentUserLatLng = null;
 let watchId = null;
 
 // State Bottom Panel Memory
@@ -132,7 +133,7 @@ if (pmtilesLib) {
 
     orthoLayer = pmtilesLib.leafletRasterLayer(p, {
       maxZoom: 22,
-      maxNativeZoom: 20,
+      maxNativeZoom: 20, // Kunci native zoom drone, zoom atasnya di-stretch instan
       attribution: 'Drone Orthophoto'
     }).addTo(map);
 
@@ -705,7 +706,7 @@ function sanitizeDrawLineForBroadcast(line) {
 }
 
 // ==========================================
-// 2. SESI LOGIN 30 HARI & AUTHENTICATION
+// 2. SESI LOGIN 30 HARI, AUTH & LOGOUT TOTAL
 // ==========================================
 function saveUserSession(nrp, role) {
   const sessionData = {
@@ -731,6 +732,40 @@ function checkStoredSession() {
     localStorage.removeItem(SESSION_STORAGE_KEY);
     return null;
   }
+}
+
+// FUNGSI LOGOUT PAKSA & RESET TOKEN 30 HARI
+async function logoutUser() {
+  if (!confirm("Yakin ingin logout dari Overwatch? Sesi 30 hari akan direset.")) return;
+
+  try {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    await _supabase.auth.signOut();
+  } catch (err) {
+    console.warn("Logout auth err:", err);
+  }
+
+  // Tutup drawer
+  const notifDrawer = document.getElementById('notificationDrawer');
+  if (notifDrawer) notifDrawer.classList.remove('active-drawer');
+
+  // Reset tampilan modal login
+  const emailSec = document.getElementById('email-section');
+  const otpSec = document.getElementById('otp-section');
+  const emailInput = document.getElementById('email-input');
+  const otpInput = document.getElementById('otp-input');
+  const statusMsg = document.getElementById('auth-status');
+
+  if (emailSec) emailSec.classList.remove('hidden');
+  if (otpSec) otpSec.classList.add('hidden');
+  if (emailInput) emailInput.value = '';
+  if (otpInput) otpInput.value = '';
+  if (statusMsg) statusMsg.innerText = '';
+
+  const authOverlay = document.getElementById('auth-overlay');
+  if (authOverlay) authOverlay.style.display = 'flex';
+
+  catatLogKeServer("LOGOUT", `User ${currentNRP} logout dari aplikasi.`);
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -2817,9 +2852,79 @@ async function loadCloudWorkOrders() {
   }
 }
 
-// ==========================================
-// 7. HELPER WEBGIS & VIEWPORT OPTIMASI TINGGI
-// ==========================================
+// ==========================================================
+// 7. HELPER WEBGIS, SILENT GPS TRACKER & LOCATE ME (RE-CENTER)
+// ==========================================================
+function startSilentGpsTracking() {
+  if (!navigator.geolocation) return;
+  if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const accuracy = pos.coords.accuracy;
+      const latlng = [lat, lng];
+      currentUserLatLng = latlng;
+
+      if (!userMarker) {
+        userAccuracyCircle = L.circle(latlng, { radius: accuracy, color: '#0078d4', fillColor: '#2b88d8', fillOpacity: 0.15, weight: 1 }).addTo(map);
+        userMarker = L.circleMarker(latlng, { radius: 9, color: '#ffffff', fillColor: '#0078d4', fillOpacity: 1, weight: 3 }).addTo(map);
+      } else {
+        userMarker.setLatLng(latlng);
+        userAccuracyCircle.setLatLng(latlng);
+        userAccuracyCircle.setRadius(accuracy);
+      }
+      // Kamera Leaflet TIDAK dipaksa panTo di sini (viewport bebas merdeka!)
+    },
+    (err) => { console.warn(`GPS Silent Error: ${err.message}`); },
+    { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 }
+  );
+}
+
+// FUNGSI LOCATE USER: HANYA MELUNCUR KE POSISI AKTUAL SAAT TOMBOL DIKLIK (TANPA KUNCI VIEWPORT)
+function locateUser() {
+  const gpsBtn = document.querySelector('.gps-btn');
+  if (gpsBtn) {
+    gpsBtn.style.transform = 'scale(0.88)';
+    gpsBtn.style.background = '#00f0ff';
+    gpsBtn.style.color = '#000000';
+    setTimeout(() => {
+      gpsBtn.style.transform = '';
+      gpsBtn.style.background = '#0f172a';
+      gpsBtn.style.color = '#38bdf8';
+    }, 280);
+  }
+
+  if (currentUserLatLng) {
+    map.flyTo(currentUserLatLng, 17, { duration: 1 });
+    catatLogKeServer("LOCATE ME", "Pengawas re-center peta ke posisi aktual.");
+  } else if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const latlng = [pos.coords.latitude, pos.coords.longitude];
+        currentUserLatLng = latlng;
+        if (!userMarker) {
+          userAccuracyCircle = L.circle(latlng, { radius: pos.coords.accuracy, color: '#0078d4', fillColor: '#2b88d8', fillOpacity: 0.15, weight: 1 }).addTo(map);
+          userMarker = L.circleMarker(latlng, { radius: 9, color: '#ffffff', fillColor: '#0078d4', fillOpacity: 1, weight: 3 }).addTo(map);
+        } else {
+          userMarker.setLatLng(latlng);
+          userAccuracyCircle.setLatLng(latlng);
+          userAccuracyCircle.setRadius(pos.coords.accuracy);
+        }
+        map.flyTo(latlng, 17, { duration: 1 });
+        catatLogKeServer("LOCATE ME", "Pengawas re-center peta ke posisi GPS terkini.");
+      },
+      (err) => {
+        alert("Sinyal GPS belum terkunci di HP lu: " + err.message);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  } else {
+    alert("Browser HP tidak mendukung GPS.");
+  }
+}
+
 function mulaiAnimasiIntroDanLoadData() {
   const splash = document.getElementById('intro-splash');
   const bar = document.getElementById('loading-bar');
@@ -2845,6 +2950,7 @@ function mulaiAnimasiIntroDanLoadData() {
   loadAllVectorLayers();
   loadCloudWorkOrders();
   initSupabaseRealtime();
+  startSilentGpsTracking(); // Otomatis aktifkan pelacakan background senyap
 
   setInterval(loadCloudWorkOrders, 12000);
 
@@ -3930,56 +4036,6 @@ function drawCrossSectionChart(staTarget) {
   });
 }
 
-function locateUser() {
-  const gpsBtn = document.querySelector('.gps-btn');
-  if (isTracking) {
-    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-    if (userMarker) map.removeLayer(userMarker);
-    if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
-    userMarker = null;
-    userAccuracyCircle = null;
-    isTracking = false;
-    if (gpsBtn) {
-      gpsBtn.style.background = '#0f172a';
-      gpsBtn.style.color = '#38bdf8';
-    }
-    return;
-  }
-  if (!navigator.geolocation) {
-    alert("Browser HP tidak mendukung fitur GPS.");
-    return;
-  }
-
-  isTracking = true;
-  if (gpsBtn) {
-    gpsBtn.style.background = '#00f0ff';
-    gpsBtn.style.color = '#000000';
-  }
-  catatLogKeServer("GPS LIVE", "Menyalakan live tracking GPS di lapangan.");
-
-  watchId = navigator.geolocation.watchPosition(
-    (pos) => {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      const accuracy = pos.coords.accuracy;
-      const latlng = [lat, lng];
-
-      if (!userMarker) {
-        userAccuracyCircle = L.circle(latlng, { radius: accuracy, color: '#0078d4', fillColor: '#2b88d8', fillOpacity: 0.15, weight: 1 }).addTo(map);
-        userMarker = L.circleMarker(latlng, { radius: 9, color: '#ffffff', fillColor: '#0078d4', fillOpacity: 1, weight: 3 }).addTo(map);
-        map.setView(latlng, 17);
-      } else {
-        userMarker.setLatLng(latlng);
-        userAccuracyCircle.setLatLng(latlng);
-        userAccuracyCircle.setRadius(accuracy);
-        map.panTo(latlng);
-      }
-    },
-    (err) => { console.warn(`GPS Error: ${err.message}`); },
-    { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
-  );
-}
-
 // ==========================================================
 // 7B. BOTTOM PANEL: AUTO-HIDE, TAP & TOUCH DRAG
 // ==========================================================
@@ -4637,7 +4693,7 @@ function closeGeoExifWarningModal() {
   if (modal) modal.style.display = 'none';
 }
 
-// PEMROSESAN LOKASI & FORM DINAMIS (RUAS JALAN TIDAK DI-FREEZE - FOTO 1)
+// PEMROSESAN LOKASI & FORM DINAMIS (RUAS JALAN TIDAK DI-FREEZE - EDITABLE)
 async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   const latlng = { lat: lat, lng: lng };
   const matchedWo = findNearestActiveWo(latlng, 60);
@@ -4669,9 +4725,9 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   if (repInput) repInput.value = currentNRP;
   if (notesInput) notesInput.value = "";
 
-  // FORM RUAS JALAN TETAP BISA DIEDIT (TIDAK DI-FREEZE - FOTO 1)
+  // FORM RUAS JALAN TETAP BISA DIEDIT (TIDAK DI-FREEZE)
   if (roadInput) {
-    roadInput.readOnly = false; // Selalu dapat diubah oleh pengawas
+    roadInput.readOnly = false;
     roadInput.style.background = "#090d16";
 
     if (matchedWo) {
@@ -4791,7 +4847,7 @@ async function executeSubmitGeoEvidence() {
 
   currentWatermarkedBase64 = await renderWatermarkedEvidence(currentRawImageElement, currentCapturedMetadata);
 
-  // 1. Simpan Otomatis ke Galeri HP Secara Paralel
+  // Simpan Otomatis ke Galeri HP Secara Paralel
   const filename = `${currentCapturedMetadata.photoId}_${finalRoadName.replace(/\s+/g, '_')}.jpg`;
   downloadBase64Image(currentWatermarkedBase64, filename);
 
@@ -4930,6 +4986,7 @@ window.openPdfModal = openPdfModal;
 window.closePdfModal = closePdfModal;
 window.executeExportPDF = executeExportPDF;
 window.locateUser = locateUser;
+window.logoutUser = logoutUser; // Expose fungsi logout
 window.handlePanelHeaderClick = handlePanelHeaderClick;
 window.removeMainQueueFile = removeMainQueueFile;
 window.removeJobQueueFile = removeJobQueueFile;
