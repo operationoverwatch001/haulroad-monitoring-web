@@ -639,14 +639,23 @@
     </div>
   </div>
 
-  <!-- DRAWER KIRI: RIWAYAT LOG NOTIFIKASI -->
+  <!-- DRAWER KIRI: RIWAYAT LOG NOTIFIKASI DENGAN TOMBOL LOGOUT RESIK -->
   <div id="notificationDrawer">
     <div class="p-2 px-3 border-b border-slate-800 flex items-center justify-between shrink-0">
       <div class="flex items-center gap-1.5">
         <span class="text-xs">🔔</span>
         <h3 class="text-[10px] font-mono font-bold text-cyan-400 tracking-wider">LOG AKTIVITAS (48 JAM)</h3>
       </div>
-      <button onclick="toggleNotificationDrawer()" class="text-slate-400 hover:text-white text-sm px-1 leading-none">✕</button>
+      <!-- KOTAK MERAH: TOMBOL LOGOUT & CLOSE DRAWER -->
+      <div class="flex items-center gap-2">
+        <button onclick="logoutUser()" 
+          class="bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-mono font-bold text-[9px] px-2 py-0.5 rounded shadow transition cursor-pointer flex items-center gap-1" 
+          title="Logout Sesi & Reset Token 30 Hari">
+          <span>🚪</span>
+          <span>LOGOUT</span>
+        </button>
+        <button onclick="toggleNotificationDrawer()" class="text-slate-400 hover:text-white text-sm px-1 leading-none">✕</button>
+      </div>
     </div>
     <div id="notificationList" class="flex-1 overflow-y-auto p-2 space-y-1.5 custom-scrollbar text-[11px]">
       <p id="emptyNotifNotice" class="text-slate-500 text-center py-4 text-[10px]">Belum ada aktivitas dalam 48 jam.</p>
@@ -700,8 +709,8 @@
       🏷️
     </button>
 
-    <!-- TOMBOL GPS LOKASI -->
-    <button class="gps-btn" onclick="locateUser()" title="Posisi Saya">📍</button>
+    <!-- TOMBOL GPS LOKASI: RE-CENTER / LOCATE ME -->
+    <button class="gps-btn" onclick="locateUser()" title="Posisi Saya (Re-Center)">📍</button>
   </div>
 
   <!-- 4. PANEL BAWAH DENGAN KOTAK DRAG HANDLE PANAH SEGITIGA -->
