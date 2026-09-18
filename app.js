@@ -133,20 +133,28 @@ if (pmtilesLib) {
     const p = new pmtilesLib.PMTiles(PMTILES_URL);
     protocol.add(p);
 
-    // Orthophoto Drone diberi zIndex 10 agar selalu tajam di atas satelit ESRI
+    // Orthophoto Drone: Diberi zIndex 10, buffer penahan memori, dan kontrol throttle zoom anti-bolong
     orthoLayer = pmtilesLib.leafletRasterLayer(p, {
       maxZoom: 22,
       maxNativeZoom: 20,
       zIndex: 10,
+      updateWhenZooming: false, // Tahan request kepingan baru selama animasi zoom berlangsung
+      updateWhenIdle: true,     // Request kepingan baru HANYA jika gerakan zoom/pan sudah diam
+      keepBuffer: 6,            // Tahan kepingan tile di cache memori browser agar tidak langsung rontok
       attribution: 'Drone Orthophoto'
     }).addTo(map);
 
     p.getHeader().then(header => {
-      if (header && header.minLon && header.minLat) {
-        map.fitBounds([
-          [header.minLat, header.minLon],
-          [header.maxLat, header.maxLon]
-        ]);
+      if (header) {
+        if (header.minZoom) orthoLayer.options.minZoom = header.minZoom;
+        if (header.maxZoom) orthoLayer.options.maxNativeZoom = header.maxZoom;
+
+        if (header.minLon && header.minLat) {
+          map.fitBounds([
+            [header.minLat, header.minLon],
+            [header.maxLat, header.maxLon]
+          ]);
+        }
       }
     }).catch(e => console.warn("Header PMTiles load warn:", e));
 
