@@ -250,7 +250,7 @@
       box-shadow: 0 0 10px rgba(0,240,255,0.7);
     }
 
-    /* TOMBOL SIDEBAR KIRI (NOTIF & LEGENDA VERTIKAL RAMPING) */
+    /* TOMBOL SIDEBAR KIRI */
     .left-sidebar-controls {
       position: fixed;
       left: 10px;
@@ -282,7 +282,7 @@
       color: #00f0ff;
     }
 
-    /* TOMBOL VERTIKAL KIRI & KANAN (LEGENDA RAMPING & OUTSTANDING) */
+    /* TOMBOL VERTIKAL KIRI & KANAN */
     .vertical-nav-btn {
       background: rgba(15, 23, 42, 0.92);
       border: 1px solid;
@@ -310,7 +310,7 @@
       transform: scale(1.08);
     }
 
-    /* SIDEBAR KANAN (OUTSTANDING WO) */
+    /* SIDEBAR KANAN */
     .right-sidebar-controls {
       position: fixed;
       right: 12px;
@@ -335,7 +335,7 @@
       line-height: 1;
     }
 
-    /* TOAST POP-UP REALTIME (3.5 DETIK) */
+    /* TOAST POP-UP REALTIME */
     #toastNotification {
       position: fixed;
       top: 65px;
@@ -388,7 +388,7 @@
       object-fit: contain;
     }
 
-    /* KOTAK HANDLE PANEL BAWAH DENGAN PANAH SEGITIGA */
+    /* KOTAK HANDLE PANEL BAWAH */
     .panel-drag-box {
       width: 38px;
       height: 18px;
@@ -576,17 +576,17 @@
       <span id="onlineCounterText" class="text-[10px] font-mono text-slate-300 font-semibold">Online: 1</span>
     </div>
 
-    <!-- BADGE BLIP DINAMIS: OFFLINE (MERAH), UPDATING (KUNING), UPDATED (HIJAU 3 DETIK) -->
+    <!-- BADGE BLIP DINAMIS -->
     <div id="syncStatusBadge" class="hidden px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md transition-all duration-300 pointer-events-auto flex items-center gap-1.5">
       <span id="syncStatusDot" class="w-2 h-2 rounded-full"></span>
       <span id="syncStatusText" class="text-[9px] font-mono font-bold tracking-wider"></span>
     </div>
   </div>
 
-  <!-- TOAST NOTIFIKASI REALTIME (3.5 DETIK) -->
+  <!-- TOAST NOTIFIKASI REALTIME -->
   <div id="toastNotification">Notifikasi baru masuk...</div>
 
-  <!-- TOMBOL SIDEBAR KIRI: NOTIFIKASI LOG & LEGENDA VERTIKAL RAMPING -->
+  <!-- TOMBOL SIDEBAR KIRI -->
   <div class="left-sidebar-controls">
     <button id="btnNotificationToggle" onclick="toggleNotificationDrawer()" class="left-btn" title="Buka Riwayat Log Notifikasi">
       <span class="text-xs">🔔</span>
@@ -604,7 +604,7 @@
     </button>
   </div>
 
-  <!-- TOMBOL SIDEBAR KANAN: OUTSTANDING VERTIKAL -->
+  <!-- TOMBOL SIDEBAR KANAN -->
   <div class="right-sidebar-controls">
     <button id="btnOutstandingToggle" onclick="toggleOutstandingDrawer()" class="vertical-nav-btn text-cyan-300 border-cyan-500/60 relative" title="Buka Daftar Work Order Aktif (Open & Progress)">
       <span id="outstandingCountBadge" class="outstanding-badge">0</span>
@@ -954,6 +954,135 @@
         <button onclick="closeAdminDataUpdateModal()" style="background:#1e293b; color:#cbd5e1; border:none; padding:6px 12px; border-radius:6px; font-size:11px; cursor:pointer;">Batal</button>
         <button onclick="saveAdminDataUpdateDate()" style="background:#eab308; color:#000; border:none; padding:6px 14px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Simpan Tanggal</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ========================================================== -->
+  <!-- 11. MODUL GEOTAGGING OVERWATCH: CAMERA VIEWFINDER & MODALS -->
+  <!-- ========================================================== -->
+
+  <!-- 11A. MODAL PILIH METODE (KAMERA LIVE ATAU GALERI) -->
+  <div id="geoCameraChooserModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); align-items:center; justify-content:center; z-index:100005; backdrop-filter:blur(6px);">
+    <div style="background:#0f172a; border:1px solid #334155; border-radius:12px; padding:20px; width:90%; max-width:320px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.8);">
+      <h3 style="color:#00f0ff; font-weight:bold; font-size:14px; margin-bottom:12px; font-family:monospace; letter-spacing:1px;">PILIH METODE DOKUMENTASI</h3>
+      <button onclick="openLiveCameraViewfinder()" style="width:100%; padding:11px; background:#eab308; color:#000; font-weight:bold; border-radius:8px; border:none; margin-bottom:8px; cursor:pointer; font-size:12px; box-shadow:0 2px 8px rgba(234,179,8,0.4);">📷 Buka Kamera Live (HUD View)</button>
+      <button onclick="triggerGalleryUploadCapture()" style="width:100%; padding:11px; background:#1e293b; color:#fff; font-weight:bold; border-radius:8px; border:1px solid #475569; margin-bottom:12px; cursor:pointer; font-size:12px;">🖼️ Pilih dari Galeri (Upload)</button>
+      <button onclick="closeCameraActionChooser()" style="width:100%; padding:6px; background:transparent; color:#94a3b8; border:none; font-size:11px; cursor:pointer;">Batal</button>
+    </div>
+    <input type="file" id="geoInputUploadFile" accept="image/*" style="display:none;">
+  </div>
+
+  <!-- 11B. LAYAR LIVE VIEWFINDER KAMERA DENGAN HUD & GRID (ALA FOTO 5) -->
+  <div id="geoLiveCameraOverlay" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:#000; z-index:100010; flex-direction:column; overflow:hidden;">
+    <!-- Live Stream Video -->
+    <video id="geoLiveVideoFeed" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover; position:absolute; inset:0;"></video>
+    
+    <!-- Garis Bantu Komposisi 3x3 (Grid Overlay) -->
+    <div class="camera-grid-overlay" style="position:absolute; inset:0; pointer-events:none; display:grid; grid-template-columns:1fr 1fr 1fr; grid-template-rows:1fr 1fr 1fr;">
+      <div style="border-right:1px solid rgba(255,255,255,0.2); border-bottom:1px solid rgba(255,255,255,0.2);"></div>
+      <div style="border-right:1px solid rgba(255,255,255,0.2); border-bottom:1px solid rgba(255,255,255,0.2);"></div>
+      <div style="border-bottom:1px solid rgba(255,255,255,0.2);"></div>
+      <div style="border-right:1px solid rgba(255,255,255,0.2); border-bottom:1px solid rgba(255,255,255,0.2);"></div>
+      <div style="border-right:1px solid rgba(255,255,255,0.2); border-bottom:1px solid rgba(255,255,255,0.2);"></div>
+      <div style="border-bottom:1px solid rgba(255,255,255,0.2);"></div>
+      <div style="border-right:1px solid rgba(255,255,255,0.2);"></div>
+      <div style="border-right:1px solid rgba(255,255,255,0.2);"></div>
+      <div></div>
+    </div>
+
+    <!-- Live Watermark Overlay (Atas & Bawah) -->
+    <div style="position:absolute; top:16px; left:16px; z-index:10;">
+      <button onclick="closeLiveCameraViewfinder()" style="background:rgba(15,23,42,0.8); color:#fff; border:1px solid #475569; width:36px; height:36px; border-radius:50%; font-size:14px; font-weight:bold; cursor:pointer; backdrop-filter:blur(4px);">✕</button>
+    </div>
+    <div style="position:absolute; top:16px; right:16px; z-index:10;">
+      <img src="./Logo_Alamtri.png" alt="Logo" style="height:38px; filter:drop-shadow(0 2px 6px rgba(0,0,0,0.8));">
+    </div>
+
+    <!-- Live HUD Telemetry Mockup di Bawah -->
+    <div style="position:absolute; bottom:110px; left:14px; right:14px; z-index:10; background:rgba(15,23,42,0.75); border:1px solid rgba(0,240,255,0.4); border-radius:8px; padding:8px 12px; backdrop-filter:blur(6px); pointer-events:none;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+        <span style="font-size:12px; font-weight:bold; color:#00f0ff; font-family:monospace;">OVERWATCH LIVE HUD</span>
+        <span id="liveCameraClock" style="font-size:11px; font-weight:bold; color:#facc15; font-family:monospace;">--:--:-- WITA</span>
+      </div>
+      <div id="liveCameraGpsInfo" style="font-size:10px; color:#cbd5e1; font-family:monospace;">Mencari Koordinat GPS HP...</div>
+      <div id="liveCameraRoadTarget" style="font-size:10px; color:#38bdf8; font-family:monospace;">Deteksi Ruas: Standby</div>
+    </div>
+
+    <!-- Bottom Shutter Bar -->
+    <div style="position:absolute; bottom:0; left:0; right:0; height:100px; background:rgba(4,5,8,0.85); z-index:10; display:flex; align-items:center; justify-content:space-around; backdrop-filter:blur(8px);">
+      <button onclick="switchCameraLens()" style="background:transparent; border:none; color:#94a3b8; font-size:22px; cursor:pointer;" title="Balik Kamera">🔄</button>
+      
+      <!-- Tombol Jepret Shutter Bulat (Ala Foto 5) -->
+      <button onclick="capturePhotoFromLiveViewfinder()" class="camera-shutter-ring" title="Ambil Foto" style="width:68px; height:68px; border-radius:50%; border:4px solid #ffffff; background:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0;">
+        <div style="width:54px; height:54px; border-radius:50%; background:#ffffff; transition:transform 0.1s ease;"></div>
+      </button>
+
+      <button onclick="closeLiveCameraViewfinder(); triggerGalleryUploadCapture();" style="background:transparent; border:none; color:#94a3b8; font-size:22px; cursor:pointer;" title="Ambil dari Galeri">🖼️</button>
+    </div>
+
+    <canvas id="geoCaptureCanvas" style="display:none;"></canvas>
+  </div>
+
+  <!-- 11C. MODAL PREVIEW HASIL JEPRETAN & FORM EVIDENCE / AD-HOC (FIX FOTO 2, 3, 4) -->
+  <div id="geoPreviewReportModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); align-items:center; justify-content:center; z-index:100006; padding:12px; backdrop-filter:blur(6px);">
+    <div style="background:#0f172a; border:1px solid #334155; border-radius:10px; width:100%; max-width:480px; max-height:92vh; overflow-y:auto; padding:14px; box-shadow:0 10px 30px rgba(0,0,0,0.9);" class="custom-scrollbar">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid #1e293b; padding-bottom:6px;">
+        <h3 style="color:#00f0ff; font-weight:bold; font-size:13px; font-family:monospace; letter-spacing:1px;">DOKUMENTASI GEOTAGGING</h3>
+        <button onclick="closeGeoPreviewModal()" style="color:#ef4444; background:transparent; border:none; font-size:15px; cursor:pointer; font-weight:bold;">✕</button>
+      </div>
+
+      <img id="geoPreviewStampedImg" style="width:100%; border-radius:6px; border:1px solid #334155; margin-bottom:10px; max-height:210px; object-fit:contain; background:#000;">
+
+      <!-- Status Deteksi WO / Ad-Hoc -->
+      <div id="geoDetectedWoBox" style="background:#1e293b; border:1px solid #3b82f6; border-radius:6px; padding:8px; font-size:11px; margin-bottom:10px;"></div>
+
+      <!-- INPUT RUAS JALAN DINAMIS (Wajib jika Ad-Hoc / Terkunci jika Masuk WO) -->
+      <div id="geoRoadNameGroup" style="margin-bottom:10px;">
+        <label style="font-size:10px; color:#cbd5e1; display:block; margin-bottom:2px; font-weight:bold;">
+          Nama Ruas Jalan: <span style="color:#ef4444;">*</span>
+        </label>
+        <input type="text" id="geoReportRoadName" placeholder="Ketik atau pilih nama ruas jalan..." style="width:100%; background:#090d16; border:1px solid #475569; padding:6px 10px; border-radius:4px; color:#facc15; font-size:12px; font-weight:bold;">
+      </div>
+
+      <!-- Wrapper Pilihan Job (Hanya muncul jika di dalam kotakan WO) -->
+      <div id="geoJobSelectionWrapper" style="margin-bottom:10px;"></div>
+
+      <div style="margin-bottom:8px;">
+        <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:2px;">Keterangan / Temuan Lapangan: <span style="color:#ef4444;">*</span></label>
+        <input type="text" id="geoReportNotes" placeholder="Ketik keterangan pekerjaan atau kondisi jalan..." style="width:100%; background:#090d16; border:1px solid #475569; padding:6px 10px; border-radius:4px; color:#fff; font-size:11px;">
+      </div>
+
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <div style="flex:1;">
+          <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:2px;">Pengawas: <span style="color:#ef4444;">*</span></label>
+          <input type="text" id="geoReportReporter" style="width:100%; background:#090d16; border:1px solid #475569; padding:6px 10px; border-radius:4px; color:#fff; font-size:11px;">
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:2px;">Status:</label>
+          <select id="geoReportStatus" style="width:100%; background:#090d16; border:1px solid #475569; padding:6px 8px; border-radius:4px; color:#fff; font-size:11px;">
+            <option value="PROGRESS">PROGRESS</option>
+            <option value="CLOSED">CLOSED</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:8px; border-top:1px solid #1e293b; padding-top:10px;">
+        <button onclick="executeSaveGeoToGalleryOnly()" style="flex:1; padding:9px; background:#334155; color:#fff; font-weight:bold; border-radius:6px; border:none; font-size:11px; cursor:pointer;">💾 Simpan Saja</button>
+        <button onclick="executeSubmitGeoEvidence()" style="flex:1; padding:9px; background:#00f0ff; color:#000; font-weight:bold; border-radius:6px; border:none; font-size:11px; cursor:pointer;">🚀 Kirim Evidence</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 11D. MODAL DARURAT EXIF KOSONG (HANYA MUNCUL KALO UPLOAD DARI GALERI) -->
+  <div id="geoExifWarningModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); align-items:center; justify-content:center; z-index:100007; padding:16px; backdrop-filter:blur(6px);">
+    <div style="background:#0f172a; border:1px solid #e11d48; border-radius:10px; width:100%; max-width:340px; padding:16px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.8);">
+      <div style="font-size:26px; margin-bottom:6px;">⚠️</div>
+      <h3 style="color:#e11d48; font-weight:bold; font-size:14px; margin-bottom:6px; font-family:monospace;">GPS FOTO TIDAK TERDETEKSI!</h3>
+      <p style="font-size:11px; color:#cbd5e1; line-height:1.4; margin-bottom:14px;">Foto galeri ini tidak memiliki metadata koordinat GPS asli. Silakan pilih opsi di bawah:</p>
+      <button onclick="chooseNewGeoPhoto()" style="width:100%; padding:8px; background:#334155; color:#fff; font-size:11px; font-weight:bold; border-radius:6px; border:none; margin-bottom:6px; cursor:pointer;">Pilih Foto Lain dari Galeri</button>
+      <button onclick="useCurrentLiveGpsFallback()" style="width:100%; padding:8px; background:#eab308; color:#000; font-size:11px; font-weight:bold; border-radius:6px; border:none; margin-bottom:6px; cursor:pointer;">Gunakan Lokasi HP Sekarang</button>
+      <button onclick="pickManualPointOnMapFallback()" style="width:100%; padding:8px; background:#00f0ff; color:#000; font-size:11px; font-weight:bold; border-radius:6px; border:none; margin-bottom:8px; cursor:pointer;">Tunjuk Titik di Peta</button>
+      <button onclick="closeGeoExifWarningModal()" style="background:transparent; color:#94a3b8; border:none; font-size:10px; cursor:pointer;">Batal</button>
     </div>
   </div>
 
