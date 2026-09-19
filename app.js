@@ -342,10 +342,16 @@ function handleIncomingRealtimeSync(payload) {
         if (woItem.markerLayer && workOrderMarkersLayer.hasLayer(woItem.markerLayer)) {
           workOrderMarkersLayer.removeLayer(woItem.markerLayer);
         }
-        const lineId = woItem.linkedLineId;
+        const lineId = data.linkedLineId || woItem.linkedLineId;
         delete allWorkOrders[data.id];
+
+        // Hapus garis sketsa yang terikat secara realtime jika ada
         if (lineId && allDrawLines[lineId]) {
-          renderDrawLineOnMap(allDrawLines[lineId]);
+          const lineItem = allDrawLines[lineId];
+          if (lineItem.layer && workOrderDrawingsLayer.hasLayer(lineItem.layer)) {
+            workOrderDrawingsLayer.removeLayer(lineItem.layer);
+          }
+          delete allDrawLines[lineId];
         }
         renderOutstandingList();
       }
@@ -2329,13 +2335,36 @@ function createOrUpdateMarker(woItem) {
   workOrderMarkersLayer.addLayer(marker);
 }
 
+// FUNGSI HAPUS WORK ORDER (OTOMATIS HAPUS GARIS SKETSA TERIKAT SECARA PERMANEN)
 function deleteCurrentWorkOrder() {
   if (!currentActiveWoId || !allWorkOrders[currentActiveWoId]) return;
-  if (!confirm("Yakin ingin menghapus Work Order ini?")) return;
+  if (!confirm("Yakin ingin menghapus Work Order ini? Garis sketsa yang terikat juga akan otomatis ikut dihapus.")) return;
 
   const woItem = allWorkOrders[currentActiveWoId];
+  const linkedLineId = woItem.linkedLineId;
+
+  // 1. Hapus Marker WO dari peta
   if (woItem.markerLayer) {
     workOrderMarkersLayer.removeLayer(woItem.markerLayer);
+  }
+
+  // 2. Hapus Garis Sketsa yang terikat (jika ada) dari peta, memori, dan cloud
+  if (linkedLineId && allDrawLines[linkedLineId]) {
+    const lineItem = allDrawLines[linkedLineId];
+    if (lineItem.layer && workOrderDrawingsLayer.hasLayer(lineItem.layer)) {
+      workOrderDrawingsLayer.removeLayer(lineItem.layer);
+    }
+    delete allDrawLines[linkedLineId];
+
+    // Trigger hapus garis di database backend GAS
+    fetch(WEB_APP_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      body: JSON.stringify({ action: "DELETE_DRAW_LINE", id: linkedLineId })
+    }).catch(err => console.warn("Sync delete draw err:", err));
+
+    // Broadcast realtime hapus garis ke perangkat pengawas lain
+    broadcastWoSync('DELETE_DRAW_LINE', { id: linkedLineId });
   }
 
   setSyncStatus('updating');
@@ -2346,12 +2375,12 @@ function deleteCurrentWorkOrder() {
   }).then(() => setSyncStatus('updated')).catch(() => setSyncStatus('updated'));
 
   const notifMsg = `${currentNRP} Menghapus WO di ${woItem.road}`;
-  broadcastWoSync('DELETE_WO', { id: currentActiveWoId }, notifMsg);
+  broadcastWoSync('DELETE_WO', { id: currentActiveWoId, linkedLineId: linkedLineId }, notifMsg);
   catatLogKeServer("DELETE WO", `Dihapus oleh: ${currentNRP}, Lokasi: ${woItem.road}`);
   delete allWorkOrders[currentActiveWoId];
 
   renderOutstandingList();
-  alert("Work Order berhasil dihapus!");
+  alert("Work Order beserta garis sketsanya berhasil dihapus!");
   closeWoModal();
 }
 
@@ -2864,7 +2893,7 @@ async function loadCloudWorkOrders() {
 
 // ==========================================================
 // 7. HELPER WEBGIS, SILENT GPS TRACKER & LOCATE ME (RE-CENTER)
-// ==========================================================
+// ==========================================
 function startSilentGpsTracking() {
   if (!navigator.geolocation) return;
   if (watchId !== null) navigator.geolocation.clearWatch(watchId);
@@ -4454,7 +4483,7 @@ async function renderWatermarkedEvidence(imgElement, meta) {
   // Garis Silang Crosshair
   ctx.beginPath();
   ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
-  ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
+  ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy);
   ctx.stroke();
 
   // Efek Kerucut Sonar Sweep
