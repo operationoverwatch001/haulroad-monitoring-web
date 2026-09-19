@@ -12,10 +12,8 @@ const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, 
   }
 });
 
-// URL Web App Google Apps Script Akun Kantor
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycby59dwiJ6H78OiXH_NIIvLj6mS6qwGH0zKa-7Pf70XYAoiQEXoeTK37Hav6zLkVIxUH/exec";
 
-// Kunci Sesi 30 Hari & Log 48 Jam
 const SESSION_STORAGE_KEY = "overwatch_user_session";
 const NOTIF_LOGS_KEY = "overwatch_notification_logs";
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -24,14 +22,12 @@ const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 let currentNRP = "SUPABASE_USER";
 let currentUserRole = "viewer"; 
 
-// Navigasi & Tab State
-let currentMainTab = 'map'; // 'map' atau 'parameter'
-let currentParam = 'grade'; // 'grade', 'lebar', atau 'crossfall'
+let currentMainTab = 'map';
+let currentParam = 'grade';
 let currentTab = 'grade';
-let isAnnotationActive = false; // Default Anotasi Label: OFF
+let isAnnotationActive = false;
 
-// State Data Tanggal & Survey
-let calendarFilterDate = null; // Default null = Hari ini WITA
+let calendarFilterDate = null;
 let dataUpdateDate = localStorage.getItem('overwatch_data_update_date') || "17-09-2026";
 
 let monitoringData = [];
@@ -55,11 +51,10 @@ let selectedStartMeter = null;
 let selectedEndMeter = null;
 let selectedRoadTarget = "";
 
-// State Mode Work Order & Multi-User Cloud Storage
 let isWorkOrderModeActive = false;
-let activeWoTool = null; // 'mark' atau 'draw'
+let activeWoTool = null;
 let activeWoFeatureData = null;
-let currentWoMode = 'create'; // 'create', 'edit', atau 'view'
+let currentWoMode = 'create';
 let currentActiveWoId = null;
 let allWorkOrders = {}; 
 let allDrawLines = {};
@@ -67,50 +62,41 @@ let allDrawLines = {};
 let workOrderMarkersLayer = L.layerGroup(); 
 let workOrderDrawingsLayer = L.layerGroup(); 
 
-// Variabel Mouse-Drag & Click-to-Point Freehand Draw
 let isDrawingActive = false;
 let currentDrawPoints = [];
 let tempDrawPolyline = null;
 let selectedLineForWo = null; 
 let lastTouchDownTime = 0;
 let finishDrawBtn = null;
-const drawSvgRenderer = L.svg(); // Renderer SVG instan anti-lag kanvas
+const drawSvgRenderer = L.svg();
 
-// State Antrean Akumulasi Multi-Foto & Update Per-Job
 let mainUploadFilesQueue = [];
 let jobUpdateFilesQueue = [];
 let activeJobUpdateIndex = null;
 let currentTimelineHistory = [];
 let notificationLogs = [];
 
-// State Realtime Silent GPS Tracker & Re-Center
 let userMarker = null;
 let userAccuracyCircle = null;
 let currentUserLatLng = null;
 let watchId = null;
 
-// State Bottom Panel Memory
 let isPanelOpen = false;
 let lastPanelHeight = 220;
 let toastTimeout = null;
 let syncStatusTimeout = null;
-
-// Channel Realtime Supabase
 let realtimeChannel = null;
 
 Chart.register(ChartDataLabels);
 
-// Engine Canvas Mandiri untuk Optimasi Performa Maksimal
 const canvasRenderer = L.canvas({ padding: 0.35 });
 
-// Inisialisasi Peta Leaflet (Canvas Driven)
 const map = L.map('map', { 
   zoomControl: false,
   preferCanvas: true,
   renderer: canvasRenderer
 }).setView([-2.169338, 115.572115], 15);
 
-// Satelit ESRI Dunia diberi zIndex 1
 const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
   zIndex: 1,
@@ -133,14 +119,13 @@ if (pmtilesLib) {
     const p = new pmtilesLib.PMTiles(PMTILES_URL);
     protocol.add(p);
 
-    // Orthophoto Drone: Diberi zIndex 10, buffer penahan memori, dan batas native zoom 19
     orthoLayer = pmtilesLib.leafletRasterLayer(p, {
       maxZoom: 22,
-      maxNativeZoom: 19,        // Disesuaikan pas ke batas convert 14..19 (anti-clipping)
+      maxNativeZoom: 19,
       zIndex: 10,
-      updateWhenZooming: false, // Tahan request kepingan baru selama animasi zoom berlangsung
-      updateWhenIdle: true,     // Request kepingan baru HANYA jika gerakan zoom/pan sudah diam
-      keepBuffer: 8,            // Naikkan buffer dari 6 ke 8 biar kepingan tile di HP makin stabil
+      updateWhenZooming: false,
+      updateWhenIdle: true,
+      keepBuffer: 8,
       attribution: 'Drone Orthophoto'
     }).addTo(map);
 
@@ -345,7 +330,6 @@ function handleIncomingRealtimeSync(payload) {
         const lineId = data.linkedLineId || woItem.linkedLineId;
         delete allWorkOrders[data.id];
 
-        // Hapus garis sketsa yang terikat secara realtime jika ada
         if (lineId && allDrawLines[lineId]) {
           const lineItem = allDrawLines[lineId];
           if (lineItem.layer && workOrderDrawingsLayer.hasLayer(lineItem.layer)) {
@@ -600,7 +584,6 @@ function flyToOutstandingWo(woId) {
   }
 }
 
-// Drawer Legenda Dinamis
 function toggleLegendDrawer() {
   const drawer = document.getElementById('legendDrawer');
   if (!drawer) return;
@@ -727,11 +710,7 @@ function sanitizeDrawLineForBroadcast(line) {
 // 2. SESI LOGIN 30 HARI, AUTH & LOGOUT TOTAL
 // ==========================================
 function saveUserSession(nrp, role) {
-  const sessionData = {
-    nrp: nrp,
-    role: role,
-    loginTime: Date.now()
-  };
+  const sessionData = { nrp: nrp, role: role, loginTime: Date.now() };
   localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionData));
 }
 
@@ -752,10 +731,8 @@ function checkStoredSession() {
   }
 }
 
-// FUNGSI LOGOUT PAKSA & RESET TOKEN 30 HARI
 async function logoutUser() {
   if (!confirm("Yakin ingin logout dari Overwatch? Sesi 30 hari akan direset.")) return;
-
   try {
     localStorage.removeItem(SESSION_STORAGE_KEY);
     await _supabase.auth.signOut();
@@ -905,11 +882,7 @@ window.requestOtp = async function() {
   let isAllowed = email.endsWith('@saptaindra.co.id');
 
   if (!isAllowed) {
-    const { data, error } = await _supabase
-      .from('Whitelist')
-      .select('Email')
-      .eq('Email', email);
-
+    const { data, error } = await _supabase.from('Whitelist').select('Email').eq('Email', email);
     if (error) {
       statusMsg.innerText = 'Error DB: ' + error.message;
       return;
@@ -1134,7 +1107,7 @@ function renderMapOverviewSummary() {
 }
 
 // ==========================================
-// 2D. KONTROL ANOTASI LABEL (DEFAULT: OFF)
+// 2D. KONTROL ANOTASI LABEL
 // ==========================================
 function toggleAnnotationVisibility() {
   isAnnotationActive = !isAnnotationActive;
@@ -1255,9 +1228,7 @@ function createFloatingFinishDrawBtn() {
     cursor: pointer;
     display: none;
   `;
-  finishDrawBtn.onclick = () => {
-    finalizeDrawLine();
-  };
+  finishDrawBtn.onclick = () => { finalizeDrawLine(); };
   document.body.appendChild(finishDrawBtn);
 }
 
@@ -2343,12 +2314,10 @@ function deleteCurrentWorkOrder() {
   const woItem = allWorkOrders[currentActiveWoId];
   const linkedLineId = woItem.linkedLineId;
 
-  // 1. Hapus Marker WO dari peta
   if (woItem.markerLayer) {
     workOrderMarkersLayer.removeLayer(woItem.markerLayer);
   }
 
-  // 2. Hapus Garis Sketsa yang terikat (jika ada) dari peta, memori, dan cloud
   if (linkedLineId && allDrawLines[linkedLineId]) {
     const lineItem = allDrawLines[linkedLineId];
     if (lineItem.layer && workOrderDrawingsLayer.hasLayer(lineItem.layer)) {
@@ -2356,14 +2325,12 @@ function deleteCurrentWorkOrder() {
     }
     delete allDrawLines[linkedLineId];
 
-    // Trigger hapus garis di database backend GAS
     fetch(WEB_APP_URL, {
       method: 'POST',
       mode: 'no-cors',
       body: JSON.stringify({ action: "DELETE_DRAW_LINE", id: linkedLineId })
     }).catch(err => console.warn("Sync delete draw err:", err));
 
-    // Broadcast realtime hapus garis ke perangkat pengawas lain
     broadcastWoSync('DELETE_DRAW_LINE', { id: linkedLineId });
   }
 
@@ -2893,7 +2860,7 @@ async function loadCloudWorkOrders() {
 
 // ==========================================================
 // 7. HELPER WEBGIS, SILENT GPS TRACKER & LOCATE ME (RE-CENTER)
-// ==========================================
+// ==========================================================
 function startSilentGpsTracking() {
   if (!navigator.geolocation) return;
   if (watchId !== null) navigator.geolocation.clearWatch(watchId);
@@ -2920,7 +2887,6 @@ function startSilentGpsTracking() {
   );
 }
 
-// FUNGSI LOCATE USER: RE-CENTER SAAT DIKLIK (TANPA KUNCI VIEWPORT)
 function locateUser() {
   const gpsBtn = document.querySelector('.gps-btn');
   if (gpsBtn) {
@@ -3191,8 +3157,40 @@ function getWidthSliceStyle(feature) {
 }
 
 // ==========================================
-// 7C. CROSSFALL SPLIT LAYER
+// 7C. CROSSFALL SPLIT LAYER & PENANDA A - B
 // ==========================================
+function createCrossfallAbMarker(latlng, letter) {
+  return L.marker(latlng, {
+    icon: L.divIcon({
+      className: 'crossfall-ab-marker',
+      html: `
+        <div style="
+          background: #e11d48;
+          color: #ffffff;
+          font-weight: 900;
+          font-family: monospace, sans-serif;
+          font-size: 13px;
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          border: 2px solid #ffffff;
+          box-shadow: 0 0 10px rgba(225, 29, 72, 0.9), 0 2px 6px rgba(0,0,0,0.8);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          line-height: 1;
+          user-select: none;
+        ">${letter}</div>
+      `,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11]
+    }),
+    interactive: false,
+    zIndexOffset: 2500
+  });
+}
+
 function renderCrossfallSplitLayer() {
   crossfallVisualLayer.clearLayers();
   if (currentMainTab !== 'parameter' || currentParam !== 'crossfall') return;
@@ -3210,19 +3208,20 @@ function renderCrossfallSplitLayer() {
     const pt1 = L.latLng(coords[0][1], coords[0][0]);
     const pt2 = L.latLng(coords[1][1], coords[1][0]);
 
-    if (!bounds.contains(pt1) && !bounds.contains(pt2)) return;
-
     const props = feature.properties || {};
     const rawSta = props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || 0);
     const meterVal = parseMeterSTA(rawSta);
     const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
+    const isSelected = isMeterSelected(meterVal, roadVal);
+
+    if (!isSelected && !bounds.contains(pt1) && !bounds.contains(pt2)) return;
+
     const mid = L.latLng((pt1.lat + pt2.lat) / 2, (pt1.lng + pt2.lng) / 2);
 
     const row = monitoringData.find(d => (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.toLowerCase() && parseMeterSTA(d["STA"]) === meterVal);
     const cfL = row ? Math.abs(parseFloat(row["Crossfall Kiri (%)"]) || 0) : 0;
     const cfR = row ? Math.abs(parseFloat(row["Crossfall Kanan (%)"]) || 0) : 0;
 
-    const isSelected = isMeterSelected(meterVal, roadVal);
     let colorLeft = (cfL >= 2.0 && cfL <= 4.0) ? "#22c55e" : "#e11d48";
     let colorRight = (cfR >= 2.0 && cfR <= 4.0) ? "#22c55e" : "#e11d48";
 
@@ -3253,6 +3252,13 @@ function renderCrossfallSplitLayer() {
 
     crossfallVisualLayer.addLayer(lineLeft);
     crossfallVisualLayer.addLayer(lineRight);
+
+    if (isSelected) {
+      const markerA = createCrossfallAbMarker(pt1, 'A');
+      const markerB = createCrossfallAbMarker(pt2, 'B');
+      crossfallVisualLayer.addLayer(markerA);
+      crossfallVisualLayer.addLayer(markerB);
+    }
 
     if (currentZoom >= 16) {
       const keyTarget = `${roadVal}_${formatKeSTA(meterVal)}`;
@@ -3422,6 +3428,7 @@ function handleFeatureClick(feature) {
     } else if (currentParam === 'crossfall') {
       selectedStartMeter = meterVal;
       selectedEndMeter = null;
+      selectedRoadTarget = activeRoad;
       refreshVisibleLayers();
       
       const sta = formatKeSTA(meterVal);
@@ -3828,6 +3835,16 @@ function renderLebarSummary() {
   `;
 }
 
+function onCrossSectionStaChange(staVal) {
+  const meterVal = parseMeterSTA(staVal);
+  selectedStartMeter = meterVal;
+  selectedEndMeter = null;
+  selectedRoadTarget = activeRoad;
+  refreshVisibleLayers();
+  drawCrossSectionChart(staVal);
+  catatLogKeServer('VIEW_STA', 'Melihat Cross Section ' + activeRoad + ' STA ' + staVal);
+}
+
 function renderTabContent() {
   if (currentMainTab === 'map') {
     renderMapOverviewSummary();
@@ -3855,7 +3872,7 @@ function renderTabContent() {
     panelBody.innerHTML = `
       <div style="font-size:11px; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
         <span>Pilih STA:</span>
-        <select id="select-sta-cs" onchange="drawCrossSectionChart(this.value); catatLogKeServer('VIEW_STA', 'Melihat Cross Section ' + activeRoad + ' STA ' + this.value);" style="font-size:11px; padding:2px 6px;">
+        <select id="select-sta-cs" onchange="onCrossSectionStaChange(this.value);" style="font-size:11px; padding:2px 6px;">
           ${roadData.map(d => `<option value="${d['STA']}">${d['STA']}</option>`).join('')}
         </select>
       </div>
@@ -4010,9 +4027,9 @@ function drawCrossSectionChart(staTarget) {
   const maxSpan = Math.max(Math.abs(offsetLeft), Math.abs(offsetRight), 15) + 2;
 
   const scatterData = [
-    { x: offsetLeft, y: parseFloat(ptLeft["Elevasi_RL"]), label: `Tepi Kiri (${offsetLeft.toFixed(1)}m)` },
+    { x: offsetLeft, y: parseFloat(ptLeft["Elevasi_RL"]), label: `[A] Tepi Kiri (${offsetLeft.toFixed(1)}m)` },
     { x: 0, y: elevAs, label: `As Jalan (0.0m)` },
-    { x: offsetRight, y: parseFloat(ptRight["Elevasi_RL"]), label: `Tepi Kanan (+${offsetRight.toFixed(1)}m)` }
+    { x: offsetRight, y: parseFloat(ptRight["Elevasi_RL"]), label: `[B] Tepi Kanan (+${offsetRight.toFixed(1)}m)` }
   ];
 
   const monRow = monitoringData.find(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase() && d["STA"] === staTarget);
@@ -4052,15 +4069,15 @@ function drawCrossSectionChart(staTarget) {
           font: { size: 10, weight: 'bold' },
           color: function(context) {
             const idx = context.dataIndex;
-            if (idx === 0) { const val = parseFloat(cfL); return (val < 2.0 || val > 4.0) ? '#c00000' : '#1f4e79'; }
-            if (idx === 2) { const val = parseFloat(cfR); return (val < 2.0 || val > 4.0) ? '#c00000' : '#1f4e79'; }
+            if (idx === 0) { const val = parseFloat(cfL); return (val < 2.0 || val > 4.0) ? '#e11d48' : '#1f4e79'; }
+            if (idx === 2) { const val = parseFloat(cfR); return (val < 2.0 || val > 4.0) ? '#e11d48' : '#1f4e79'; }
             return '#1f4e79';
           },
           formatter: function(value, context) {
             const idx = context.dataIndex;
-            if (idx === 0) return `Kemiringan: ${cfL}%`;
-            if (idx === 1) return `Elevasi: ${elevAs.toFixed(2)}m`;
-            if (idx === 2) return `Kemiringan: ${cfR}%`;
+            if (idx === 0) return ['[ A ]', `Kemiringan: ${cfL}%`];
+            if (idx === 1) return [`Elevasi: ${elevAs.toFixed(2)}m`];
+            if (idx === 2) return ['[ B ]', `Kemiringan: ${cfR}%`];
             return '';
           }
         }
@@ -4404,7 +4421,6 @@ function loadImageAsync(src) {
   });
 }
 
-// CANVAS WATERMARKING ANTI-KEPOTONG DENGAN RADAR TACTICAL FULL GRAPHIC
 async function renderWatermarkedEvidence(imgElement, meta) {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
@@ -4418,7 +4434,6 @@ async function renderWatermarkedEvidence(imgElement, meta) {
 
   const isPortrait = h > w;
 
-  // 1. Logo Perusahaan di Pojok Kanan Atas
   try {
     const logoImg = await loadImageAsync('./Logo_Alamtri.png');
     const logoW = Math.round(w * (isPortrait ? 0.20 : 0.15));
@@ -4432,7 +4447,6 @@ async function renderWatermarkedEvidence(imgElement, meta) {
     console.warn("File Logo_Alamtri.png standby:", err.message);
   }
 
-  // 2. Perhitungan Proporsional Geometri Ribbon Bawah (Anti-Kepotong)
   const mapBoxX = Math.round(w * 0.025);
   const mapBoxSize = Math.max(120, Math.round(w * (isPortrait ? 0.26 : 0.20)));
   const textX = mapBoxX + mapBoxSize + Math.round(w * 0.025);
@@ -4447,7 +4461,6 @@ async function renderWatermarkedEvidence(imgElement, meta) {
   const ribbonY = h - ribbonH;
   const mapBoxY = ribbonY + Math.round((ribbonH - mapBoxSize) / 2);
 
-  // Background Ribbon Gelap Solid
   ctx.fillStyle = 'rgba(10, 15, 29, 0.92)';
   ctx.fillRect(0, ribbonY, w, ribbonH);
 
@@ -4458,20 +4471,17 @@ async function renderWatermarkedEvidence(imgElement, meta) {
   ctx.lineTo(w, ribbonY);
   ctx.stroke();
 
-  // 3. Mini Map Radar di Pojok Kiri Bawah (Tactical Radar Full Graphic)
   ctx.fillStyle = '#050a14';
   ctx.fillRect(mapBoxX, mapBoxY, mapBoxSize, mapBoxSize);
   ctx.strokeStyle = '#00f0ff';
   ctx.lineWidth = Math.max(1.5, Math.round(mapBoxSize * 0.012));
   ctx.strokeRect(mapBoxX, mapBoxY, mapBoxSize, mapBoxSize);
 
-  // Tactical Radar Grafis
   const cx = mapBoxX + mapBoxSize / 2;
   const cy = mapBoxY + mapBoxSize / 2;
   const r = mapBoxSize / 2 - Math.max(6, Math.round(mapBoxSize * 0.07));
   const radarLineW = Math.max(1.5, Math.round(mapBoxSize * 0.012));
 
-  // Lingkaran Konsentris Sonar Radar
   ctx.strokeStyle = 'rgba(0, 240, 255, 0.65)';
   ctx.lineWidth = radarLineW;
   ctx.beginPath();
@@ -4480,13 +4490,11 @@ async function renderWatermarkedEvidence(imgElement, meta) {
   ctx.arc(cx, cy, r * 0.33, 0, Math.PI * 2);
   ctx.stroke();
 
-  // Garis Silang Crosshair
   ctx.beginPath();
   ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
   ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy);
   ctx.stroke();
 
-  // Efek Kerucut Sonar Sweep
   const sweepGrad = ctx.createRadialGradient(cx, cy, 2, cx, cy, r);
   sweepGrad.addColorStop(0, 'rgba(0, 240, 255, 0.45)');
   sweepGrad.addColorStop(1, 'rgba(0, 240, 255, 0.03)');
@@ -4497,14 +4505,12 @@ async function renderWatermarkedEvidence(imgElement, meta) {
   ctx.closePath();
   ctx.fill();
 
-  // Arah Mata Angin Utara (N)
   ctx.fillStyle = '#facc15';
   ctx.font = `bold ${Math.max(9, Math.round(mapBoxSize * 0.09))}px monospace`;
   ctx.textAlign = 'center';
   ctx.fillText('▲ N', cx, cy - r + Math.round(mapBoxSize * 0.11));
   ctx.textAlign = 'left';
 
-  // Pin Titik Pengawas di Tengah Radar
   const centerRadarX = mapBoxX + mapBoxSize / 2;
   const centerRadarY = mapBoxY + mapBoxSize / 2;
   const pinRadius = Math.max(4, Math.round(mapBoxSize * 0.035));
@@ -4517,12 +4523,10 @@ async function renderWatermarkedEvidence(imgElement, meta) {
   ctx.lineWidth = Math.max(1.5, Math.round(pinRadius * 0.4));
   ctx.stroke();
 
-  // Header Teks Radar
   ctx.fillStyle = '#00f0ff';
   ctx.font = `bold ${Math.max(9, Math.round(mapBoxSize * 0.075))}px monospace`;
   ctx.fillText("RADAR OVERWATCH", mapBoxX + 6, mapBoxY + Math.round(mapBoxSize * 0.11));
 
-  // 4. Data Teks Telemetri di Pojok Kanan
   let curY = ribbonY + Math.round(baseFontSize * 1.35) + 6;
 
   ctx.fillStyle = '#ffffff';
@@ -4550,7 +4554,6 @@ async function renderWatermarkedEvidence(imgElement, meta) {
   return canvas.toDataURL('image/jpeg', 0.88);
 }
 
-// Inisialisasi Modul Kamera Native
 function initGeotaggingCameraModule() {
   let takeInput = document.getElementById('geoInputTakeFile');
   if (!takeInput) {
@@ -4598,7 +4601,6 @@ function triggerGalleryUploadCapture() {
   if (input) input.click();
 }
 
-// PEMOTRETAN LANGSUNG DENGAN SEAMLESS GPS
 async function handleCameraNativeFileChosen(e) {
   const file = e.target.files ? e.target.files[0] : null;
   if (!file) return;
@@ -4652,7 +4654,6 @@ async function handleCameraNativeFileChosen(e) {
   proceedWithPhotoLocation(lat, lng, takenTime, currentRawImageElement);
 }
 
-// UPLOAD DARI GALERI HP
 async function handleGalleryFileChosen(e) {
   const file = e.target.files ? e.target.files[0] : null;
   if (!file) return;
@@ -4730,7 +4731,6 @@ function closeGeoExifWarningModal() {
   if (modal) modal.style.display = 'none';
 }
 
-// PEMROSESAN LOKASI & FORM DINAMIS (WAKTU & RUAS JALAN EDITABLE)
 async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   const latlng = { lat: lat, lng: lng };
   const matchedWo = findNearestActiveWo(latlng, 60);
@@ -4764,13 +4764,11 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   if (repInput) repInput.value = currentNRP;
   if (notesInput) notesInput.value = "";
 
-  // Inisialisasi Tanggal & Jam Default Terupdate (WITA)
   if (dateInput) {
     const currentNowLocal = getNowDateTimeLocalWita();
     dateInput.max = currentNowLocal;
     dateInput.value = currentNowLocal;
     currentCapturedMetadata.time = formatDateTimeLocalToWita(currentNowLocal);
-    // Update watermark agar sinkron dengan waktu default input form
     currentWatermarkedBase64 = await renderWatermarkedEvidence(imgElement, currentCapturedMetadata);
     if (imgElem) imgElem.src = currentWatermarkedBase64;
   }
@@ -4822,7 +4820,6 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   if (previewModal) previewModal.style.display = 'flex';
 }
 
-// HANDLER KETIKA TANGGAL / JAM DIUBAH PADA FORM GEOTAGGING (LIVE UPDATE WATERMARK)
 async function handleGeoDateTimeChange() {
   const dateInput = document.getElementById('geoReportDateTime');
   const imgElem = document.getElementById('geoPreviewStampedImg');
@@ -4831,7 +4828,6 @@ async function handleGeoDateTimeChange() {
   const chosenWita = formatDateTimeLocalToWita(dateInput.value);
   currentCapturedMetadata.time = chosenWita;
 
-  // Render ulang watermark dengan waktu yang baru dipilih
   currentWatermarkedBase64 = await renderWatermarkedEvidence(currentRawImageElement, currentCapturedMetadata);
   if (imgElem) {
     imgElem.src = currentWatermarkedBase64;
@@ -4861,7 +4857,6 @@ function closeGeoPreviewModal() {
   currentRawImageElement = null;
 }
 
-// SIMPAN SAJA KE GALERI HP
 async function executeSaveGeoToGalleryOnly() {
   if (!currentWatermarkedBase64 || !currentCapturedMetadata) return;
   const roadInput = document.getElementById('geoReportRoadName');
@@ -4880,7 +4875,6 @@ async function executeSaveGeoToGalleryOnly() {
   closeGeoPreviewModal();
 }
 
-// SUBMIT EVIDENCE / AD-HOC HAZARD KE SPREADSHEET & WEBGIS
 async function executeSubmitGeoEvidence() {
   if (!currentCapturedMetadata || !currentRawImageElement) return;
 
@@ -5012,7 +5006,6 @@ async function executeSubmitGeoEvidence() {
   closeGeoPreviewModal();
 }
 
-// Expose fungsi ke scope window
 window.toggleOutstandingDrawer = toggleOutstandingDrawer;
 window.flyToOutstandingWo = flyToOutstandingWo;
 window.renderOutstandingList = renderOutstandingList;
@@ -5065,7 +5058,6 @@ window.handlePanelHeaderClick = handlePanelHeaderClick;
 window.removeMainQueueFile = removeMainQueueFile;
 window.removeJobQueueFile = removeJobQueueFile;
 
-// Expose Geotagging Functions
 window.openCameraActionChooser = openCameraActionChooser;
 window.closeCameraActionChooser = closeCameraActionChooser;
 window.triggerDirectCameraCapture = triggerDirectCameraCapture;
@@ -5078,10 +5070,8 @@ window.useCurrentLiveGpsFallback = useCurrentLiveGpsFallback;
 window.pickManualPointOnMapFallback = pickManualPointOnMapFallback;
 window.closeGeoExifWarningModal = closeGeoExifWarningModal;
 window.handleGeoDateTimeChange = handleGeoDateTimeChange;
+window.onCrossSectionStaChange = onCrossSectionStaChange;
 
-// ==========================================
-// 8. DAFTARKAN PWA SERVICE WORKER
-// ==========================================
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then((reg) => {
