@@ -4730,19 +4730,20 @@ function closeGeoExifWarningModal() {
   if (modal) modal.style.display = 'none';
 }
 
-// PEMROSESAN LOKASI & FORM DINAMIS (RUAS JALAN EDITABLE)
+// PEMROSESAN LOKASI & FORM DINAMIS (WAKTU & RUAS JALAN EDITABLE)
 async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   const latlng = { lat: lat, lng: lng };
   const matchedWo = findNearestActiveWo(latlng, 60);
   const photoId = generatePhotoId();
   
   const initialRoad = matchedWo ? matchedWo.road : "";
+  const initialTime = takenTime || UtilitiesFormatNowWita();
 
   currentCapturedMetadata = {
     photoId: photoId,
     latlng: latlng,
     road: initialRoad,
-    time: takenTime,
+    time: initialTime,
     reporter: currentNRP,
     matchedWo: matchedWo,
     notes: ""
@@ -4757,10 +4758,22 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   const notesInput = document.getElementById('geoReportNotes');
   const woBox = document.getElementById('geoDetectedWoBox');
   const jobWrap = document.getElementById('geoJobSelectionWrapper');
+  const dateInput = document.getElementById('geoReportDateTime');
 
   if (imgElem) imgElem.src = currentWatermarkedBase64;
   if (repInput) repInput.value = currentNRP;
   if (notesInput) notesInput.value = "";
+
+  // Inisialisasi Tanggal & Jam Default Terupdate (WITA)
+  if (dateInput) {
+    const currentNowLocal = getNowDateTimeLocalWita();
+    dateInput.max = currentNowLocal;
+    dateInput.value = currentNowLocal;
+    currentCapturedMetadata.time = formatDateTimeLocalToWita(currentNowLocal);
+    // Update watermark agar sinkron dengan waktu default input form
+    currentWatermarkedBase64 = await renderWatermarkedEvidence(imgElement, currentCapturedMetadata);
+    if (imgElem) imgElem.src = currentWatermarkedBase64;
+  }
 
   if (roadInput) {
     roadInput.readOnly = false;
@@ -4809,6 +4822,22 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   if (previewModal) previewModal.style.display = 'flex';
 }
 
+// HANDLER KETIKA TANGGAL / JAM DIUBAH PADA FORM GEOTAGGING (LIVE UPDATE WATERMARK)
+async function handleGeoDateTimeChange() {
+  const dateInput = document.getElementById('geoReportDateTime');
+  const imgElem = document.getElementById('geoPreviewStampedImg');
+  if (!dateInput || !dateInput.value || !currentCapturedMetadata || !currentRawImageElement) return;
+
+  const chosenWita = formatDateTimeLocalToWita(dateInput.value);
+  currentCapturedMetadata.time = chosenWita;
+
+  // Render ulang watermark dengan waktu yang baru dipilih
+  currentWatermarkedBase64 = await renderWatermarkedEvidence(currentRawImageElement, currentCapturedMetadata);
+  if (imgElem) {
+    imgElem.src = currentWatermarkedBase64;
+  }
+}
+
 function fileToImageElement(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -4836,6 +4865,13 @@ function closeGeoPreviewModal() {
 async function executeSaveGeoToGalleryOnly() {
   if (!currentWatermarkedBase64 || !currentCapturedMetadata) return;
   const roadInput = document.getElementById('geoReportRoadName');
+  const dateInput = document.getElementById('geoReportDateTime');
+
+  if (dateInput && dateInput.value) {
+    currentCapturedMetadata.time = formatDateTimeLocalToWita(dateInput.value);
+    currentWatermarkedBase64 = await renderWatermarkedEvidence(currentRawImageElement, currentCapturedMetadata);
+  }
+
   const cleanRoad = roadInput && roadInput.value.trim() ? roadInput.value.trim() : "Area_Tambang";
   const filename = `${currentCapturedMetadata.photoId}_${cleanRoad.replace(/\s+/g, '_')}.jpg`;
   
@@ -4853,6 +4889,7 @@ async function executeSubmitGeoEvidence() {
   const repInput = document.getElementById('geoReportReporter');
   const statusSelect = document.getElementById('geoReportStatus');
   const jobSelect = document.getElementById('geoSelectedJobIndex');
+  const dateInput = document.getElementById('geoReportDateTime');
 
   const finalRoadName = roadInput ? roadInput.value.trim() : "";
   const notes = notesInput ? notesInput.value.trim() : "";
@@ -4874,6 +4911,10 @@ async function executeSubmitGeoEvidence() {
     alert("Nama / NRP Pengawas wajib diisi!");
     if (repInput) repInput.focus();
     return;
+  }
+
+  if (dateInput && dateInput.value) {
+    currentCapturedMetadata.time = formatDateTimeLocalToWita(dateInput.value);
   }
 
   currentCapturedMetadata.road = finalRoadName;
@@ -4907,6 +4948,7 @@ async function executeSubmitGeoEvidence() {
       status: status,
       notes: notes,
       reporter: reporter,
+      timestamp: currentCapturedMetadata.time,
       photoId: currentCapturedMetadata.photoId,
       images: imagePayload
     });
@@ -5035,6 +5077,7 @@ window.chooseNewGeoPhoto = chooseNewGeoPhoto;
 window.useCurrentLiveGpsFallback = useCurrentLiveGpsFallback;
 window.pickManualPointOnMapFallback = pickManualPointOnMapFallback;
 window.closeGeoExifWarningModal = closeGeoExifWarningModal;
+window.handleGeoDateTimeChange = handleGeoDateTimeChange;
 
 // ==========================================
 // 8. DAFTARKAN PWA SERVICE WORKER
