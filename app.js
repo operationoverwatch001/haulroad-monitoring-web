@@ -2016,7 +2016,6 @@ function confirmEvidenceStatusAndSubmit() {
   } else if (pendingStatusTarget === 'JOB_UPDATE') {
     executeSubmitJobUpdateWithStatus(chosenStatus);
   }
-}
 
 async function submitWorkOrder() {
   const roadInput = document.getElementById('woRoadName');
