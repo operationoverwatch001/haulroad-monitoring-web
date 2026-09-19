@@ -28,24 +28,25 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Library Excel, Chart, Leaflet, jsPDF, html2canvas -->
+  <!-- Library Excel, Chart, Leaflet, jsPDF, AutoTable, html2canvas -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
-  <!-- Engine PMTiles untuk Citra Drone Cloud-Optimized (Upgrade ke v3.2.0 Stable) -->
+  <!-- Engine PMTiles untuk Citra Drone Cloud-Optimized -->
   <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
 
+  <!-- jsPDF & Plugin AutoTable untuk Render Format Tabel SIS -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
-  <!-- Library EXIFR (Ekstraksi Metadata GPS & Waktu Foto Kamera HP) -->
+  <!-- Library EXIFR (Ekstraksi Metadata GPS & Waktu Foto HP) -->
   <script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js"></script>
 
-  <!-- SUPABASE JS CLIENT LIBRARY -->
+  <!-- SUPABASE JS CLIENT & Tailwind CSS -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- Tailwind CSS khusus styling komponen fleksibel -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
@@ -60,7 +61,6 @@
       position: relative;
     }
 
-    /* PETA LEAFLET */
     #map {
       position: absolute;
       top: 0;
@@ -73,7 +73,6 @@
       background: #040508;
     }
 
-    /* TOMBOL TOGGLE BASEMAP SATELIT */
     #btnToggleBasemap {
       position: fixed;
       top: 65px;
@@ -96,7 +95,6 @@
       border-color: #38bdf8;
     }
 
-    /* CONTAINER GROUP FLOATING KANAN BAWAH DINAMIS */
     .floating-action-group {
       position: absolute;
       right: 16px;
@@ -109,7 +107,6 @@
       transition: bottom 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
-    /* SUB-MENU TOMBOL (MARK, DRAW & SELESAI) */
     .wo-submenu-container {
       display: none;
       flex-direction: column;
@@ -152,7 +149,6 @@
       box-shadow: 0 0 10px rgba(0, 240, 255, 0.7);
     }
 
-    /* TOMBOL SELESAI GAMBAR KHUSUS */
     .finish-draw-btn {
       width: auto !important;
       height: 28px !important;
@@ -165,12 +161,7 @@
       font-size: 9px !important;
       letter-spacing: 0.5px;
     }
-    .finish-draw-btn:hover {
-      background: #16a34a !important;
-      transform: scale(1.05);
-    }
 
-    /* TOMBOL UTAMA PLUS (+) INSPECTOR / ADMIN */
     .wo-plus-floating-btn {
       width: 38px;
       height: 38px;
@@ -188,12 +179,7 @@
       transition: all 0.2s ease;
       line-height: 1;
     }
-    .wo-plus-floating-btn:hover {
-      background: #ff2b54;
-      transform: scale(1.1);
-    }
 
-    /* TOMBOL BULAT UTAMA MODE WO */
     .wo-floating-btn {
       width: 46px;
       height: 46px;
@@ -214,12 +200,6 @@
       text-align: center;
       line-height: 1.1;
     }
-    .wo-floating-btn:hover {
-      background: #1e293b;
-      border-color: #00f0ff;
-      color: #00f0ff;
-      transform: scale(1.05);
-    }
     .wo-floating-btn.active {
       background: #00f0ff;
       color: #000000;
@@ -227,7 +207,6 @@
       box-shadow: 0 0 15px rgba(0, 240, 255, 0.7);
     }
 
-    /* TOMBOL KONTROL KAMERA, ANOTASI & GPS */
     .camera-btn, .annotation-btn, .gps-btn {
       width: 40px;
       height: 40px;
@@ -243,19 +222,7 @@
       cursor: pointer;
       transition: all 0.2s ease;
     }
-    .camera-btn:hover, .annotation-btn:hover, .gps-btn:hover {
-      background: #1e293b;
-      border-color: #00f0ff;
-      transform: scale(1.08);
-    }
-    .camera-btn:active, .annotation-btn.active {
-      background: #00f0ff;
-      color: #000;
-      border-color: #fff;
-      box-shadow: 0 0 10px rgba(0,240,255,0.7);
-    }
 
-    /* TOMBOL SIDEBAR KIRI */
     .left-sidebar-controls {
       position: fixed;
       left: 10px;
@@ -281,13 +248,7 @@
       align-items: center;
       gap: 5px;
     }
-    .left-btn:hover {
-      background: #1e293b;
-      border-color: #00f0ff;
-      color: #00f0ff;
-    }
 
-    /* TOMBOL VERTIKAL KIRI & KANAN */
     .vertical-nav-btn {
       background: rgba(15, 23, 42, 0.92);
       border: 1px solid;
@@ -310,12 +271,7 @@
       line-height: 1.1;
       user-select: none;
     }
-    .vertical-nav-btn:hover {
-      background: #1e293b;
-      transform: scale(1.08);
-    }
 
-    /* SIDEBAR KANAN */
     .right-sidebar-controls {
       position: fixed;
       right: 12px;
@@ -340,7 +296,6 @@
       line-height: 1;
     }
 
-    /* TOAST POP-UP REALTIME */
     #toastNotification {
       position: fixed;
       top: 65px;
@@ -368,7 +323,6 @@
       opacity: 1;
     }
 
-    /* INTRO SPLASH */
     #intro-splash {
       position: fixed;
       inset: 0;
@@ -393,7 +347,6 @@
       object-fit: contain;
     }
 
-    /* KOTAK HANDLE PANEL BAWAH */
     .panel-drag-box {
       width: 38px;
       height: 18px;
@@ -411,11 +364,6 @@
       cursor: grab;
       user-select: none;
     }
-    .panel-drag-box:hover {
-      background: #1e293b;
-      border-color: #38bdf8;
-      transform: scale(1.08);
-    }
     .panel-drag-arrow {
       display: inline-block;
       transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -423,7 +371,6 @@
       font-weight: bold;
     }
 
-    /* KUSTOM SCROLLBAR */
     .custom-scrollbar::-webkit-scrollbar {
       width: 5px;
       height: 5px;
@@ -435,11 +382,7 @@
       background: #334155;
       border-radius: 4px;
     }
-    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-      background: #475569;
-    }
 
-    /* PRATINJAU FOTO & TOMBOL HAPUS (X) */
     .preview-thumb-wrap {
       position: relative;
       display: inline-block;
@@ -474,8 +417,8 @@
       box-shadow: 0 2px 4px rgba(0,0,0,0.5);
     }
 
-    /* INPUT DATETIME-LOCAL GELAP */
-    input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+    input[type="date"]::-webkit-calendar-picker-indicator {
       filter: invert(0.8) sepia(100%) saturate(500%) hue-rotate(150deg);
       cursor: pointer;
     }
@@ -526,32 +469,29 @@
     <div class="loading-status" id="status-text">INITIALIZING SECURE LINK...</div>
   </div>
 
-  <!-- 2. HEADER UTAMA RESTRUKTURISASI -->
+  <!-- 2. HEADER UTAMA -->
   <header class="app-header fixed top-0 left-0 right-0 z-[1001] bg-slate-950/95 border-b border-slate-800 px-2 sm:px-3 py-1.5 flex items-center justify-between shadow-lg backdrop-blur-md gap-1 select-none overflow-visible">
     
     <!-- KOTAK PINK KIRI: INDIKATOR TANGGAL AKTIF WO -->
     <button id="btnActiveWoDate" onclick="openCalendarFilterModal()" title="Klik untuk pilih tanggal pantauan WO" 
       class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-[10px] sm:text-[11px] px-2 sm:px-2.5 py-1.5 rounded-md shadow flex items-center gap-1 transition active:scale-95 cursor-pointer shrink-0 whitespace-nowrap">
       <span class="text-xs">📅</span>
-      <span id="labelActiveWoDate" class="font-mono">17/09/2026</span>
+      <span id="labelActiveWoDate" class="font-mono">19/09/2026</span>
     </button>
 
     <!-- KOTAK TENGAH: TAB MAP & PARAMETER -->
     <div class="flex items-center gap-1 bg-slate-900/90 p-0.5 rounded-lg border border-slate-800 shrink-0">
-      <!-- TAB KIRI: MAP -->
       <button id="tabMapBtn" onclick="switchMainTab('map')" 
         class="font-bold text-xs px-3 sm:px-3.5 py-1 rounded-md transition duration-150 bg-amber-400 text-slate-950 shadow shrink-0 whitespace-nowrap">
         MAP
       </button>
 
-      <!-- TAB KANAN: PARAMETER DROPDOWN -->
       <div class="relative inline-block shrink-0" id="paramDropdownWrap">
         <button id="tabParamBtn" onclick="toggleParameterDropdown()" 
           class="font-bold text-xs px-2.5 sm:px-3 py-1 rounded-md transition duration-150 text-slate-300 hover:text-white flex items-center gap-1 shrink-0 whitespace-nowrap">
           <span id="currentParamLabel">PARAMETER</span>
           <span class="text-[9px]">▾</span>
         </button>
-        <!-- DROPDOWN CONTENT -->
         <div id="paramDropdownMenu" class="hidden absolute left-0 mt-1.5 w-36 bg-slate-900/95 border border-slate-700 rounded-lg shadow-2xl py-1 z-[2000] backdrop-blur-md">
           <button onclick="selectParameter('grade')" class="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-slate-800 hover:text-amber-400 font-medium transition">
             Grade
@@ -570,25 +510,27 @@
     <button id="btnDataUpdateStatus" onclick="handleDataUpdateClick()" title="Tanggal update data audit terakhir"
       class="bg-amber-400 text-slate-950 font-bold text-[9px] sm:text-[10px] px-2 sm:px-2.5 py-1 rounded-md shadow text-center transition leading-tight flex flex-col items-center cursor-default shrink-0 whitespace-nowrap">
       <span class="text-[8px] uppercase tracking-wider font-extrabold text-slate-800">Update Data</span>
-      <span id="labelDataUpdateDate" class="font-mono text-[9px] sm:text-[10px]">17-09-2026</span>
+      <span id="labelDataUpdateDate" class="font-mono text-[9px] sm:text-[10px]">19-09-2026</span>
     </button>
   </header>
 
-  <!-- SUB-BARIS FLOATING ATAS: LIVE ONLINE COUNTER & NOTIFIKASI SYNC -->
+  <!-- SUB-BARIS FLOATING ATAS: LIVE ONLINE COUNTER & NOTIFIKASI SYNC DENGAN DETAIL JAM & PROSES -->
   <div class="fixed top-[54px] sm:top-[58px] left-1/2 -translate-x-1/2 z-[1000] flex flex-col items-center gap-1 pointer-events-none">
     <div id="onlineCounterWrap" class="bg-slate-900/85 border border-slate-700/80 px-2.5 py-0.5 rounded-full shadow flex items-center gap-1.5 backdrop-blur-sm pointer-events-auto">
       <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
       <span id="onlineCounterText" class="text-[10px] font-mono text-slate-300 font-semibold">Online: 1</span>
     </div>
 
-    <!-- BADGE BLIP DINAMIS -->
-    <div id="syncStatusBadge" class="hidden px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md transition-all duration-300 pointer-events-auto flex items-center gap-1.5">
-      <span id="syncStatusDot" class="w-2 h-2 rounded-full"></span>
-      <span id="syncStatusText" class="text-[9px] font-mono font-bold tracking-wider"></span>
+    <!-- BADGE BLIP DINAMIS: PROSES & TIMESTAMP LENGKAP -->
+    <div id="syncStatusBadge" class="hidden px-2.5 py-1 rounded-xl shadow-lg border backdrop-blur-md transition-all duration-300 pointer-events-auto flex items-center gap-2">
+      <span id="syncStatusDot" class="w-2 h-2 rounded-full shrink-0"></span>
+      <div class="flex flex-col text-left leading-tight">
+        <span id="syncStatusText" class="text-[9px] font-mono font-bold tracking-wider">UPDATING</span>
+        <span id="syncStatusSub" class="text-[8px] font-mono text-slate-400">Sinkronisasi data aktif...</span>
+      </div>
     </div>
   </div>
 
-  <!-- TOAST NOTIFIKASI REALTIME -->
   <div id="toastNotification">Notifikasi baru masuk...</div>
 
   <!-- TOMBOL SIDEBAR KIRI -->
@@ -599,13 +541,7 @@
       <span id="notifBadgeDot" class="hidden w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
     </button>
     <button id="btnLegendToggle" onclick="toggleLegendDrawer()" class="vertical-nav-btn text-amber-300 border-amber-500/60" title="Buka Legenda Peta">
-      <span>L</span>
-      <span>E</span>
-      <span>G</span>
-      <span>E</span>
-      <span>N</span>
-      <span>D</span>
-      <span>A</span>
+      <span>L</span><span>E</span><span>G</span><span>E</span><span>N</span><span>D</span><span>A</span>
     </button>
   </div>
 
@@ -613,17 +549,7 @@
   <div class="right-sidebar-controls">
     <button id="btnOutstandingToggle" onclick="toggleOutstandingDrawer()" class="vertical-nav-btn text-cyan-300 border-cyan-500/60 relative" title="Buka Daftar Work Order Aktif (Open & Progress)">
       <span id="outstandingCountBadge" class="outstanding-badge">0</span>
-      <span>O</span>
-      <span>U</span>
-      <span>T</span>
-      <span>S</span>
-      <span>T</span>
-      <span>A</span>
-      <span>N</span>
-      <span>D</span>
-      <span>I</span>
-      <span>N</span>
-      <span>G</span>
+      <span>O</span><span>U</span><span>T</span><span>S</span><span>T</span><span>A</span><span>N</span><span>D</span><span>I</span><span>N</span><span>G</span>
     </button>
   </div>
 
@@ -636,26 +562,23 @@
       </div>
       <button onclick="toggleOutstandingDrawer()" class="text-slate-400 hover:text-white text-sm px-1 leading-none">✕</button>
     </div>
-    <div id="outstandingList" class="flex-1 overflow-y-auto p-2 space-y-1.5 custom-scrollbar text-[11px] max-h-[22vh]">
-      <!-- Item dirender dinamis via app.js -->
-    </div>
+    <div id="outstandingList" class="flex-1 overflow-y-auto p-2 space-y-1.5 custom-scrollbar text-[11px] max-h-[22vh]"></div>
     <div class="p-1 px-2 border-t border-slate-800/80 text-[8.5px] text-slate-500 text-center font-mono shrink-0">
       Klik item untuk langsung menuju titik lokasi WO
     </div>
   </div>
 
-  <!-- DRAWER KIRI: RIWAYAT LOG NOTIFIKASI DENGAN TOMBOL LOGOUT RESIK -->
+  <!-- DRAWER KIRI: RIWAYAT LOG NOTIFIKASI -->
   <div id="notificationDrawer">
     <div class="p-2 px-3 border-b border-slate-800 flex items-center justify-between shrink-0">
       <div class="flex items-center gap-1.5">
         <span class="text-xs">🔔</span>
         <h3 class="text-[10px] font-mono font-bold text-cyan-400 tracking-wider">LOG AKTIVITAS (48 JAM)</h3>
       </div>
-      <!-- KOTAK MERAH: TOMBOL LOGOUT & CLOSE DRAWER -->
       <div class="flex items-center gap-2">
         <button onclick="logoutUser()" 
           class="bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-mono font-bold text-[9px] px-2 py-0.5 rounded shadow transition cursor-pointer flex items-center gap-1" 
-          title="Logout Sesi & Reset Token 30 Hari">
+          title="Logout Sesi">
           <span>🚪</span>
           <span>LOGOUT</span>
         </button>
@@ -670,7 +593,7 @@
     </div>
   </div>
 
-  <!-- POPUP MINI: LEGENDA DINAMIS -->
+  <!-- POPUP LEGENDA DINAMIS -->
   <div id="legendDrawer" class="fixed top-28 left-8 w-64 max-w-[80vw] bg-slate-950/95 border border-slate-700 rounded-lg shadow-2xl z-[100000] hidden flex-col backdrop-blur-md p-3">
     <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
       <h4 id="legendTitle" class="text-[11px] font-mono font-bold text-amber-400 tracking-wider">LEGENDA PETA</h4>
@@ -685,40 +608,27 @@
   <!-- TOMBOL TOGGLE BASEMAP SATELIT -->
   <button id="btnToggleBasemap" onclick="toggleBasemapSatelit()" title="Matikan / Hidupkan Satelit Luar">🌍 Satelit: <b>ON</b></button>
 
-  <!-- GROUP TOMBOL FLOATING DI KANAN BAWAH DINAMIS -->
+  <!-- GROUP TOMBOL FLOATING -->
   <div id="floatingActionGroup" class="floating-action-group">
-    <!-- SUB-MENU TOMBOL (MARK, DRAW & TOMBOL SELESAI GAMBAR PATEN) -->
     <div id="woSubmenu" class="wo-submenu-container">
       <button class="wo-sub-btn" onclick="setWoTool('mark')" title="Tandai Titik Mark di Peta">MARK</button>
       <button class="wo-sub-btn" onclick="setWoTool('draw')" title="Gambar Garis / Sketsa di Peta">DRAW</button>
-      <!-- Tombol Selesai Garis Khusus Point-to-Point -->
       <button id="btnFinishDraw" onclick="finalizeDrawLine()" class="wo-sub-btn finish-draw-btn" style="display:none;" title="Selesaikan Garis Ini">✓ SELESAI</button>
     </div>
 
-    <!-- TOMBOL PLUS (+) INSPECTOR -->
     <button id="woPlusBtn" class="wo-plus-floating-btn" onclick="toggleInspectorSubmenu()" title="Opsi Work Order">+</button>
 
-    <!-- TOMBOL MODE WO -->
     <button id="woFloatingBtn" class="wo-floating-btn" onclick="toggleWorkOrderFloating()" title="Aktifkan Mode Work Order / Evidence">
       <span>WO</span>
       <span id="woStatusText" style="font-size: 7px; color: #94a3b8;">OFF</span>
     </button>
 
-    <!-- TOMBOL KAMERA GEOTAGGING -->
-    <button id="floatingCameraBtn" class="camera-btn text-amber-400" onclick="openCameraActionChooser()" title="Ambil Foto Evidence / Geotagging">
-      📷
-    </button>
-
-    <!-- TOMBOL ANOTASI -->
-    <button id="btnToggleAnnotation" class="annotation-btn" onclick="toggleAnnotationVisibility()" title="Tampilkan / Sembunyikan Label Teks (Anotasi)">
-      🏷️
-    </button>
-
-    <!-- TOMBOL GPS LOKASI: RE-CENTER / LOCATE ME -->
+    <button id="floatingCameraBtn" class="camera-btn text-amber-400" onclick="openCameraActionChooser()" title="Ambil Foto Evidence / Geotagging">📷</button>
+    <button id="btnToggleAnnotation" class="annotation-btn" onclick="toggleAnnotationVisibility()" title="Tampilkan / Sembunyikan Label Teks">🏷️</button>
     <button class="gps-btn" onclick="locateUser()" title="Posisi Saya (Re-Center)">📍</button>
   </div>
 
-  <!-- 4. PANEL BAWAH DENGAN KOTAK DRAG HANDLE PANAH SEGITIGA -->
+  <!-- 4. PANEL BAWAH -->
   <div id="bottom-panel" class="bottom-panel">
     <div class="panel-header cursor-pointer" onclick="handlePanelHeaderClick(event)">
       <div class="panel-drag-box" id="panelDragHandleBtn" title="Sentuh atau geser untuk buka/tutup panel">
@@ -731,18 +641,25 @@
     <div class="panel-body custom-scrollbar" id="panel-body"></div>
   </div>
 
-  <!-- 5. MODAL FORM GEO-TICKETING WORK ORDER & EVIDENCE -->
+  <!-- ========================================================== -->
+  <!-- 5. MODAL FORM WORK ORDER & SUBMIT EVIDENCE MANUAL          -->
+  <!-- ========================================================== -->
   <div id="woModalOverlay" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:99999; justify-content:center; align-items:center; padding: 12px;">
-    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:440px; max-height:82dvh; overflow-y:auto; border:1px solid #334155; box-shadow:0 10px 30px rgba(0,0,0,0.7);" class="custom-scrollbar pb-16">
+    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:440px; max-height:85dvh; overflow-y:auto; border:1px solid #334155; box-shadow:0 10px 30px rgba(0,0,0,0.7);" class="custom-scrollbar pb-16">
       
+      <!-- HEADER MODAL -->
       <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:8px;">
         <div style="flex:1;">
           <h3 id="woModalTitle" style="margin:0; font-size:14px; color:#00f0ff; letter-spacing:1px; font-family:monospace;">BUAT WORK ORDER (WO)</h3>
           <p id="woModalSub" style="font-size:11px; color:#94a3b8; margin:4px 0 0;">Tentukan temuan perbaikan infrastruktur jalan tambang.</p>
           
+          <!-- INPUT TANGGAL WO (BUAT WO) ATAU TANGGAL & WAKTU (EVIDENCE) -->
           <div id="woCreatedDateWrapper" style="display:flex; align-items:center; gap:6px; margin-top:6px;">
-            <label style="font-size:10px; color:#94a3b8; font-family:monospace;">Waktu WO:</label>
-            <input type="datetime-local" id="woCreatedDateInput" style="background:#1e293b; border:1px solid #475569; padding:2px 8px; border-radius:4px; color:#38bdf8; font-size:11px; font-family:monospace; outline:none; cursor:pointer;" title="Klik untuk ubah tanggal/jam jika perlu backdate">
+            <label id="woDateLabel" style="font-size:10px; color:#94a3b8; font-family:monospace;">Tanggal WO:</label>
+            <!-- Mode Buat WO pakai Date murni -->
+            <input type="date" id="woCreatedDateInput" style="background:#1e293b; border:1px solid #475569; padding:2px 8px; border-radius:4px; color:#38bdf8; font-size:11px; font-family:monospace; outline:none; cursor:pointer;" title="Tanggal berlakunya WO">
+            <!-- Mode Evidence pakai Datetime-local terupdate -->
+            <input type="datetime-local" id="woEvidenceDateTimeInput" style="display:none; background:#1e293b; border:1px solid #475569; padding:2px 8px; border-radius:4px; color:#38bdf8; font-size:11px; font-family:monospace; outline:none; cursor:pointer;" title="Waktu update evidence">
           </div>
         </div>
 
@@ -751,27 +668,40 @@
         </div>
       </div>
       
+      <!-- FORM INPUT BODY -->
       <div style="display:flex; flex-direction:column; gap:10px; font-size:12px;">
+        
+        <!-- RUAS JALAN -->
         <div>
           <label style="color:#cbd5e1; font-size:11px;">Nama Ruas Jalan: <span style="color:#ef4444;">*</span></label>
           <input type="text" id="woRoadName" placeholder="Ketik nama ruas jalan..." style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#38bdf8; font-weight:bold; font-size:12px; margin-top:2px;">
         </div>
 
+        <!-- CLUSTER (AUTO-DETECTED / MANUAL EDITABLE) -->
+        <div id="woClusterWrapper">
+          <label style="color:#cbd5e1; font-size:11px;">Cluster / Blok Tambang:</label>
+          <input type="text" id="woClusterName" placeholder="Auto-detect dari poligon / ketik manual..." style="width:100%; background:#1e293b; border:1px solid #334155; padding:6px 10px; border-radius:6px; color:#facc15; font-size:11px; font-weight:bold; margin-top:2px;">
+        </div>
+
+        <!-- KOORDINAT / STA -->
         <div>
           <label style="color:#cbd5e1; font-size:11px;">Detail Koordinat / STA:</label>
           <input type="text" id="woLocationDetail" readonly style="width:100%; background:#1e293b; border:1px solid #334155; padding:6px 10px; border-radius:6px; color:#94a3b8; font-size:11px; margin-top:2px;">
         </div>
 
-        <div>
+        <!-- NAMA PELAPOR (DISEMBUNYIKAN DI VIEW EVIDENCE MULTI-JOB) -->
+        <div id="woReporterWrapper">
           <label style="color:#cbd5e1; font-size:11px;">Nama / NRP Pelapor: <span style="color:#ef4444;">*</span></label>
           <input type="text" id="woReporterName" placeholder="Ketik nama atau NRP pelapor..." style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; font-size:12px; margin-top:2px;">
         </div>
 
+        <!-- ACUAN FOTO DESAIN -->
         <div id="woRefPhotosSection" style="display:none; background:#1e293b; padding:10px; border-radius:8px; border:1px solid #334155;">
           <label style="color:#38bdf8; font-size:11px; font-weight:bold; display:block; margin-bottom:6px;">📸 Foto Acuan / Stage Plan Desain (Klik untuk Zoom):</label>
           <div id="woRefPhotosGallery" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap:6px;"></div>
         </div>
 
+        <!-- DAFTAR PEKERJAAN (JOBS CONTAINER) -->
         <div id="woJobsSection">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
             <label style="color:#cbd5e1; font-size:11px; font-weight:bold;">Daftar Pekerjaan (Jobs):</label>
@@ -780,29 +710,46 @@
           <div id="woJobsContainer" style="display:flex; flex-direction:column; gap:8px;"></div>
         </div>
 
+        <!-- INPUT KHUSUS EVIDENCE TIKET TUNGGAL (SINGLE JOB) -->
         <div id="woGlobalInputsWrapper" style="display:flex; flex-direction:column; gap:10px;">
-          <div id="woStatusUpdateWrapper" style="display:none;">
-            <label style="color:#cbd5e1; font-size:11px; font-weight:bold;">Update Status WO:</label>
-            <select id="woStatusUpdateSelect" style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; margin-top:2px; font-size:12px;">
-              <option value="PROGRESS" style="color:#eab308; font-weight:bold;">PROGRESS (Dalam Pengerjaan)</option>
-              <option value="CLOSED" style="color:#22c55e; font-weight:bold;">CLOSED (Pekerjaan Selesai)</option>
-              <option value="OPEN" style="color:#e11d48; font-weight:bold;">OPEN (Belum Dikerjakan)</option>
-            </select>
+          
+          <!-- INPUT JENIS ALAT & EGI EVIDENCE (OPSIONAL) -->
+          <div id="woEvidenceToolSection" style="display:none; background:#162032; padding:10px; border-radius:6px; border:1px solid #334155;">
+            <label style="color:#38bdf8; font-size:10px; font-weight:bold; display:block; margin-bottom:4px;">ALAT BERAT YANG DIGUNAKAN (EVIDENCE):</label>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+              <div>
+                <select id="woEvidenceToolType" onchange="toggleEvidenceCustomToolInput()" style="width:100%; background:#1e293b; border:1px solid #475569; padding:5px 8px; border-radius:4px; color:#fff; font-size:11px;">
+                  <option value="">-- Jenis Alat (Opsional) --</option>
+                  <option value="Ex">Ex (Excavator)</option>
+                  <option value="Dz">Dz (Dozer)</option>
+                  <option value="Cp">Cp (Compactor)</option>
+                  <option value="CUSTOM">Lainnya (Ketik Manual)</option>
+                </select>
+                <input type="text" id="woEvidenceToolCustom" placeholder="Ketik jenis alat..." style="display:none; width:100%; margin-top:4px; background:#1e293b; border:1px solid #475569; padding:4px 8px; border-radius:4px; color:#fff; font-size:11px;">
+              </div>
+              <div>
+                <input type="text" id="woEvidenceEgi" placeholder="Nomor EGI (Contoh: 126)" style="width:100%; background:#1e293b; border:1px solid #475569; padding:5px 8px; border-radius:4px; color:#fff; font-size:11px;">
+              </div>
+            </div>
           </div>
 
-          <div>
+          <!-- KETERANGAN / PROGRESS LAPANGAN -->
+          <div id="woNotesContainer">
             <label id="woNotesLabel" style="color:#cbd5e1; font-size:11px;">Keterangan / Progress Lapangan:</label>
-            <textarea id="woNotes" rows="2" placeholder="Contoh : progress regrade" style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; margin-top:2px; resize:none;"></textarea>
+            <textarea id="woNotes" rows="2" placeholder="Contoh : progress regrade tanjakan..." style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; margin-top:2px; resize:none;"></textarea>
           </div>
 
+          <!-- UPLOAD FOTO EVIDENCE / ACUAN -->
           <div id="woEvidenceWrapper">
             <label id="woUploadPhotoLabel" style="color:#cbd5e1; font-size:11px;">Upload Foto:</label>
             <input type="file" id="woEvidenceFile" accept="image/*" multiple style="width:100%; font-size:11px; color:#94a3b8; margin-top:2px; background:#1e293b; padding:6px; border-radius:6px; border:1px solid #475569;">
             <div id="woImagePreviewContainer" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;"></div>
           </div>
         </div>
+
       </div>
 
+      <!-- FOOTER BUTTONS -->
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid #1e293b; padding-top:12px;">
         <div style="display:flex; gap:6px; align-items:center;">
           <button id="woDeleteBtn" onclick="deleteCurrentWorkOrder()" style="display:none; background:#e11d48; color:#fff; border:none; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Hapus WO</button>
@@ -810,43 +757,90 @@
         </div>
         <div style="display:flex; gap:8px;">
           <button onclick="closeWoModal()" style="background:#1e293b; color:#cbd5e1; border:none; padding:6px 14px; border-radius:6px; font-size:11px; cursor:pointer;">Batal</button>
-          <button onclick="submitWorkOrder()" id="woSubmitBtn" style="background:#00f0ff; color:#000; border:none; padding:6px 16px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Kirim WO</button>
+          <button onclick="handleWoSubmitButtonClick()" id="woSubmitBtn" style="background:#00f0ff; color:#000; border:none; padding:6px 16px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Kirim WO</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- 5B. MODAL POPUP UPDATE PROGRESS KHUSUS PER-JOB -->
+  <!-- ========================================================== -->
+  <!-- 5B. POPUP KONFIRMASI STATUS (SUBMIT EVIDENCE / UPDATE JOB) -->
+  <!-- ========================================================== -->
+  <div id="evidenceStatusModalOverlay" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:100008; justify-content:center; align-items:center; padding:16px; backdrop-filter:blur(4px);">
+    <div style="background:#0f172a; border:1px solid #38bdf8; border-radius:12px; padding:20px; width:100%; max-width:340px; box-shadow:0 10px 30px rgba(0,0,0,0.9); text-align:left;">
+      <h3 style="color:#00f0ff; font-family:monospace; font-size:13px; font-weight:bold; margin-top:0; margin-bottom:4px; letter-spacing:0.5px;">UPDATE STATUS PEKERJAAN</h3>
+      <p style="font-size:11px; color:#94a3b8; margin-bottom:14px;">Tentukan status akhir hasil pengerjaan di lapangan:</p>
+      
+      <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:18px;">
+        <label style="display:flex; items-center; gap:8px; padding:8px 10px; background:#1e293b; border-radius:6px; border:1px solid #334155; cursor:pointer;">
+          <input type="radio" name="evidenceFinalStatus" value="OPEN" style="accent-color:#e11d48;">
+          <span style="color:#f43f5e; font-weight:bold; font-size:11px;">OPEN (Belum Selesai / Lanjut Nanti)</span>
+        </label>
+        <label style="display:flex; items-center; gap:8px; padding:8px 10px; background:#1e293b; border-radius:6px; border:1px solid #334155; cursor:pointer;">
+          <input type="radio" name="evidenceFinalStatus" value="PROGRESS" checked style="accent-color:#eab308;">
+          <span style="color:#facc15; font-weight:bold; font-size:11px;">PROGRESS (Sedang Dikerjakan)</span>
+        </label>
+        <label style="display:flex; items-center; gap:8px; padding:8px 10px; background:#1e293b; border-radius:6px; border:1px solid #334155; cursor:pointer;">
+          <input type="radio" name="evidenceFinalStatus" value="CLOSED" style="accent-color:#22c55e;">
+          <span style="color:#4ade80; font-weight:bold; font-size:11px;">CLOSED (Pekerjaan Selesai)</span>
+        </label>
+      </div>
+
+      <!-- TOMBOL CANCEL (KIRI) DAN SUBMIT (KANAN BAWAH) -->
+      <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #1e293b; padding-top:12px;">
+        <button onclick="closeEvidenceStatusModal()" style="background:#1e293b; color:#cbd5e1; border:1px solid #475569; padding:7px 14px; border-radius:6px; font-size:11px; cursor:pointer;">CANCEL</button>
+        <button onclick="confirmEvidenceStatusAndSubmit()" style="background:#00f0ff; color:#000; border:none; padding:7px 20px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer; box-shadow:0 0 10px rgba(0,240,255,0.4);">SUBMIT</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================== -->
+  <!-- 5C. MODAL POPUP UPDATE PROGRESS PER-JOB (MULTI-JOB)        -->
+  <!-- ========================================================== -->
   <div id="jobUpdateModalOverlay" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.82); z-index:100002; justify-content:center; align-items:center; padding: 12px;">
-    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:400px; max-height:82dvh; overflow-y:auto; border:1px solid #38bdf8; box-shadow:0 10px 30px rgba(0,0,0,0.8);" class="custom-scrollbar pb-14">
+    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:400px; max-height:85dvh; overflow-y:auto; border:1px solid #38bdf8; box-shadow:0 10px 30px rgba(0,0,0,0.8);" class="custom-scrollbar pb-14">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:10px;">
         <div>
           <h3 id="jobUpdateModalTitle" style="margin:0; font-size:13px; color:#00f0ff; font-family:monospace; letter-spacing:1px;">UPDATE PROGRESS PEKERJAAN</h3>
-          <p id="jobUpdateJobInfo" style="font-size:11px; color:#38bdf8; margin:3px 0 0; font-weight:bold;">Job #1: Overgrade</p>
+          <p id="jobUpdateJobInfo" style="font-size:11px; color:#38bdf8; margin:3px 0 0; font-weight:bold;">Job #1: Detail Pekerjaan</p>
         </div>
         <button onclick="closeJobUpdateModal()" style="background:#1e293b; color:#cbd5e1; border:none; width:26px; height:26px; border-radius:50%; font-size:11px; cursor:pointer;">✕</button>
       </div>
 
       <div style="display:flex; flex-direction:column; gap:10px; font-size:12px;">
+        <!-- WAKTU UPDATE PROGRES (DEFAULT REAL-TIME) -->
         <div>
-          <label style="color:#cbd5e1; font-size:11px;">Nama / NRP Pengawas: <span style="color:#ef4444;">*</span></label>
-          <input type="text" id="jobUpdateReporter" placeholder="Ketik nama atau NRP pengawas..." style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; font-size:12px; margin-top:2px;">
+          <label style="color:#cbd5e1; font-size:11px;">Waktu Update:</label>
+          <input type="datetime-local" id="jobUpdateDateTime" style="width:100%; background:#1e293b; border:1px solid #475569; padding:5px 8px; border-radius:6px; color:#38bdf8; font-size:11px; font-family:monospace;">
         </div>
 
-        <div>
-          <label style="color:#cbd5e1; font-size:11px; font-weight:bold;">Update Status Job:</label>
-          <select id="jobUpdateStatus" style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; font-size:12px; margin-top:2px;">
-            <option value="PROGRESS" style="color:#eab308; font-weight:bold;">PROGRESS (Dalam Pengerjaan)</option>
-            <option value="CLOSED" style="color:#22c55e; font-weight:bold;">CLOSED (Pekerjaan Selesai)</option>
-            <option value="OPEN" style="color:#e11d48; font-weight:bold;">OPEN (Belum Dikerjakan)</option>
-          </select>
+        <!-- FORM ALAT BERAT PADA JOB INI (JENIS ALAT + EGI) -->
+        <div style="background:#162032; padding:10px; border-radius:6px; border:1px solid #334155;">
+          <label style="color:#38bdf8; font-size:10px; font-weight:bold; display:block; margin-bottom:4px;">ALAT BERAT YANG DIGUNAKAN:</label>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+            <div>
+              <select id="jobUpdateToolType" onchange="toggleJobUpdateCustomToolInput()" style="width:100%; background:#1e293b; border:1px solid #475569; padding:5px 8px; border-radius:4px; color:#fff; font-size:11px;">
+                <option value="">-- Jenis Alat --</option>
+                <option value="Ex">Ex (Excavator)</option>
+                <option value="Dz">Dz (Dozer)</option>
+                <option value="Cp">Cp (Compactor)</option>
+                <option value="CUSTOM">Lainnya (Ketik Manual)</option>
+              </select>
+              <input type="text" id="jobUpdateToolCustom" placeholder="Ketik alat..." style="display:none; width:100%; margin-top:4px; background:#1e293b; border:1px solid #475569; padding:4px 8px; border-radius:4px; color:#fff; font-size:11px;">
+            </div>
+            <div>
+              <input type="text" id="jobUpdateEgi" placeholder="Nomor EGI (cth: 126)" style="width:100%; background:#1e293b; border:1px solid #475569; padding:5px 8px; border-radius:4px; color:#fff; font-size:11px;">
+            </div>
+          </div>
         </div>
 
+        <!-- KETERANGAN PROGRES -->
         <div>
           <label style="color:#cbd5e1; font-size:11px;">Keterangan Progres:</label>
-          <textarea id="jobUpdateNotes" rows="2" placeholder="Contoh : Grader sedang meratakan tanjakan..." style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; font-size:12px; resize:none;"></textarea>
+          <textarea id="jobUpdateNotes" rows="2" placeholder="Contoh : Dozer sedang meratakan tanggul..." style="width:100%; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; font-size:12px; resize:none;"></textarea>
         </div>
 
+        <!-- UPLOAD BUKTI FOTO -->
         <div>
           <label style="color:#cbd5e1; font-size:11px;">Upload Bukti Foto Progres:</label>
           <input type="file" id="jobUpdateFile" accept="image/*" multiple style="width:100%; font-size:11px; color:#94a3b8; margin-top:2px; background:#1e293b; padding:6px; border-radius:6px; border:1px solid #475569;">
@@ -856,7 +850,7 @@
 
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px; border-top:1px solid #1e293b; padding-top:10px;">
         <button onclick="closeJobUpdateModal()" style="background:#1e293b; color:#cbd5e1; border:none; padding:6px 12px; border-radius:6px; font-size:11px; cursor:pointer;">Batal</button>
-        <button onclick="submitJobUpdate()" id="jobUpdateSubmitBtn" style="background:#ec4899; color:#fff; border:none; padding:6px 16px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Simpan Update</button>
+        <button onclick="triggerJobUpdateStatusPrompt()" id="jobUpdateSubmitBtn" style="background:#ec4899; color:#fff; border:none; padding:6px 16px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Simpan Update</button>
       </div>
     </div>
   </div>
@@ -887,14 +881,17 @@
     </div>
   </div>
 
-  <!-- 7. MODAL FILTER KALENDER & EXPORT REKAP WO -->
+  <!-- ========================================================== -->
+  <!-- 7. MODAL FILTER KALENDER & DUA OPSI EXPORT REKAP WO        -->
+  <!-- ========================================================== -->
   <div id="calendarFilterModal" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:100000; justify-content:center; align-items:center; padding:12px;">
-    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:380px; border:1px solid #334155; box-shadow:0 10px 25px rgba(0,0,0,0.7);">
+    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:400px; border:1px solid #334155; box-shadow:0 10px 25px rgba(0,0,0,0.7);">
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:12px;">
         <h3 style="margin:0; font-size:13px; color:#38bdf8; font-family:monospace; letter-spacing:1px;">📅 FILTER KALENDER & HISTORY WO</h3>
         <button onclick="closeCalendarFilterModal()" style="background:#1e293b; color:#94a3b8; border:none; width:26px; height:26px; border-radius:50%; font-size:12px; cursor:pointer;">✕</button>
       </div>
 
+      <!-- FILTER TANGGAL KERJA -->
       <div style="font-size:12px; margin-bottom:16px;">
         <label style="color:#cbd5e1; font-size:11px; display:block; margin-bottom:4px;">Tampilkan Data WO Tanggal:</label>
         <div style="display:flex; gap:6px;">
@@ -904,9 +901,10 @@
         <button onclick="resetCalendarToToday()" style="background:transparent; color:#38bdf8; border:none; padding:4px 0; font-size:10px; cursor:pointer; text-decoration:underline; margin-top:4px;">Kembali ke Hari Ini (Live Real-Time)</button>
       </div>
 
+      <!-- DUA OPSI EKSPOR REKAP PDF -->
       <div style="border-top:1px solid #1e293b; padding-top:12px; font-size:12px;">
-        <label style="color:#eab308; font-size:11px; font-weight:bold; display:block; margin-bottom:6px;">📊 Export Rekap Progres Lengkap (Rentang Tanggal):</label>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-bottom:8px;">
+        <label style="color:#eab308; font-size:11px; font-weight:bold; display:block; margin-bottom:6px;">📊 Export Rekap Laporan:</label>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-bottom:10px;">
           <div>
             <span style="font-size:10px; color:#94a3b8;">Dari:</span>
             <input type="date" id="exportStartDate" style="width:100%; background:#1e293b; border:1px solid #475569; padding:5px 8px; border-radius:6px; color:#fff; font-size:11px;">
@@ -916,7 +914,19 @@
             <input type="date" id="exportEndDate" style="width:100%; background:#1e293b; border:1px solid #475569; padding:5px 8px; border-radius:6px; color:#fff; font-size:11px;">
           </div>
         </div>
-        <button onclick="executeExportRekapRange()" style="width:100%; background:#0284c7; color:#fff; border:none; padding:8px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Download Rekap Laporan PDF</button>
+        
+        <!-- DUA TOMBOL DOWNLOAD REKAP -->
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button onclick="executeExportRekapWO()" style="width:100%; background:#0284c7; hover:bg-sky-500; color:#fff; border:none; padding:9px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+            <span>📋</span>
+            <span>Download Rekap WO (Format SIS)</span>
+          </button>
+          
+          <button onclick="executeExportRekapEvidence()" style="width:100%; background:#10b981; hover:bg-emerald-500; color:#fff; border:none; padding:9px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+            <span>📸</span>
+            <span>Download Rekap Evidence WO (Foto)</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -955,7 +965,7 @@
     </div>
   </div>
 
-  <!-- 10. MODAL KHUSUS ADMIN: SET TANGGAL UPDATE DATA AUDIT -->
+  <!-- 10. MODAL SET TANGGAL UPDATE DATA AUDIT -->
   <div id="adminDataUpdateModal" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:100010; justify-content:center; align-items:center; padding:12px;">
     <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:320px; border:1px solid #eab308; box-shadow:0 10px 30px rgba(0,0,0,0.8);">
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:12px;">
@@ -972,10 +982,8 @@
   </div>
 
   <!-- ========================================================== -->
-  <!-- 11. MODUL GEOTAGGING OVERWATCH: FORM & MODAL               -->
+  <!-- 11. MODUL GEOTAGGING OVERWATCH                             -->
   <!-- ========================================================== -->
-
-  <!-- 11A. MODAL PILIH METODE (KAMERA BAWAAN HP ATAU GALERI) -->
   <div id="geoCameraChooserModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); align-items:center; justify-content:center; z-index:100005; backdrop-filter:blur(6px);">
     <div style="background:#0f172a; border:1px solid #334155; border-radius:12px; padding:20px; width:90%; max-width:320px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.8);">
       <h3 style="color:#00f0ff; font-weight:bold; font-size:14px; margin-bottom:12px; font-family:monospace; letter-spacing:1px;">PILIH METODE FOTO</h3>
@@ -987,7 +995,6 @@
     <input type="file" id="geoInputUploadFile" accept="image/*" style="display:none;">
   </div>
 
-  <!-- 11B. MODAL PREVIEW HASIL FOTO & FORM INPUT EVIDENCE / AD-HOC (RUAS JALAN EDITABLE) -->
   <div id="geoPreviewReportModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); align-items:center; justify-content:center; z-index:100006; padding:12px; backdrop-filter:blur(6px);">
     <div style="background:#0f172a; border:1px solid #334155; border-radius:10px; width:100%; max-width:480px; max-height:92vh; overflow-y:auto; padding:14px; box-shadow:0 10px 30px rgba(0,0,0,0.9);" class="custom-scrollbar">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid #1e293b; padding-bottom:6px;">
@@ -997,18 +1004,15 @@
 
       <img id="geoPreviewStampedImg" style="width:100%; border-radius:6px; border:1px solid #334155; margin-bottom:10px; max-height:220px; object-fit:contain; background:#000;">
 
-      <!-- Status Deteksi WO / Ad-Hoc -->
       <div id="geoDetectedWoBox" style="background:#1e293b; border:1px solid #3b82f6; border-radius:6px; padding:8px; font-size:11px; margin-bottom:10px;"></div>
 
-      <!-- INPUT TANGGAL & JAM GEOTAGGING (EDITABLE / DEFAULT TERUPDATE) -->
       <div id="geoDateTimeGroup" style="margin-bottom:10px;">
         <label style="font-size:10px; color:#cbd5e1; display:block; margin-bottom:2px; font-weight:bold;">
           Waktu Pengambilan / Evidence: <span style="color:#ef4444;">*</span>
         </label>
-        <input type="datetime-local" id="geoReportDateTime" onchange="handleGeoDateTimeChange()" style="width:100%; background:#090d16; border:1px solid #475569; padding:6px 10px; border-radius:4px; color:#38bdf8; font-size:11px; font-family:monospace; outline:none; cursor:pointer;" title="Klik untuk ubah tanggal dan jam foto">
+        <input type="datetime-local" id="geoReportDateTime" onchange="handleGeoDateTimeChange()" style="width:100%; background:#090d16; border:1px solid #475569; padding:6px 10px; border-radius:4px; color:#38bdf8; font-size:11px; font-family:monospace; outline:none; cursor:pointer;">
       </div>
 
-      <!-- INPUT RUAS JALAN (TETAP BISA DIUBAH / EDITABLE) -->
       <div id="geoRoadNameGroup" style="margin-bottom:10px;">
         <label style="font-size:10px; color:#cbd5e1; display:block; margin-bottom:2px; font-weight:bold;">
           Nama Ruas Jalan: <span style="color:#ef4444;">*</span>
@@ -1016,7 +1020,6 @@
         <input type="text" id="geoReportRoadName" placeholder="Ketik atau edit nama ruas jalan..." style="width:100%; background:#090d16; border:1px solid #475569; padding:6px 10px; border-radius:4px; color:#facc15; font-size:12px; font-weight:bold;">
       </div>
 
-      <!-- Wrapper Pilihan Job (Hanya muncul jika di dalam area WO) -->
       <div id="geoJobSelectionWrapper" style="margin-bottom:10px;"></div>
 
       <div style="margin-bottom:8px;">
@@ -1045,7 +1048,6 @@
     </div>
   </div>
 
-  <!-- 11C. MODAL DARURAT EXIF KOSONG (HANYA MUNCUL KALO UPLOAD DARI GALERI) -->
   <div id="geoExifWarningModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); align-items:center; justify-content:center; z-index:100007; padding:16px; backdrop-filter:blur(6px);">
     <div style="background:#0f172a; border:1px solid #e11d48; border-radius:10px; width:100%; max-width:340px; padding:16px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.8);">
       <div style="font-size:26px; margin-bottom:6px;">⚠️</div>
@@ -1058,7 +1060,7 @@
     </div>
   </div>
 
-  <!-- Script Logic Utama WebGIS & Supabase Auth -->
+  <!-- SCRIPT LOGIC UTAMA WEBGIS -->
   <script src="app.js"></script>
 </body>
 </html>
