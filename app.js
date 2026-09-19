@@ -1755,18 +1755,20 @@ function renderJobsUI(jobsList, isEditable, isViewMode = false) {
         toolHeader = `<span style="color:#facc15; font-size:10px; font-weight:bold; margin-right:6px;">[${toolName} ${j.egi || ''}]</span>`;
       }
 
-    card.innerHTML = 
-  '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">' +
-    '<div>' +
-      '<span style="font-size:11px; font-weight:bold; color:#38bdf8;">JOB #' + (idx + 1) + '</span> ' +
-      toolHeader +
-      '<span style="font-size:9px; font-weight:bold; padding:1px 5px; border-radius:3px; background:' + stColor + '; color:#000; margin-left:6px;">' + jobSt + '</span>' +
-    '</div>' +
-    updateBtnHtml +
-  '</div>' +
-  '<div style="font-size:11px; color:#cbd5e1; margin-top:2px;">' + (j.detail || j.notes || j.category || 'Tidak ada uraian.') + '</div>';
+      card.innerHTML = 
+        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">' +
+          '<div>' +
+            '<span style="font-size:11px; font-weight:bold; color:#38bdf8;">JOB #' + (idx + 1) + '</span> ' +
+            toolHeader +
+            '<span style="font-size:9px; font-weight:bold; padding:1px 5px; border-radius:3px; background:' + stColor + '; color:#000; margin-left:6px;">' + jobSt + '</span>' +
+          '</div>' +
+          updateBtnHtml +
+        '</div>' +
+        '<div style="font-size:11px; color:#cbd5e1; margin-top:2px;">' + (j.detail || j.notes || j.category || 'Tidak ada uraian.') + '</div>';
 
-container.appendChild(card);
+      container.appendChild(card);
+    }
+  }); 
 }
 
 function handleJobToolSelectChange(selectElem) {
