@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Monitoring Haul Road - Overwatch</title>
   
+  <!-- PRECONNECT DNS UNTUK AKSELERASI LOADING TILE CLOUDFLARE R2 & ESRI -->
+  <link rel="preconnect" href="https://ortho-tiles.operationoverwatch001.workers.dev" crossorigin>
+  <link rel="dns-prefetch" href="https://ortho-tiles.operationoverwatch001.workers.dev">
+  <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin>
+
   <!-- TAG PWA & STANDALONE APP ENGINE -->
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#040508" />
@@ -23,14 +28,18 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
 
+  <!-- ERUDA MOBILE INSPECTOR (INSPECT ELEMENT LANGSUNG DARI HP) -->
+  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+  <script>eruda.init();</script>
+
   <!-- Library Excel, Chart, Leaflet, jsPDF, html2canvas -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
-  <!-- Engine PMTiles untuk Citra Drone Cloud-Optimized (v3 Stable) -->
-  <script src="https://unpkg.com/pmtiles@3.0.7/dist/pmtiles.js"></script>
+  <!-- Engine PMTiles untuk Citra Drone Cloud-Optimized (Upgrade ke v3.2.0 Stable) -->
+  <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -1040,7 +1049,7 @@
       <p style="font-size:11px; color:#cbd5e1; line-height:1.4; margin-bottom:14px;">Foto galeri ini tidak memiliki metadata koordinat GPS asli. Silakan pilih opsi di bawah:</p>
       <button onclick="chooseNewGeoPhoto()" style="width:100%; padding:8px; background:#334155; color:#fff; font-size:11px; font-weight:bold; border-radius:6px; border:none; margin-bottom:6px; cursor:pointer;">Pilih Foto Lain dari Galeri</button>
       <button onclick="useCurrentLiveGpsFallback()" style="width:100%; padding:8px; background:#eab308; color:#000; font-size:11px; font-weight:bold; border-radius:6px; border:none; margin-bottom:6px; cursor:pointer;">Gunakan Lokasi HP Sekarang</button>
-      <button onclick="pickManualPointOnMapFallback()" style="width:100%; padding:8px; background:#00f0ff; color:#000; font-size:11px; font-weight:bold; border-radius:6px; border:none; margin-bottom:8px; cursor:pointer;">Tunjuk Titik di Peta</button>
+      <button onclick="pickManualPointOnMapFallback()" style="width:100%; padding:8px; background:#00f0ff; color:#000; font-size:11px; font-weight:bold; border-radius:6px; border:none; margin-bottom:6px; cursor:pointer;">Tunjuk Titik di Peta</button>
       <button onclick="closeGeoExifWarningModal()" style="background:transparent; color:#94a3b8; border:none; font-size:10px; cursor:pointer;">Batal</button>
     </div>
   </div>
