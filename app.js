@@ -2000,7 +2000,16 @@ function confirmEvidenceStatusAndSubmit() {
   const selectedRadio = document.querySelector('input[name="evidenceFinalStatus"]:checked');
   const chosenStatus = selectedRadio ? selectedRadio.value : "PROGRESS";
 
+  // 1. Jalankan proses simpan data & kirim evidence dengan status pilihan dulu!
+  if (pendingStatusTarget === 'WO_EVIDENCE') {
+    executeSubmitWoEvidenceWithStatus(chosenStatus);
+  } else if (pendingStatusTarget === 'JOB_UPDATE') {
+    executeSubmitJobUpdateWithStatus(chosenStatus);
+  }
+
+  // 2. Baru tutup modal pop-up statusnya di akhir
   closeEvidenceStatusModal();
+}
 
   if (pendingStatusTarget === 'WO_EVIDENCE') {
     executeSubmitWoEvidenceWithStatus(chosenStatus);
