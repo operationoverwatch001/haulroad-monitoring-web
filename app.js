@@ -2745,7 +2745,7 @@ function refreshWorkOrderMapDisplay() {
 // 6B. DUA OPSI EKSPOR REKAP PDF
 // ==========================================
 
-// EKSPOR 1: FORMAT PERINTAH KERJA HARIAN ROAD (PT SIS STYLE)
+// EKSPOR 1: FORMAT PERINTAH KERJA HARIAN ROAD (STRICT 1 TANGGAL & 1 LOKASI PER LEMBAR)
 async function executeExportRekapWO() {
   const startInput = document.getElementById('exportStartDate');
   const endInput = document.getElementById('exportEndDate');
@@ -2766,7 +2766,7 @@ async function executeExportRekapWO() {
 
   const originalCursor = document.body.style.cursor;
   document.body.style.cursor = 'wait';
-  setSyncStatus('updating', 'Merekap Form WO SIS...');
+  setSyncStatus('updating', 'Menyusun Form PKH SIS...');
 
   try {
     const res = await fetch(`${WEB_APP_URL}?action=EXPORT_REKAP`);
@@ -2774,9 +2774,10 @@ async function executeExportRekapWO() {
     const json = await res.json();
     const allData = json.data || [];
 
-    // Filter berdasarkan tanggal WO dibuat dalam rentang
+    // Filter WO dalam rentang tanggal
     const filtered = allData.filter(wo => {
-      const d = parseTimestampToYMD(wo.createdTime);
+      const rawTime = wo.createdTime || wo.CreatedTime || wo.timestamp || wo.Timestamp || "";
+      const d = parseTimestampToYMD(rawTime);
       return d >= sDate && d <= eDate;
     });
 
@@ -2787,160 +2788,319 @@ async function executeExportRekapWO() {
       return;
     }
 
-    const doc = new jsPDF('l', 'mm', 'a4');
+    // Helper pencocokan nama jalan resmi dari master Excel (Data_Monitoring)
+    const matchMasterRoadName = (rawInput) => {
+      if (!rawInput) return "Ruas Tambang";
+      const cleanInput = rawInput.trim().toLowerCase();
 
-    // Kelompokkan data per Lokasi (misal Central vs North)
-    const groupedByLocation = {};
-    filtered.forEach(wo => {
-      const loc = wo.lokasi || "Central";
-      if (!groupedByLocation[loc]) groupedByLocation[loc] = [];
-      groupedByLocation[loc].push(wo);
+      // Cocokkan terhadap master array roadNames dari Overwatch.xlsx
+      if (typeof roadNames !== 'undefined' && Array.isArray(roadNames) && roadNames.length > 0) {
+        // Cek kecocokan persis atau kemiripan kata kunci
+        for (let r of roadNames) {
+          const coreName = r.replace(/^jl\s+/i, '').trim().toLowerCase();
+          if (cleanInput.includes(coreName) || cleanInput.includes(r.toLowerCase())) {
+            return r; // Format resmi misal: "Jl Bontang", "Jl Dumai"
+          }
+        }
+      }
+      return getGroupedRoadName(rawInput);
+    };
+
+    // 1. Muat Logo AlamTri
+    let logoBase64 = null;
+    try {
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      await new Promise((resolve) => {
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+        img.src = './Logo_Alamtri.png';
+      });
+      if (img.width && img.height) {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        logoBase64 = canvas.toDataURL('image/png');
+      }
+    } catch(e) {}
+
+    // 2. KELOMPOKKAN STRICT PER: [TANGGAL HARI ITU] + [LOKASI]
+    // Struktur: groups[dateKey_locationKey] = [ kartu1, kartu2, ... ]
+    const pageGroups = {};
+
+    filtered.forEach(item => {
+      const rawTime = item.createdTime || item.CreatedTime || item.timestamp || "";
+      const dateYMD = parseTimestampToYMD(rawTime) || sDate; // Format YYYY-MM-DD
+      const rawRoad = item.road || item.Road || item.Nama_Jalan || "Ruas Tambang";
+      const officialRoad = matchMasterRoadName(rawRoad);
+      const clusterName = item.cluster || item.Cluster || getGroupedRoadName(rawRoad);
+      const lokasiName = (item.lokasi || item.Lokasi || "Central").toUpperCase();
+
+      const groupKey = `${dateYMD}___${lokasiName}`;
+      if (!pageGroups[groupKey]) {
+        pageGroups[groupKey] = {
+          dateYMD: dateYMD,
+          lokasi: lokasiName,
+          cardsMap: {}
+        };
+      }
+
+      // Gabungkan WO yang segmen & clusternya sama dalam satu kartu
+      const cardKey = `${clusterName}___${officialRoad}`;
+      if (!pageGroups[groupKey].cardsMap[cardKey]) {
+        pageGroups[groupKey].cardsMap[cardKey] = {
+          cluster: clusterName,
+          road: officialRoad,
+          toolsSet: new Set(),
+          jobLines: []
+        };
+      }
+
+      let rawJobs = item.jobs;
+      if (typeof rawJobs === 'string') {
+        try { rawJobs = JSON.parse(rawJobs); } catch(e) { rawJobs = null; }
+      }
+      let rawHist = item.progressHistory;
+      if (typeof rawHist === 'string') {
+        try { rawHist = JSON.parse(rawHist); } catch(e) { rawHist = []; }
+      }
+
+      const jobs = (rawJobs && Array.isArray(rawJobs) && rawJobs.length > 0)
+        ? rawJobs
+        : [{ toolType: item.toolType || "", egi: item.egi || "", detail: item.notes || item.detail || "-" }];
+
+      jobs.forEach((j, jIdx) => {
+        let toolType = j.toolType || "";
+        let egi = j.egi || "";
+        let detail = j.detail || j.notes || item.notes || "-";
+
+        if (rawHist && Array.isArray(rawHist) && rawHist.length > 0) {
+          const matchH = rawHist.filter(h => h.jobIndex === jIdx || (h.jobTarget || '').includes(`Job ${jIdx + 1}`));
+          const targetH = matchH.length > 0 ? matchH[matchH.length - 1] : rawHist[rawHist.length - 1];
+          if (targetH) {
+            if (targetH.toolType) toolType = targetH.toolType;
+            if (targetH.egi) egi = targetH.egi;
+          }
+        }
+
+        const toolEgi = `${toolType} ${egi}`.trim();
+        if (toolEgi) pageGroups[groupKey].cardsMap[cardKey].toolsSet.add(toolEgi);
+
+        const prefix = toolEgi ? `${toolEgi} ` : '';
+        pageGroups[groupKey].cardsMap[cardKey].jobLines.push(`- ${prefix}${detail}`.trim());
+      });
     });
 
-    const locations = Object.keys(groupedByLocation);
+    // 3. Susun Halaman Cetak
+    const doc = new jsPDF('l', 'mm', 'a4');
+    let isFirstPage = true;
 
-    locations.forEach((locName, pageIdx) => {
-      if (pageIdx > 0) doc.addPage();
+    // Urutkan grup tanggal secara kronologis
+    const sortedGroupKeys = Object.keys(pageGroups).sort();
 
-      const woList = groupedByLocation[locName];
+    sortedGroupKeys.forEach(gKey => {
+      const grp = pageGroups[gKey];
+      const cardsList = Object.values(grp.cardsMap).map(c => ({
+        cluster: c.cluster,
+        road: c.road,
+        tools: c.toolsSet.size > 0 ? Array.from(c.toolsSet).join(', ') : '-',
+        jobs: c.jobLines
+      }));
 
-      // KOP SURAT FORMULIR RESMI PT SIS
-      doc.setDrawColor(0, 0, 0);
-      doc.setLineWidth(0.4);
-      doc.rect(10, 8, 277, 182);
+      // Format tanggal single: DD/MM/YYYY
+      const dateParts = grp.dateYMD.split('-');
+      const singleDateFormatted = (dateParts.length === 3) 
+        ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` 
+        : grp.dateYMD;
 
-      // Header Kotak Form
-      doc.rect(10, 8, 277, 24);
-      doc.line(75, 8, 75, 32);
-      doc.line(180, 8, 180, 32);
-      doc.line(240, 8, 240, 32);
+      const CARDS_PER_PAGE = 4;
+      const totalSubPages = Math.max(1, Math.ceil(cardsList.length / CARDS_PER_PAGE));
 
-      // Kolom 1 Header: Logo & Perusahaan
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.text("PT. SAPTAINDRA SEJATI", 14, 14);
-      doc.setFontSize(14);
-      doc.setTextColor(2, 132, 199);
-      doc.text("AlamTri", 14, 22);
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(8);
-      doc.text("geo", 34, 22);
+      for (let subP = 0; subP < totalSubPages; subP++) {
+        if (!isFirstPage) {
+          doc.addPage();
+        }
+        isFirstPage = false;
 
-      // Kolom 2 Header: Jobsite, Lokasi, Tanggal, Section
-      doc.setFontSize(8);
-      doc.text("JOBSITE", 80, 13);
-      doc.text(": ADMO", 102, 13);
+        // Form No
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(0, 0, 0);
+        doc.text("Form No. : ADMO/PR2/20/F-012", 287, 6.5, { align: "right" });
 
-      doc.text("LOKASI", 80, 18);
-      doc.text(`: ${locName.toUpperCase()}`, 102, 18);
+        // Bingkai Luar
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.4);
+        doc.rect(10, 8, 277, 194);
 
-      doc.text("TANGGAL", 80, 23);
-      doc.text(`: ${sDate === eDate ? sDate : `${sDate} s/d ${eDate}`}`, 102, 23);
+        // Header
+        doc.line(10, 32, 287, 32);
+        doc.line(44, 8, 44, 32);
+        doc.line(185, 8, 185, 32);
+        doc.line(242, 8, 242, 32);
 
-      doc.text("SECTION", 80, 28);
-      doc.text(": ROAD", 102, 28);
+        // Logo
+        if (logoBase64) {
+          doc.addImage(logoBase64, 'PNG', 12, 10, 30, 20, undefined, 'FAST');
+        } else {
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(14);
+          doc.setTextColor(2, 132, 199);
+          doc.text("AlamTri", 14, 20);
+          doc.setTextColor(0, 0, 0);
+          doc.setFontSize(8);
+          doc.text("geo", 34, 20);
+        }
 
-      // Kolom 3 Header: Judul Form
-      doc.setFontSize(12);
-      doc.text("PERINTAH KERJA", 185, 16);
-      doc.text("HARIAN ROAD", 185, 22);
-      doc.setFontSize(7);
-      doc.text("Form No. : ADMO/PR2/20/F-012", 185, 28);
+        // Judul PT SIS & Grid Meta Data
+        doc.line(44, 16, 185, 16);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(0, 0, 0);
+        doc.text("PT. SAPTAINDRA SEJATI", 114.5, 13.5, { align: "center" });
 
-      // Kolom 4 Header: PROMISE
-      doc.setFontSize(11);
-      doc.setTextColor(234, 179, 8);
-      doc.text("QPROMISE", 244, 18);
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(6.5);
-      doc.text("Production Management System", 244, 23);
+        doc.line(44, 24, 185, 24);
+        doc.line(66, 16, 66, 32);
+        doc.line(114.5, 16, 114.5, 32);
+        doc.line(138, 16, 138, 32);
 
-      // Sub-Baris: DARI, KEPADA, TEMBUSAN
-      doc.rect(10, 32, 277, 8);
-      doc.setFontSize(8);
-      doc.text("DARI : Group Leader Road Maintenance", 14, 37);
-      doc.text("KEPADA : Pengawas Lapangan", 105, 37);
-      doc.text("TEMBUSAN : Project Manager / Dept Head", 195, 37);
+        doc.setFontSize(8);
+        doc.text("JOBSITE", 46, 21.2);
+        doc.text("ADMO", 70, 21.2);
 
-      // PENGELOMPOKKAN PER CLUSTER / RUAS JALAN UTAMA
-      const groupedClusters = {};
-      woList.forEach(wo => {
-        let parentCluster = wo.cluster || getGroupedRoadName(wo.road);
-        if (!groupedClusters[parentCluster]) groupedClusters[parentCluster] = [];
-        groupedClusters[parentCluster].push(wo);
-      });
+        doc.text("LOKASI", 46, 29.2);
+        doc.text(grp.lokasi, 70, 29.2);
 
-      // Siapkan baris AutoTable
-      const tableData = [];
-      let noCounter = 1;
+        // TANGGAL TUNGGAL (1 HARI SAJA)
+        doc.text("TANGGAL", 116.5, 21.2);
+        doc.text(singleDateFormatted, 140, 21.2);
 
-      Object.keys(groupedClusters).forEach(cName => {
-        const items = groupedClusters[cName];
-        
-        // Rekap Alat Support: Prioritaskan alat yang terisi di submit evidence
-        const toolsSet = new Set();
-        const noteLines = [];
+        doc.text("SECTION", 116.5, 29.2);
+        doc.text("ROAD", 140, 29.2);
 
-        items.forEach(item => {
-          const segmenName = item.road;
-          const jobs = item.jobs || [{ toolType: "", egi: "", detail: item.notes, status: item.status }];
+        // Perintah Kerja Harian Road
+        doc.setFontSize(12);
+        doc.text("PERINTAH KERJA", 213.5, 18, { align: "center" });
+        doc.setFontSize(13);
+        doc.text("HARIAN ROAD", 213.5, 25, { align: "center" });
 
-          jobs.forEach(j => {
-            // Evaluasi status terupdate
-            const st = (j.status || item.status || "OPEN").toUpperCase();
-            
-            // Evaluasi jenis alat & EGI (prioritas evidence)
-            let toolType = j.toolType || "";
-            let egi = j.egi || "";
+        // QPromise
+        doc.setFontSize(13);
+        doc.setTextColor(202, 138, 4);
+        doc.text("QPROMISE", 264.5, 18, { align: "center" });
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(6.5);
+        doc.setFont("helvetica", "normal");
+        doc.text("Production Management System", 264.5, 24, { align: "center" });
 
-            // Jika ada riwayat evidence yang mencatat alat berbeda, ambil data evidence
-            if (item.progressHistory && item.progressHistory.length > 0) {
-              const latestEvidence = item.progressHistory[item.progressHistory.length - 1];
-              if (latestEvidence.toolType) toolType = latestEvidence.toolType;
-              if (latestEvidence.egi) egi = latestEvidence.egi;
-            }
+        // Sub-Header (DARI, KEPADA, TEMBUSAN)
+        doc.line(10, 38, 287, 38);
+        doc.line(102, 32, 102, 38);
+        doc.line(195, 32, 195, 38);
 
-            if (toolType || egi) {
-              toolsSet.add(`${toolType} ${egi}`.trim());
-            }
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.text("DARI :", 13, 36.2);
+        doc.text("KEPADA :", 105, 36.2);
+        doc.text("TEMBUSAN :", 198, 36.2);
 
-            const toolPrefix = (toolType || egi) ? `${toolType} ${egi} ` : '';
-            noteLines.push(`- [${segmenName}] ${toolPrefix}${j.detail || j.notes || '-'}   [ ${st} ]`);
-          });
-        });
+        // Grid 4 Kotak (2x2)
+        doc.line(148.5, 38, 148.5, 202);
+        doc.line(10, 120, 287, 120);
 
-        const rekapAlat = toolsSet.size > 0 ? Array.from(toolsSet).join(', ') : '-';
+        const cardPositions = [
+          { x: 10, y: 38 },
+          { x: 148.5, y: 38 },
+          { x: 10, y: 120 },
+          { x: 148.5, y: 120 }
+        ];
 
-        tableData.push([
-          noCounter++,
-          `Jalur: ${cName}\nSegmen: Berbagai Ruas\nAlat Support: ${rekapAlat}`,
-          noteLines.join('\n\n')
-        ]);
-      });
+        for (let i = 0; i < CARDS_PER_PAGE; i++) {
+          const pos = cardPositions[i];
+          const cardW = 138.5;
+          const cardH = 82;
+          const subX = pos.x + 10;
+          const subW = cardW - 10;
 
-      // RENDER AUTO-TABLE
-      if (doc.autoTable) {
-        doc.autoTable({
-          startY: 40,
-          margin: { left: 10, right: 10 },
-          head: [['NO.', 'INFORMASI JALUR & ALAT SUPPORT', 'INSTRUKSI KERJA & STATUS PROGRESS']],
-          body: tableData,
-          theme: 'grid',
-          headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
-          styles: { fontSize: 7.5, cellPadding: 4, textColor: [0, 0, 0] },
-          columnStyles: {
-            0: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
-            1: { cellWidth: 70, fontStyle: 'bold' },
-            2: { cellWidth: 195 }
+          // Garis pembatas kotak
+          doc.line(pos.x, pos.y + 6, pos.x + cardW, pos.y + 6);
+          doc.line(pos.x + 10, pos.y, pos.x + 10, pos.y + cardH);
+
+          doc.line(subX, pos.y + 11, pos.x + cardW, pos.y + 11);
+          doc.line(subX, pos.y + 16, pos.x + cardW, pos.y + 16);
+          doc.line(subX, pos.y + 21, pos.x + cardW, pos.y + 21);
+          doc.line(subX, pos.y + 26, pos.x + cardW, pos.y + 26);
+          doc.line(subX + 54, pos.y + 6, subX + 54, pos.y + 16);
+
+          // Header statis
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(7.5);
+          doc.text("NO", pos.x + 5, pos.y + 4.2, { align: "center" });
+          doc.text("INSTRUKSI KERJA", subX + (subW / 2), pos.y + 4.2, { align: "center" });
+
+          // Label form statis
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7);
+          doc.text("Jalur", subX + 2, pos.y + 9.5);
+          doc.text(":", subX + 18, pos.y + 9.5);
+
+          doc.text("Segmen", subX + 56, pos.y + 9.5);
+          doc.text(":", subX + 74, pos.y + 9.5);
+
+          doc.text("Fleet Ex", subX + 2, pos.y + 14.5);
+          doc.text(":", subX + 18, pos.y + 14.5);
+
+          doc.text("Kondisi", subX + 56, pos.y + 14.5);
+          doc.text(":", subX + 74, pos.y + 14.5);
+
+          doc.text("Alat Support", subX + 2, pos.y + 19.5);
+          doc.text(":", subX + 18, pos.y + 19.5);
+
+          doc.text("Note", subX + 2, pos.y + 24.5);
+          doc.text(":", subX + 18, pos.y + 24.5);
+
+          // Isi Data Kartu
+          const currentCardIdx = (subP * CARDS_PER_PAGE) + i;
+          if (currentCardIdx < cardsList.length) {
+            const cardData = cardsList[currentCardIdx];
+
+            // Nomor urut dalam hari & lokasi tersebut
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(9);
+            doc.text(String(currentCardIdx + 1), pos.x + 5, pos.y + 13, { align: "center" });
+
+            // Nilai Isian
+            doc.setFontSize(7.2);
+            doc.text(cardData.cluster, subX + 20, pos.y + 9.5, { maxWidth: 33 });
+            doc.text(cardData.road, subX + 76, pos.y + 9.5, { maxWidth: 50 }); // Nama Segmen resmi dari Excel
+            doc.text(cardData.tools, subX + 20, pos.y + 19.5, { maxWidth: 105 });
+
+            // Daftar Pekerjaan
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(7.5);
+            let currentLineY = pos.y + 32;
+
+            cardData.jobs.forEach(jobText => {
+              if (currentLineY > pos.y + cardH - 4) return;
+              const splitLines = doc.splitTextToSize(jobText, subW - 6);
+              splitLines.forEach(ln => {
+                if (currentLineY <= pos.y + cardH - 4) {
+                  doc.text(ln, subX + 3, currentLineY);
+                  currentLineY += 4.5;
+                }
+              });
+            });
           }
-        });
+        }
       }
     });
 
     doc.save(`Perintah_Kerja_Harian_Road_${sDate}_sd_${eDate}.pdf`);
-    alert("Rekap Work Order (Format PT SIS) berhasil diekspor!");
+    alert("Formulir PKH Road (Format Harian per Lokasi) berhasil diekspor!");
   } catch (err) {
-    alert("Gagal mengekspor Rekap WO: " + err.message);
+    alert("Gagal mengekspor Formulir PKH: " + err.message);
   } finally {
     document.body.style.cursor = originalCursor;
     setSyncStatus('updated');
