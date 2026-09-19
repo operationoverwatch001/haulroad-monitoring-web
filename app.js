@@ -1709,6 +1709,7 @@ function renderJobsUI(jobsList, isEditable, isViewMode = false) {
     card.style.border = '1px solid #334155';
     card.style.borderRadius = '6px';
     card.style.padding = '8px 10px';
+    card.style.marginBottom = '6px';
 
     const jobSt = (j.status || "OPEN").toUpperCase();
     let stColor = jobSt === 'CLOSED' ? '#22c55e' : (jobSt === 'PROGRESS' ? '#eab308' : '#e11d48');
@@ -1765,10 +1766,11 @@ function renderJobsUI(jobsList, isEditable, isViewMode = false) {
           updateBtnHtml +
         '</div>' +
         '<div style="font-size:11px; color:#cbd5e1; margin-top:2px;">' + (j.detail || j.notes || j.category || 'Tidak ada uraian.') + '</div>';
-
-      container.appendChild(card);
     }
-  }); 
+
+    // WAJIB DI SINI: Ditaruh di luar if-else supaya nempel di mode edit maupun view
+    container.appendChild(card);
+  });
 }
 
 function handleJobToolSelectChange(selectElem) {
