@@ -2154,6 +2154,92 @@ async function submitWorkOrder() {
 
   closeWoModal();
 }
+async function executeSubmitWoEvidenceWithStatus(statusBaru) {
+  if (!currentActiveWoId || !allWorkOrders[currentActiveWoId]) return;
+  const targetWo = allWorkOrders[currentActiveWoId];
+
+  const repInput = document.getElementById('woReporterName');
+  const notesElem = document.getElementById('woNotes');
+  const roadInput = document.getElementById('woRoadName');
+  const toolTypeSelect = document.getElementById('woEvidenceToolType');
+  const toolCustomInput = document.getElementById('woEvidenceToolCustom');
+  const egiInput = document.getElementById('woEvidenceEgi');
+  const dtInput = document.getElementById('woEvidenceDateTimeInput');
+
+  const reporter = repInput ? repInput.value.trim() : currentNRP;
+  const notes = notesElem ? notesElem.value.trim() : "";
+  const roadName = roadInput ? roadInput.value.trim() : targetWo.road;
+
+  let toolType = toolTypeSelect ? toolTypeSelect.value : "";
+  if (toolType === "CUSTOM") {
+    toolType = toolCustomInput ? toolCustomInput.value.trim() : "";
+  }
+  const egi = egiInput ? egiInput.value.trim() : "";
+
+  const chosenTimestamp = dtInput && dtInput.value ? formatDateTimeLocalToWita(dtInput.value) : UtilitiesFormatNowWita();
+
+  const imagesPayload = [];
+  for (let i = 0; i < mainUploadFilesQueue.length; i++) {
+    const file = mainUploadFilesQueue[i];
+    try {
+      const base64 = await compressImage(file);
+      imagesPayload.push({
+        imageBase64: base64,
+        imageName: `IMG_EV_${roadName.replace(/\s+/g, '_')}_${Date.now()}_${i + 1}.jpg`,
+        imageMime: "image/jpeg"
+      });
+    } catch (e) {}
+  }
+
+  setSyncStatus('updating', 'Mengirim bukti evidence...');
+
+  const firstJobCat = (targetWo.jobs && targetWo.jobs[0]) ? (targetWo.jobs[0].detail || "Job 1") : "Pekerjaan Lapangan";
+  const jobTargetText = `Job 1: ${firstJobCat}`;
+
+  syncWorkOrderToCloud({
+    action: "SUBMIT_EVIDENCE",
+    woId: currentActiveWoId,
+    jobIndex: 0,
+    jobTarget: jobTargetText,
+    road: roadName,
+    status: statusBaru,
+    notes: notes,
+    reporter: reporter,
+    timestamp: chosenTimestamp,
+    toolType: toolType,
+    egi: egi,
+    images: imagesPayload
+  });
+
+  targetWo.status = statusBaru;
+  if (targetWo.jobs && targetWo.jobs[0]) {
+    targetWo.jobs[0].status = statusBaru;
+    if (toolType) targetWo.jobs[0].toolType = toolType;
+    if (egi) targetWo.jobs[0].egi = egi;
+  }
+
+  createOrUpdateMarker(targetWo);
+  if (targetWo.linkedLineId && allDrawLines[targetWo.linkedLineId]) {
+    renderDrawLineOnMap(allDrawLines[targetWo.linkedLineId]);
+  }
+
+  const notifMsg = `${reporter} update ${jobTargetText} ${roadName}. Status : ${statusBaru}`;
+  broadcastWoSync('UPDATE_JOB_STATUS', {
+    woId: currentActiveWoId,
+    jobIndex: 0,
+    status: statusBaru,
+    parentStatus: statusBaru,
+    notes: notes,
+    reporter: reporter,
+    toolType: toolType,
+    egi: egi
+  }, notifMsg);
+
+  catatLogKeServer("SUBMIT EVIDENCE", `Pelapor: ${reporter}, Lokasi: ${roadName}, Status: ${statusBaru}`);
+  renderOutstandingList();
+  alert(`Progress berhasil dikirim oleh ${reporter} dengan status: ${statusBaru}!`);
+  closeWoModal();
+}
 
 // ==========================================
 // 4D. MODAL UPDATE PROGRESS PER-JOB (MULTI-JOB)
