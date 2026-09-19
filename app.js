@@ -133,21 +133,21 @@ if (pmtilesLib) {
     const p = new pmtilesLib.PMTiles(PMTILES_URL);
     protocol.add(p);
 
-    // Orthophoto Drone: Diberi zIndex 10, buffer penahan memori, dan kontrol throttle zoom anti-bolong
+    // Orthophoto Drone: Diberi zIndex 10, buffer penahan memori, dan batas native zoom 19
     orthoLayer = pmtilesLib.leafletRasterLayer(p, {
       maxZoom: 22,
-      maxNativeZoom: 20,
+      maxNativeZoom: 19,        // Disesuaikan pas ke batas convert 14..19 (anti-clipping)
       zIndex: 10,
       updateWhenZooming: false, // Tahan request kepingan baru selama animasi zoom berlangsung
       updateWhenIdle: true,     // Request kepingan baru HANYA jika gerakan zoom/pan sudah diam
-      keepBuffer: 6,            // Tahan kepingan tile di cache memori browser agar tidak langsung rontok
+      keepBuffer: 8,            // Naikkan buffer dari 6 ke 8 biar kepingan tile di HP makin stabil
       attribution: 'Drone Orthophoto'
     }).addTo(map);
 
     p.getHeader().then(header => {
       if (header) {
         if (header.minZoom) orthoLayer.options.minZoom = header.minZoom;
-        if (header.maxZoom) orthoLayer.options.maxNativeZoom = header.maxZoom;
+        if (header.maxZoom) orthoLayer.options.maxNativeZoom = Math.min(header.maxZoom, 19);
 
         if (header.minLon && header.minLat) {
           map.fitBounds([
@@ -2885,7 +2885,6 @@ function startSilentGpsTracking() {
         userAccuracyCircle.setLatLng(latlng);
         userAccuracyCircle.setRadius(accuracy);
       }
-      // Kamera Leaflet tidak dipaksa panTo di sini agar viewport bebas digeser
     },
     (err) => { console.warn(`GPS Silent Error: ${err.message}`); },
     { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 }
@@ -2960,7 +2959,7 @@ function mulaiAnimasiIntroDanLoadData() {
   loadAllVectorLayers();
   loadCloudWorkOrders();
   initSupabaseRealtime();
-  startSilentGpsTracking(); // Otomatis aktifkan pelacakan background senyap
+  startSilentGpsTracking();
 
   setInterval(loadCloudWorkOrders, 12000);
 
@@ -4051,7 +4050,7 @@ function drawCrossSectionChart(staTarget) {
 
 // ==========================================================
 // 7B. BOTTOM PANEL: AUTO-HIDE, TAP & TOUCH DRAG
-// ==========================================================
+// ==========================================
 function setBottomPanelHeight(heightPx, animate = true) {
   const bottomPanel = document.getElementById('bottom-panel');
   const floatingGroup = document.getElementById('floatingActionGroup');
@@ -4289,7 +4288,7 @@ async function executeExportPDF() {
 
 // ==========================================================
 // 9. MODUL GEOTAGGING KAMERA NATIVE, EXIF & TACTICAL RADAR
-// ==========================================
+// ==========================================================
 let currentCapturedMetadata = null;
 let currentWatermarkedBase64 = null;
 let currentPendingPhotoFile = null;
