@@ -5011,11 +5011,11 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
     const jobs = (matchedWo.jobs && matchedWo.jobs.length > 0) ? matchedWo.jobs : [{ detail: "Pekerjaan Lapangan", status: "OPEN" }];
     if (jobWrap) {
       jobWrap.innerHTML = `
-        <label style="font-size:10px; color:#cbd5e1; display:block; margin-bottom:4px; font-weight:bold;">Pilih Target Job Pekerjaan:</label>
-        <select id="geoSelectedJobIndex" style="width:100%; background:#090d16; border:1px solid #475569; padding:6px; border-radius:4px; color:#fff; font-size:11px;">
-          ${jobs.map((j, i) => `<option value="${i}">Job #${i + 1}: ${j.detail \vert{}\vert{} j.category} [${j.status || 'OPEN'}]</option>`).join('')}
-        </select>
-      `;
+  <label style="font-size:10px; color:#cbd5e1; display:block; margin-bottom:4px; font-weight:bold;">Pilih Target Job Pekerjaan:</label>
+  <select id="geoSelectedJobIndex" style="width:100%; background:#090d16; border:1px solid #475569; padding:6px; border-radius:4px; color:#fff; font-size:11px;">
+    ${jobs.map((j, i) => `<option value="${i}">Job #${i + 1}: ${j.detail \vert{}\vert{} j.category} [${j.status || 'OPEN'}]</option>`).join('')}
+  </select>
+`;
     }
   } else {
     if (woBox) {
