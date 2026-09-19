@@ -2416,10 +2416,10 @@ function createOrUpdateMarker(woItem) {
   }
   let viewBtnHtml = `<button onclick="openViewWoModal('${woItem.id}')" style="background:#00f0ff; color:#000; border:none; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;">View</button>`;
 
-let jobsListText = (woItem.jobs && woItem.jobs.length > 0)
+let jobsListText = (woItem.jobs && Array.isArray(woItem.jobs) && woItem.jobs.length > 0)
   ? woItem.jobs.map((j, i) => {
       const toolStr = (j.toolType || j.egi) ? ('[' + (j.toolType || '') + ' ' + (j.egi || '') + '] ') : '';
-      const textUraian = j.detail || j.notes || j.category || '-';
+      const textUraian = j.detail || j.notes || j.uraian || j.category || woItem.notes || '-';
       return (i + 1) + '. ' + toolStr + textUraian + ' [' + (j.status || 'OPEN') + ']';
     }).join('<br>')
   : (woItem.notes || '-');
@@ -2985,6 +2985,9 @@ async function executeExportRekapEvidence() {
     const evidencePhotosList = [];
 
     filtered.forEach(wo => {
+      if (typeof wo.progressHistory === 'string') {
+        try { wo.progressHistory = JSON.parse(wo.progressHistory); } catch (e) { wo.progressHistory = []; }
+      }
       if (wo.progressHistory && Array.isArray(wo.progressHistory)) {
         wo.progressHistory.forEach(h => {
           if (h.photoUrls && h.photoUrls.length > 0) {
@@ -2998,7 +3001,7 @@ async function executeExportRekapEvidence() {
                 reporter: h.reporter || wo.reporter,
                 timestamp: h.timestamp || wo.createdTime,
                 jobTarget: h.jobTarget || "Progress",
-                notes: h.notes || "-",
+                notes: h.notes || wo.notes || "-",
                 tool: (h.toolType || h.egi) ? `${h.toolType || ''} ${h.egi || ''}`.trim() : ""
               });
             });
@@ -3187,6 +3190,26 @@ async function loadCloudWorkOrders() {
       const data = await res.json();
       if (data.workOrders && data.workOrders.length > 0) {
         data.workOrders.forEach(wo => {
+          // 1. Parse jika jobs atau progressHistory dikirim sebagai string JSON
+          if (typeof wo.jobs === 'string') {
+            try { wo.jobs = JSON.parse(wo.jobs); } catch (e) { wo.jobs = null; }
+          }
+          if (typeof wo.progressHistory === 'string') {
+            try { wo.progressHistory = JSON.parse(wo.progressHistory); } catch (e) { wo.progressHistory = []; }
+          }
+
+          // 2. Normalisasi properti jobs dan fallback ke notes induk
+          if (wo.jobs && Array.isArray(wo.jobs) && wo.jobs.length > 0) {
+            wo.jobs.forEach(j => {
+              j.detail = j.detail || j.notes || j.uraian || j.deskripsi || j.category || '';
+            });
+            if (!wo.jobs[0].detail && wo.notes) {
+              wo.jobs[0].detail = wo.notes;
+            }
+          } else if (wo.notes) {
+            wo.jobs = [{ toolType: wo.toolType || "", customTool: "", egi: wo.egi || "", detail: wo.notes, status: wo.status || "OPEN" }];
+          }
+
           allWorkOrders[wo.id] = wo;
         });
       }
