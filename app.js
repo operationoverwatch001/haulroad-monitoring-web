@@ -2745,7 +2745,7 @@ function refreshWorkOrderMapDisplay() {
 // 6B. DUA OPSI EKSPOR REKAP PDF
 // ==========================================
 
-// EKSPOR 1: FORMAT PERINTAH KERJA HARIAN ROAD (LENGKAP, FIT LOGO PROPORSIONAL & STRICT PER HARI/LOKASI)
+// EKSPOR 1: FORMAT PERINTAH KERJA HARIAN ROAD (DENGAN LABEL STATUS BERWARNA DI UJUNG KANAN)
 async function executeExportRekapWO() {
   const startInput = document.getElementById('exportStartDate');
   const endInput = document.getElementById('exportEndDate');
@@ -2795,7 +2795,7 @@ async function executeExportRekapWO() {
         for (let r of roadNames) {
           const coreName = r.replace(/^jl\s+/i, '').trim().toLowerCase();
           if (cleanInput.includes(coreName) || cleanInput.includes(r.toLowerCase())) {
-            return r; // Contoh: "Jl Bontang", "Jl Dumai"
+            return r;
           }
         }
       }
@@ -2869,7 +2869,7 @@ async function executeExportRekapWO() {
           cluster: clusterName,
           road: officialRoad,
           toolsSet: new Set(),
-          jobLines: []
+          jobItems: [] // Menyimpan objek teks & status per job
         };
       }
 
@@ -2884,12 +2884,13 @@ async function executeExportRekapWO() {
 
       const jobs = (rawJobs && Array.isArray(rawJobs) && rawJobs.length > 0)
         ? rawJobs
-        : [{ toolType: item.toolType || "", egi: item.egi || "", detail: item.notes || item.detail || "-" }];
+        : [{ toolType: item.toolType || "", egi: item.egi || "", detail: item.notes || item.detail || "-", status: item.status || "OPEN" }];
 
       jobs.forEach((j, jIdx) => {
         let toolType = j.toolType || "";
         let egi = j.egi || "";
         let detail = j.detail || j.notes || item.notes || "-";
+        let jobStatus = (j.status || item.status || "OPEN").toUpperCase();
 
         if (rawHist && Array.isArray(rawHist) && rawHist.length > 0) {
           const matchH = rawHist.filter(h => h.jobIndex === jIdx || (h.jobTarget || '').includes(`Job ${jIdx + 1}`));
@@ -2897,6 +2898,7 @@ async function executeExportRekapWO() {
           if (targetH) {
             if (targetH.toolType) toolType = targetH.toolType;
             if (targetH.egi) egi = targetH.egi;
+            if (targetH.status) jobStatus = targetH.status.toUpperCase();
           }
         }
 
@@ -2904,7 +2906,10 @@ async function executeExportRekapWO() {
         if (toolEgi) pageGroups[groupKey].cardsMap[cardKey].toolsSet.add(toolEgi);
 
         const prefix = toolEgi ? `${toolEgi} ` : '';
-        pageGroups[groupKey].cardsMap[cardKey].jobLines.push(`- ${prefix}${detail}`.trim());
+        pageGroups[groupKey].cardsMap[cardKey].jobItems.push({
+          text: `- ${prefix}${detail}`.trim(),
+          status: jobStatus
+        });
       });
     });
 
@@ -2919,7 +2924,7 @@ async function executeExportRekapWO() {
         cluster: c.cluster,
         road: c.road,
         tools: c.toolsSet.size > 0 ? Array.from(c.toolsSet).join(', ') : '-',
-        jobs: c.jobLines
+        jobs: c.jobItems
       }));
 
       const dateParts = grp.dateYMD.split('-');
@@ -2953,7 +2958,7 @@ async function executeExportRekapWO() {
         doc.line(185, 8, 185, 32);
         doc.line(242, 8, 242, 32);
 
-        // Logo AlamTri (Kiri Atas) - Proporsional Tanpa Kegencet
+        // Logo AlamTri (Kiri Atas)
         if (logoAlamtriObj) {
           const fitLogo = calculateFitDimension(logoAlamtriObj, 30, 20, 12, 10);
           if (fitLogo) {
@@ -3000,7 +3005,7 @@ async function executeExportRekapWO() {
         doc.setFontSize(13);
         doc.text("HARIAN ROAD", 213.5, 25, { align: "center" });
 
-        // Logo Promise (Kanan Atas) - Proporsional Tanpa Kegencet
+        // Logo Promise (Kanan Atas)
         if (logoPromiseObj) {
           const fitPromise = calculateFitDimension(logoPromiseObj, 41, 20, 244, 10);
           if (fitPromise) {
@@ -3093,16 +3098,37 @@ async function executeExportRekapWO() {
             doc.text(cardData.road, subX + 76, pos.y + 9.5, { maxWidth: 50 });
             doc.text(cardData.tools, subX + 20, pos.y + 19.5, { maxWidth: 105 });
 
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(7.5);
             let currentLineY = pos.y + 32;
 
-            cardData.jobs.forEach(jobText => {
+            cardData.jobs.forEach(jobObj => {
               if (currentLineY > pos.y + cardH - 4) return;
-              const splitLines = doc.splitTextToSize(jobText, subW - 6);
-              splitLines.forEach(ln => {
+
+              const statusText = ` [${jobObj.status}]`;
+              // Tentukan warna status: OPEN (Merah), PROGRESS (Orange), CLOSED (Hijau)
+              let statusRGB = [220, 38, 38]; // Merah default
+              if (jobObj.status === 'PROGRESS') statusRGB = [217, 119, 6]; // Orange
+              else if (jobObj.status === 'CLOSED') statusRGB = [22, 163, 74]; // Hijau
+
+              // Cetak teks instruksi kerja (Hitam)
+              doc.setFont("helvetica", "bold");
+              doc.setFontSize(7.5);
+              doc.setTextColor(0, 0, 0);
+
+              const maxTextWidth = subW - 6 - doc.getTextWidth(statusText);
+              const splitLines = doc.splitTextToSize(jobObj.text, maxTextWidth);
+
+              splitLines.forEach((ln, idx) => {
                 if (currentLineY <= pos.y + cardH - 4) {
                   doc.text(ln, subX + 3, currentLineY);
+
+                  // Jika baris terakhir dari job tersebut, tempel label status berwarna di kanannya
+                  if (idx === splitLines.length - 1) {
+                    const textWidth = doc.getTextWidth(ln);
+                    doc.setTextColor(statusRGB[0], statusRGB[1], statusRGB[2]);
+                    doc.text(statusText, subX + 3 + textWidth, currentLineY);
+                    doc.setTextColor(0, 0, 0); // Kembalikan ke hitam
+                  }
+
                   currentLineY += 4.5;
                 }
               });
