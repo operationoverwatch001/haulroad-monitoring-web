@@ -3518,6 +3518,8 @@ async function loadCloudWorkOrders() {
 // ==========================================
 // 7. SILENT GPS TRACKER & RE-CENTER
 // ==========================================
+let lastSentRadarLatLng = null;
+
 function startSilentGpsTracking() {
   if (!navigator.geolocation) return;
   if (watchId !== null) navigator.geolocation.clearWatch(watchId);
@@ -3526,20 +3528,43 @@ function startSilentGpsTracking() {
     (pos) => {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
- const accuracy = pos.coords.accuracy;
+      const accuracy = pos.coords.accuracy;
+
+      // 1. FILTER AKURASI: Abaikan sinyal satelit yang terlalu meleset (> 25 meter)
+      if (accuracy > 25) {
+        console.warn("Akurasi sinyal rendah (" + Math.round(accuracy) + "m), update posisi ditahan.");
+        return;
+      }
+
       const latlng = [lat, lng];
       currentUserLatLng = latlng;
 
-      if (realtimeChannel && currentNRP) {
+      // 2. FILTER GERAK: Hanya pancarkan ke radar jika berpindah minimal 3 meter
+      let shouldBroadcast = false;
+      const currentPoint = L.latLng(lat, lng);
+
+      if (!lastSentRadarLatLng) {
+        shouldBroadcast = true;
+        lastSentRadarLatLng = currentPoint;
+      } else {
+        const distanceMoved = lastSentRadarLatLng.distanceTo(currentPoint);
+        if (distanceMoved >= 3) {
+          shouldBroadcast = true;
+          lastSentRadarLatLng = currentPoint;
+        }
+      }
+
+      if (shouldBroadcast && realtimeChannel && currentNRP) {
         realtimeChannel.track({
           user: currentNRP,
           role: currentUserRole,
-          latlng: { lat: lat, lng: lng }, // <-- Pakai format objek { lat, lng } biar dibaca mulus sama radar!
+          latlng: { lat: lat, lng: lng },
           online_at: new Date().toISOString()
         });
       }
 
-  if (!isRadarActive) {
+      // Render marker lokal jika radar sedang mati
+      if (!isRadarActive) {
         if (!userMarker) {
           userAccuracyCircle = L.circle(latlng, { radius: accuracy, color: '#0078d4', fillColor: '#2b88d8', fillOpacity: 0.15, weight: 1 }).addTo(map);
           userMarker = L.circleMarker(latlng, { radius: 9, color: '#ffffff', fillColor: '#0078d4', fillOpacity: 1, weight: 3 }).addTo(map);
@@ -3551,7 +3576,6 @@ function startSilentGpsTracking() {
           userAccuracyCircle.setRadius(accuracy);
         }
       } else {
-        // JIKA RADAR ON, PASTIKAN TITIK BIRU TETAP TERSEMBUNYI
         if (userMarker && map.hasLayer(userMarker)) map.removeLayer(userMarker);
         if (userAccuracyCircle && map.hasLayer(userAccuracyCircle)) map.removeLayer(userAccuracyCircle);
       }
