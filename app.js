@@ -4398,9 +4398,14 @@ function renderGradeSummary() {
   if (!panelBody || !panelTitle) return;
 
   const roadSelectHtml = `
-    <select onchange="changeRoad(this.value)" style="font-size:12px; font-weight:bold; padding:4px 8px; border-radius:6px; background:#f1f5f9; border:1px solid #cbd5e1; color:#0f172a; outline:none; cursor:pointer;">
-      ${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}
-    </select>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <select onchange="changeRoad(this.value)" style="font-size:12px; font-weight:bold; padding:4px 8px; border-radius:6px; background:#f1f5f9; border:1px solid #cbd5e1; color:#0f172a; outline:none; cursor:pointer;">
+        ${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}
+      </select>
+      <button type="button" onclick="openRoadSummaryModal()" style="background:#0284c7; color:#ffffff; border:none; padding:4px 9px; border-radius:6px; font-size:10px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:4px; box-shadow:0 1px 3px rgba(0,0,0,0.2);">
+        📊 Summary
+      </button>
+    </div>
   `;
   const roadData = getFilteredRoadData();
 
@@ -4424,9 +4429,14 @@ function renderLebarSummary() {
   if (!panelBody || !panelTitle) return;
 
   const roadSelectHtml = `
-    <select onchange="changeRoad(this.value)" style="font-size:12px; font-weight:bold; padding:4px 8px; border-radius:6px; background:#f1f5f9; border:1px solid #cbd5e1; color:#0f172a; outline:none; cursor:pointer;">
-      ${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}
-    </select>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <select onchange="changeRoad(this.value)" style="font-size:12px; font-weight:bold; padding:4px 8px; border-radius:6px; background:#f1f5f9; border:1px solid #cbd5e1; color:#0f172a; outline:none; cursor:pointer;">
+        ${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}
+      </select>
+      <button type="button" onclick="openRoadSummaryModal()" style="background:#0284c7; color:#ffffff; border:none; padding:4px 9px; border-radius:6px; font-size:10px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:4px; box-shadow:0 1px 3px rgba(0,0,0,0.2);">
+        📊 Summary
+      </button>
+    </div>
   `;
   panelTitle.innerHTML = roadSelectHtml;
 
@@ -4616,11 +4626,15 @@ function renderTabContent() {
   const roadData = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === activeRoad.toLowerCase());
 
   const roadSelectHtml = `
-    <select onchange="changeRoad(this.value)" style="font-size:12px; font-weight:bold; padding:4px 8px; border-radius:6px; background:#f1f5f9; border:1px solid #cbd5e1; color:#0f172a; outline:none; cursor:pointer;">
-      ${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}
-    </select>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <select onchange="changeRoad(this.value)" style="font-size:12px; font-weight:bold; padding:4px 8px; border-radius:6px; background:#f1f5f9; border:1px solid #cbd5e1; color:#0f172a; outline:none; cursor:pointer;">
+        ${roadNames.map(r => `<option value="${r}" ${r.toLowerCase() === activeRoad.toLowerCase() ? 'selected' : ''}>${r}</option>`).join('')}
+      </select>
+      <button type="button" onclick="openRoadSummaryModal()" style="background:#0284c7; color:#ffffff; border:none; padding:4px 9px; border-radius:6px; font-size:10px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:4px; box-shadow:0 1px 3px rgba(0,0,0,0.2);">
+        📊 Summary
+      </button>
+    </div>
   `;
-
   if (currentParam === 'grade') {
     renderGradeSummary();
   } else if (currentParam === 'lebar') {
@@ -4851,7 +4865,265 @@ function drawCrossSectionChart(staTarget) {
     }
   });
 }
+// ==========================================
+// 7A-2. AUDIT SUMMARY METRICS & EXECUTIVE MODAL
+// ==========================================
+function calculateRoadAuditMetrics(roadName) {
+  const target = (roadName || activeRoad).trim().toLowerCase();
+  const roadRows = monitoringData.filter(d => (d["Nama Jalan"] || "").trim().toLowerCase() === target);
+  
+  if (roadRows.length === 0) return null;
 
+  // Urutkan berdasarkan STA
+  roadRows.sort((a, b) => parseMeterSTA(a["STA"]) - parseMeterSTA(b["STA"]));
+
+  const minMeter = parseMeterSTA(roadRows[0]["STA"]);
+  const maxMeter = parseMeterSTA(roadRows[roadRows.length - 1]["STA"]);
+  const totalLength = Math.max(0, maxMeter - minMeter) || (roadRows.length * 20);
+  const stepPerSlice = totalLength / Math.max(1, roadRows.length);
+
+  const stdLebar = getActiveRoadStandardWidth(roadName);
+  const payloadClass = stdLebar <= 25 ? "Class 100 Ton" : (stdLebar <= 30 ? "Class 150 Ton" : "Class 200 Ton");
+
+  // 1. Metrik Grade Longitudinal
+  let flatCount = 0, slopeCount = 0;
+  let ongradeCount = 0, warningCount = 0, overgradeCount = 0;
+  let maxGradeVal = 0;
+  const gradeVals = [];
+
+  roadRows.forEach(r => {
+    const g = Math.abs(parseFloat(r["Grade Longitudinal (%)"]) || 0);
+    gradeVals.push(g);
+    if (g > maxGradeVal) maxGradeVal = g;
+
+    if (g < 2.0) flatCount++;
+    else slopeCount++;
+
+    if (g < 7.9) ongradeCount++;
+    else if (g <= 8.9) warningCount++;
+    else overgradeCount++;
+  });
+
+  const avgGrade = gradeVals.length ? (gradeVals.reduce((a, b) => a + b, 0) / gradeVals.length).toFixed(1) : "0.0";
+
+  // 2. Metrik Lebar Jalan
+  const stdWidths = [], nonStdWidths = [];
+  roadRows.forEach(r => {
+    const w = parseFloat(r["Lebar Total (m)"] || 0);
+    if (w >= stdLebar) stdWidths.push(w);
+    else if (w > 0) nonStdWidths.push(w);
+  });
+
+  const calcStats = (arr) => {
+    if (!arr.length) return { min: 0, max: 0, avg: 0 };
+    const min = Math.min(...arr).toFixed(1);
+    const max = Math.max(...arr).toFixed(1);
+    const avg = (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1);
+    return { min, max, avg };
+  };
+
+  const stdWidthStats = calcStats(stdWidths);
+  const nonStdWidthStats = calcStats(nonStdWidths);
+
+  // 3. Metrik Crossfall (Kiri & Kanan dimasukkan ke pool evaluasi)
+  const normCf = [], underCf = [], overCf = [];
+  roadRows.forEach(r => {
+    const cfL = Math.abs(parseFloat(r["Crossfall Kiri (%)"]) || 0);
+    const cfR = Math.abs(parseFloat(r["Crossfall Kanan (%)"]) || 0);
+
+    [cfL, cfR].forEach(cf => {
+      if (cf >= 2.0 && cf <= 4.0) normCf.push(cf);
+      else if (cf < 2.0) underCf.push(cf);
+      else overCf.push(cf);
+    });
+  });
+
+  const normCfStats = calcStats(normCf);
+  const underCfStats = calcStats(underCf);
+  const overCfStats = calcStats(overCf);
+
+  const totalCfSamples = normCf.length + underCf.length + overCf.length || 1;
+  const cfNormLen = Math.round((normCf.length / totalCfSamples) * totalLength);
+  const cfUnderLen = Math.round((underCf.length / totalCfSamples) * totalLength);
+  const cfOverLen = Math.round((overCf.length / totalCfSamples) * totalLength);
+
+  // Overall Road Compliance Index (Rata-rata kepatuhan grade, lebar, crossfall)
+  const gradeComp = (ongradeCount / roadRows.length) * 100;
+  const widthComp = (stdWidths.length / roadRows.length) * 100;
+  const cfComp = (normCf.length / totalCfSamples) * 100;
+  const overallScore = Math.round((gradeComp + widthComp + cfComp) / 3);
+
+  return {
+    roadName,
+    payloadClass,
+    totalLength,
+    flatLength: Math.round(flatCount * stepPerSlice),
+    slopeLength: Math.round(slopeCount * stepPerSlice),
+    grade: {
+      ongradeM: Math.round(ongradeCount * stepPerSlice),
+      warningM: Math.round(warningCount * stepPerSlice),
+      overgradeM: Math.round(overgradeCount * stepPerSlice),
+      ongradePct: Math.round((ongradeCount / roadRows.length) * 100),
+      warningPct: Math.round((warningCount / roadRows.length) * 100),
+      overgradePct: Math.round((overgradeCount / roadRows.length) * 100),
+      avg: avgGrade,
+      max: maxGradeVal.toFixed(1)
+    },
+    width: {
+      stdM: Math.round(stdWidths.length * stepPerSlice),
+      nonStdM: Math.round(nonStdWidths.length * stepPerSlice),
+      stdPct: Math.round((stdWidths.length / roadRows.length) * 100),
+      nonStdPct: Math.round((nonStdWidths.length / roadRows.length) * 100),
+      standardVal: stdLebar,
+      stdStats: stdWidthStats,
+      nonStdStats: nonStdWidthStats
+    },
+    crossfall: {
+      normM: cfNormLen,
+      underM: cfUnderLen,
+      overM: cfOverLen,
+      normPct: Math.round((normCf.length / totalCfSamples) * 100),
+      underPct: Math.round((underCf.length / totalCfSamples) * 100),
+      overPct: Math.round((overCf.length / totalCfSamples) * 100),
+      normStats: normCfStats,
+      underStats: underCfStats,
+      overStats: overCfStats
+    },
+    overallScore
+  };
+}
+
+function openRoadSummaryModal() {
+  const metrics = calculateRoadAuditMetrics(activeRoad);
+  if (!metrics) {
+    alert("Data audit untuk ruas " + activeRoad + " belum termuat.");
+    return;
+  }
+
+  let modal = document.getElementById('roadSummaryModalOverlay');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'roadSummaryModalOverlay';
+    modal.style.cssText = `
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(10, 15, 29, 0.82); backdrop-filter: blur(6px);
+      display: flex; align-items: center; justify-content: center; padding: 12px;
+    `;
+    document.body.appendChild(modal);
+  }
+
+  const scoreColor = metrics.overallScore >= 85 ? '#22c55e' : (metrics.overallScore >= 70 ? '#eab308' : '#e11d48');
+
+  modal.innerHTML = `
+    <div style="background: #0f172a; border: 1px solid #334155; border-radius: 12px; width: 100%; max-width: 680px; max-height: 90vh; overflow-y: auto; color: #f8fafc; font-family: sans-serif; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+      
+      <!-- Header -->
+      <div style="padding: 12px 16px; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: #0f172a; z-index: 10;">
+        <div>
+          <div style="font-size: 15px; font-weight: 900; color: #00f0ff; letter-spacing: 0.5px;">RINGKASAN AUDIT TEKNIS JALAN</div>
+          <div style="font-size: 11px; color: #94a3b8; font-family: monospace;">${metrics.roadName.toUpperCase()} • ${metrics.payloadClass}</div>
+        </div>
+        <button onclick="closeRoadSummaryModal()" style="background: #1e293b; color: #cbd5e1; border: none; font-size: 14px; font-weight: bold; width: 28px; height: 28px; border-radius: 50%; cursor: pointer;">✕</button>
+      </div>
+
+      <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
+        
+        <!-- Score & Overview Card -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px;">
+          <div style="background: #1e293b; padding: 10px; border-radius: 8px; border-left: 4px solid ${scoreColor};">
+            <div style="font-size: 9px; color: #94a3b8;">Tingkat Kepatuhan Ruas</div>
+            <div style="font-size: 20px; font-weight: 900; color: ${scoreColor};">${metrics.overallScore}%</div>
+            <div style="font-size: 9px; color: #cbd5e1;">Standar Operasional</div>
+          </div>
+          <div style="background: #1e293b; padding: 10px; border-radius: 8px; border-left: 4px solid #38bdf8;">
+            <div style="font-size: 9px; color: #94a3b8;">Total Panjang</div>
+            <div style="font-size: 18px; font-weight: 900; color: #f8fafc;">${metrics.totalLength} m</div>
+            <div style="font-size: 9px; color: #cbd5e1;">Flat: ${metrics.flatLength}m | Slope: ${metrics.slopeLength}m</div>
+          </div>
+        </div>
+
+        <!-- 1. PARAMETER GRADE -->
+        <div style="background: #1e293b; padding: 12px; border-radius: 8px; border: 1px solid #334155;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span style="font-size: 11px; font-weight: bold; color: #facc15;">1. GRADE LONGITUDINAL</span>
+            <span style="font-size: 10px; color: #cbd5e1; font-family: monospace;">Avg: ${metrics.grade.avg}% | Max: <b style="color:#ef4444;">${metrics.grade.max}%</b></span>
+          </div>
+          <!-- Stacked Bar -->
+          <div style="height: 10px; width: 100%; display: flex; border-radius: 5px; overflow: hidden; background: #0f172a; margin-bottom: 8px;">
+            <div style="width: ${metrics.grade.ongradePct}%; background: #22c55e;" title="Ongrade: ${metrics.grade.ongradeM}m"></div>
+            <div style="width: ${metrics.grade.warningPct}%; background: #eab308;" title="Warning: ${metrics.grade.warningM}m"></div>
+            <div style="width: ${metrics.grade.overgradePct}%; background: #e11d48;" title="Overgrade: ${metrics.grade.overgradeM}m"></div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; font-size: 10px;">
+            <div style="color: #22c55e;">• Ongrade: <b>${metrics.grade.ongradeM}m</b> (${metrics.grade.ongradePct}%)</div>
+            <div style="color: #eab308;">• Warning: <b>${metrics.grade.warningM}m</b> (${metrics.grade.warningPct}%)</div>
+            <div style="color: #e11d48;">• Overgrade: <b>${metrics.grade.overgradeM}m</b> (${metrics.grade.overgradePct}%)</div>
+          </div>
+        </div>
+
+        <!-- 2. PARAMETER LEBAR JALAN -->
+        <div style="background: #1e293b; padding: 12px; border-radius: 8px; border: 1px solid #334155;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span style="font-size: 11px; font-weight: bold; color: #38bdf8;">2. LEBAR JALAN HAUL ROAD</span>
+            <span style="font-size: 10px; color: #cbd5e1; font-family: monospace;">Std Desain: <b>${metrics.width.standardVal} m</b></span>
+          </div>
+          <!-- Stacked Bar -->
+          <div style="height: 10px; width: 100%; display: flex; border-radius: 5px; overflow: hidden; background: #0f172a; margin-bottom: 8px;">
+            <div style="width: ${metrics.width.stdPct}%; background: #22c55e;" title="Standar: ${metrics.width.stdM}m"></div>
+            <div style="width: ${metrics.width.nonStdPct}%; background: #e11d48;" title="Sempit: ${metrics.width.nonStdM}m"></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px; font-size: 10px;">
+            <div style="color: #22c55e;">
+              • Standar (≥${metrics.width.standardVal}m): <b>${metrics.width.stdM}m</b> (${metrics.width.stdPct}%) — <span style="color:#94a3b8;">Min: ${metrics.width.stdStats.min}m, Max: ${metrics.width.stdStats.max}m, Avg: ${metrics.width.stdStats.avg}m</span>
+            </div>
+            <div style="color: #e11d48;">
+              • Sempit (&lt;${metrics.width.standardVal}m): <b>${metrics.width.nonStdM}m</b> (${metrics.width.nonStdPct}%) — <span style="color:#fca5a5;">Min: <b>${metrics.width.nonStdStats.min}m</b>, Max: ${metrics.width.nonStdStats.max}m, Avg: ${metrics.width.nonStdStats.avg}m</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. PARAMETER CROSSFALL -->
+        <div style="background: #1e293b; padding: 12px; border-radius: 8px; border: 1px solid #334155;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span style="font-size: 11px; font-weight: bold; color: #ec4899;">3. CROSSFALL DRAINASE</span>
+            <span style="font-size: 10px; color: #cbd5e1; font-family: monospace;">Standar: <b>2.0% - 4.0%</b></span>
+          </div>
+          <!-- Stacked Bar -->
+          <div style="height: 10px; width: 100%; display: flex; border-radius: 5px; overflow: hidden; background: #0f172a; margin-bottom: 8px;">
+            <div style="width: ${metrics.crossfall.normPct}%; background: #22c55e;" title="Normal: ${metrics.crossfall.normM}m"></div>
+            <div style="width: ${metrics.crossfall.underPct}%; background: #38bdf8;" title="Datar: ${metrics.crossfall.underM}m"></div>
+            <div style="width: ${metrics.crossfall.overPct}%; background: #e11d48;" title="Miring: ${metrics.crossfall.overM}m"></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px; font-size: 10px;">
+            <div style="color: #22c55e;">
+              • Normal (2.0 - 4.0%): <b>${metrics.crossfall.normM}m</b> (${metrics.crossfall.normPct}%) — <span style="color:#94a3b8;">Avg: ${metrics.crossfall.normStats.avg}%</span>
+            </div>
+            <div style="color: #38bdf8;">
+              • Datar (&lt;2.0%): <b>${metrics.crossfall.underM}m</b> (${metrics.crossfall.underPct}%) — <span style="color:#bae6fd;">Min: <b>${metrics.crossfall.underStats.min}%</b>, Avg: ${metrics.crossfall.underStats.avg}% (Risiko Genangan)</span>
+            </div>
+            <div style="color: #e11d48;">
+              • Miring (&gt;4.0%): <b>${metrics.crossfall.overM}m</b> (${metrics.crossfall.overPct}%) — <span style="color:#fecdd3;">Max: <b>${metrics.crossfall.overStats.max}%</b>, Avg: ${metrics.crossfall.overStats.avg}% (Risiko Rollover)</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer Action -->
+      <div style="padding: 10px 16px; border-top: 1px solid #1e293b; display: flex; justify-content: flex-end;">
+        <button onclick="closeRoadSummaryModal()" style="background: #334155; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer;">Tutup</button>
+      </div>
+
+    </div>
+  `;
+
+  modal.style.display = 'flex';
+}
+
+function closeRoadSummaryModal() {
+  const modal = document.getElementById('roadSummaryModalOverlay');
+  if (modal) modal.style.display = 'none';
+}
 // ==========================================
 // 7B. BOTTOM PANEL: SLIDE & TOUCH DRAG
 // ==========================================
@@ -5940,6 +6212,8 @@ window.handleGeoDateTimeChange = handleGeoDateTimeChange;
 window.onCrossSectionStaChange = onCrossSectionStaChange;
 window.toggleRadarUserOnline = toggleRadarUserOnline;
 window.toggleGeoToolCustomInput = toggleGeoToolCustomInput;
+window.openRoadSummaryModal = openRoadSummaryModal;
+window.closeRoadSummaryModal = closeRoadSummaryModal;
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then((reg) => {
