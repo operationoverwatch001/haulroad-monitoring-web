@@ -295,11 +295,17 @@ function updateRadarMarkers(presenceState) {
 }
 
 // TOGGLE TOMBOL RADAR (ON/OFF)
+// TOGGLE TOMBOL RADAR (ON/OFF)
 function toggleRadarUserOnline() {
   isRadarActive = !isRadarActive;
   const btn = document.getElementById('btnToggleRadar');
   if (isRadarActive) {
     if (!map.hasLayer(radarMarkersLayer)) radarMarkersLayer.addTo(map);
+
+    // SEMBUNYIKAN TITIK BIRU LOKAL SAAT RADAR ON
+    if (userMarker && map.hasLayer(userMarker)) map.removeLayer(userMarker);
+    if (userAccuracyCircle && map.hasLayer(userAccuracyCircle)) map.removeLayer(userAccuracyCircle);
+
     if (btn) {
       btn.style.background = '#00f0ff';
       btn.style.color = '#000000';
@@ -311,6 +317,11 @@ function toggleRadarUserOnline() {
     showToastNotification("📡 Radar Aktif: Menampilkan posisi user online");
   } else {
     if (map.hasLayer(radarMarkersLayer)) map.removeLayer(radarMarkersLayer);
+
+    // MUNCULKAN KEMBALI TITIK BIRU SAAT RADAR OFF
+    if (userMarker && !map.hasLayer(userMarker)) map.addLayer(userMarker);
+    if (userAccuracyCircle && !map.hasLayer(userAccuracyCircle)) map.addLayer(userAccuracyCircle);
+
     if (btn) {
       btn.style.background = '';
       btn.style.color = '';
@@ -3528,13 +3539,21 @@ function startSilentGpsTracking() {
         });
       }
 
-      if (!userMarker) {
-        userAccuracyCircle = L.circle(latlng, { radius: accuracy, color: '#0078d4', fillColor: '#2b88d8', fillOpacity: 0.15, weight: 1 }).addTo(map);
-        userMarker = L.circleMarker(latlng, { radius: 9, color: '#ffffff', fillColor: '#0078d4', fillOpacity: 1, weight: 3 }).addTo(map);
+  if (!isRadarActive) {
+        if (!userMarker) {
+          userAccuracyCircle = L.circle(latlng, { radius: accuracy, color: '#0078d4', fillColor: '#2b88d8', fillOpacity: 0.15, weight: 1 }).addTo(map);
+          userMarker = L.circleMarker(latlng, { radius: 9, color: '#ffffff', fillColor: '#0078d4', fillOpacity: 1, weight: 3 }).addTo(map);
+        } else {
+          if (!map.hasLayer(userMarker)) userMarker.addTo(map);
+          if (!map.hasLayer(userAccuracyCircle)) userAccuracyCircle.addTo(map);
+          userMarker.setLatLng(latlng);
+          userAccuracyCircle.setLatLng(latlng);
+          userAccuracyCircle.setRadius(accuracy);
+        }
       } else {
-        userMarker.setLatLng(latlng);
-        userAccuracyCircle.setLatLng(latlng);
-        userAccuracyCircle.setRadius(accuracy);
+        // JIKA RADAR ON, PASTIKAN TITIK BIRU TETAP TERSEMBUNYI
+        if (userMarker && map.hasLayer(userMarker)) map.removeLayer(userMarker);
+        if (userAccuracyCircle && map.hasLayer(userAccuracyCircle)) map.removeLayer(userAccuracyCircle);
       }
     },
     (err) => { console.warn(`GPS Silent Error: ${err.message}`); },
