@@ -5020,7 +5020,7 @@ function openRoadSummaryModal() {
       <!-- Header -->
       <div style="padding: 12px 16px; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: #0f172a; z-index: 10;">
         <div>
-          <div style="font-size: 15px; font-weight: 900; color: #00f0ff; letter-spacing: 0.5px;">RINGKASAN AUDIT TEKNIS JALAN</div>
+          <div style="font-size: 15px; font-weight: 900; color: #00f0ff; letter-spacing: 0.5px;">SUMMARY PARAMETERS</div>
           <div style="font-size: 11px; color: #94a3b8; font-family: monospace;">${metrics.roadName.toUpperCase()} • ${metrics.payloadClass}</div>
         </div>
         <button onclick="closeRoadSummaryModal()" style="background: #1e293b; color: #cbd5e1; border: none; font-size: 14px; font-weight: bold; width: 28px; height: 28px; border-radius: 50%; cursor: pointer;">✕</button>
@@ -5045,7 +5045,7 @@ function openRoadSummaryModal() {
         <!-- 1. PARAMETER GRADE -->
         <div style="background: #1e293b; padding: 12px; border-radius: 8px; border: 1px solid #334155;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <span style="font-size: 11px; font-weight: bold; color: #facc15;">1. GRADE LONGITUDINAL</span>
+            <span style="font-size: 11px; font-weight: bold; color: #facc15;">1. GRADE</span>
             <span style="font-size: 10px; color: #cbd5e1; font-family: monospace;">Avg: ${metrics.grade.avg}% | Max: <b style="color:#ef4444;">${metrics.grade.max}%</b></span>
           </div>
           <!-- Stacked Bar -->
@@ -5064,7 +5064,7 @@ function openRoadSummaryModal() {
         <!-- 2. PARAMETER LEBAR JALAN -->
         <div style="background: #1e293b; padding: 12px; border-radius: 8px; border: 1px solid #334155;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <span style="font-size: 11px; font-weight: bold; color: #38bdf8;">2. LEBAR JALAN HAUL ROAD</span>
+            <span style="font-size: 11px; font-weight: bold; color: #38bdf8;">2. LEBAR JALAN</span>
             <span style="font-size: 10px; color: #cbd5e1; font-family: monospace;">Std Desain: <b>${metrics.width.standardVal} m</b></span>
           </div>
           <!-- Stacked Bar -->
@@ -5085,7 +5085,7 @@ function openRoadSummaryModal() {
         <!-- 3. PARAMETER CROSSFALL -->
         <div style="background: #1e293b; padding: 12px; border-radius: 8px; border: 1px solid #334155;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <span style="font-size: 11px; font-weight: bold; color: #ec4899;">3. CROSSFALL DRAINASE</span>
+            <span style="font-size: 11px; font-weight: bold; color: #ec4899;">3. CROSSFALL</span>
             <span style="font-size: 10px; color: #cbd5e1; font-family: monospace;">Standar: <b>2.0% - 4.0%</b></span>
           </div>
           <!-- Stacked Bar -->
