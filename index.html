@@ -531,7 +531,7 @@
   <!-- 2. HEADER UTAMA -->
   <header class="app-header fixed top-0 left-0 right-0 z-[1001] bg-slate-950/95 border-b border-slate-800 px-2 sm:px-3 py-1.5 flex items-center justify-between shadow-lg backdrop-blur-md gap-1 select-none overflow-visible">
     
-    <!-- KOTAK PINK KIRI: INDIKATOR TANGGAL AKTIF WO -->
+    <!-- KOTAK KIRI: INDIKATOR TANGGAL AKTIF WO -->
     <button id="btnActiveWoDate" onclick="openCalendarFilterModal()" title="Klik untuk pilih tanggal pantauan WO" 
       class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-[10px] sm:text-[11px] px-2 sm:px-2.5 py-1.5 rounded-md shadow flex items-center gap-1 transition active:scale-95 cursor-pointer shrink-0 whitespace-nowrap">
       <span class="text-xs">📅</span>
@@ -565,7 +565,7 @@
       </div>
     </div>
 
-    <!-- KOTAK PINK KANAN: UPDATE DATA STATUS -->
+    <!-- KOTAK KANAN: UPDATE DATA STATUS -->
     <button id="btnDataUpdateStatus" onclick="handleDataUpdateClick()" title="Tanggal update data audit terakhir"
       class="bg-amber-400 text-slate-950 font-bold text-[9px] sm:text-[10px] px-2 sm:px-2.5 py-1 rounded-md shadow text-center transition leading-tight flex flex-col items-center cursor-default shrink-0 whitespace-nowrap">
       <span class="text-[8px] uppercase tracking-wider font-extrabold text-slate-800">Update Data</span>
@@ -578,6 +578,12 @@
     <div id="onlineCounterWrap" class="bg-slate-900/85 border border-slate-700/80 px-2.5 py-0.5 rounded-full shadow flex items-center gap-1.5 backdrop-blur-sm pointer-events-auto">
       <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
       <span id="onlineCounterText" class="text-[10px] font-mono text-slate-300 font-semibold">Online: 1</span>
+      
+      <!-- TOMBOL TOGGLE RADAR POSISI USER ONLINE -->
+      <button id="btnToggleRadar" onclick="toggleRadarUserOnline()" title="Tampilkan / Sembunyikan Posisi User Online di Peta" 
+        class="ml-1 px-1.5 py-0.5 text-[8.5px] font-mono font-bold rounded bg-cyan-950 text-cyan-400 border border-cyan-700 hover:bg-cyan-800 transition cursor-pointer">
+        📡 RADAR
+      </button>
     </div>
 
     <!-- BADGE BLIP DINAMIS: PROSES & TIMESTAMP DETAIL -->
@@ -1081,8 +1087,10 @@
 
       <img id="geoPreviewStampedImg" style="width:100%; border-radius:6px; border:1px solid #334155; margin-bottom:10px; max-height:220px; object-fit:contain; background:#000;">
 
+      <!-- BANNER DETEKSI STATUS GEOFENCING / WO -->
       <div id="geoDetectedWoBox" style="background:#1e293b; border:1px solid #3b82f6; border-radius:6px; padding:8px; font-size:11px; margin-bottom:10px;"></div>
 
+      <!-- WAKTU PENGAMBILAN -->
       <div id="geoDateTimeGroup" style="margin-bottom:10px;">
         <label style="font-size:10px; color:#cbd5e1; display:block; margin-bottom:2px; font-weight:bold;">
           Waktu Pengambilan / Evidence: <span style="color:#ef4444;">*</span>
@@ -1090,20 +1098,54 @@
         <input type="datetime-local" id="geoReportDateTime" onchange="handleGeoDateTimeChange()" style="width:100%; background:#090d16; border:1px solid #475569; padding:6px 10px; border-radius:4px; color:#38bdf8; font-size:11px; font-family:monospace; outline:none; cursor:pointer;">
       </div>
 
-      <div id="geoRoadNameGroup" style="margin-bottom:10px;">
-        <label style="font-size:10px; color:#cbd5e1; display:block; margin-bottom:2px; font-weight:bold;">
-          Nama Ruas Jalan: <span style="color:#ef4444;">*</span>
-        </label>
-        <input type="text" id="geoReportRoadName" placeholder="Ketik atau edit nama ruas jalan..." style="width:100%; background:#090d16; border:1px solid #475569; padding:6px 10px; border-radius:4px; color:#facc15; font-size:12px; font-weight:bold;">
+      <!-- RUAS JALAN (SEGMEN) & CLUSTER -->
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:10px;">
+        <div>
+          <label style="font-size:10px; color:#cbd5e1; display:block; margin-bottom:2px; font-weight:bold;">
+            Ruas Jalan (Segmen): <span style="color:#ef4444;">*</span>
+          </label>
+          <input type="text" id="geoReportRoadName" placeholder="Auto-detect / ketik segmen..." style="width:100%; background:#090d16; border:1px solid #475569; padding:6px 8px; border-radius:4px; color:#38bdf8; font-size:11px; font-weight:bold;">
+        </div>
+        <div>
+          <label style="font-size:10px; color:#cbd5e1; display:block; margin-bottom:2px; font-weight:bold;">
+            Cluster / Jalur:
+          </label>
+          <input type="text" id="geoReportClusterName" placeholder="Auto-detect poligon..." style="width:100%; background:#090d16; border:1px solid #334155; padding:6px 8px; border-radius:4px; color:#facc15; font-size:11px; font-weight:bold;">
+        </div>
+      </div>
+
+      <!-- ALAT BERAT: JENIS ALAT & NOMOR EGI -->
+      <div style="background:#162032; padding:8px 10px; border-radius:6px; border:1px solid #334155; margin-bottom:10px;">
+        <label style="color:#38bdf8; font-size:10px; font-weight:bold; display:block; margin-bottom:4px;">ALAT SUPPORT / UNIT KERJA:</label>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+          <div>
+            <select id="geoReportToolType" onchange="toggleGeoToolCustomInput()" style="width:100%; background:#1e293b; border:1px solid #475569; padding:5px 8px; border-radius:4px; color:#fff; font-size:11px;">
+              <option value="">-- Jenis Alat (Opsional) --</option>
+              <option value="Ex">Ex (Excavator)</option>
+              <option value="Dz">Dz (Dozer)</option>
+              <option value="Gr">Gr (Grader)</option>
+              <option value="Cp">Cp (Compactor)</option>
+              <option value="CUSTOM">Lainnya (Ketik Manual)</option>
+            </select>
+            <input type="text" id="geoReportToolCustom" placeholder="Ketik jenis alat..." style="display:none; width:100%; margin-top:4px; background:#1e293b; border:1px solid #475569; padding:4px 8px; border-radius:4px; color:#fff; font-size:11px;">
+          </div>
+          <div>
+            <input type="text" id="geoReportEgi" placeholder="EGI (cth: 126 / DZ 52)" style="width:100%; background:#1e293b; border:1px solid #475569; padding:5px 8px; border-radius:4px; color:#fff; font-size:11px;">
+          </div>
+        </div>
       </div>
 
       <div id="geoJobSelectionWrapper" style="margin-bottom:10px;"></div>
 
+      <!-- KETERANGAN / TEMUAN LAPANGAN -->
       <div style="margin-bottom:8px;">
-        <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:2px;">Keterangan / Temuan Lapangan: <span style="color:#ef4444;">*</span></label>
-        <input type="text" id="geoReportNotes" placeholder="Ketik keterangan pekerjaan atau kondisi jalan..." style="width:100%; background:#090d16; border:1px solid #475569; padding:6px 10px; border-radius:4px; color:#fff; font-size:11px;">
+        <label style="font-size:10px; color:#cbd5e1; display:block; margin-bottom:2px; font-weight:bold;">
+          Keterangan / Temuan Lapangan: <span style="color:#ef4444;">*</span>
+        </label>
+        <textarea id="geoReportNotes" rows="2" placeholder="Ketik keterangan pekerjaan atau kondisi jalan..." style="width:100%; background:#090d16; border:1px solid #475569; padding:6px 10px; border-radius:4px; color:#fff; font-size:11px; resize:none;"></textarea>
       </div>
 
+      <!-- PENGAWAS & STATUS -->
       <div style="display:flex; gap:8px; margin-bottom:12px;">
         <div style="flex:1;">
           <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:2px;">Pengawas: <span style="color:#ef4444;">*</span></label>
@@ -1112,12 +1154,14 @@
         <div style="flex:1;">
           <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:2px;">Status:</label>
           <select id="geoReportStatus" style="width:100%; background:#090d16; border:1px solid #475569; padding:6px 8px; border-radius:4px; color:#fff; font-size:11px;">
-            <option value="PROGRESS">PROGRESS</option>
+            <option value="OPEN">OPEN</option>
+            <option value="PROGRESS" selected>PROGRESS</option>
             <option value="CLOSED">CLOSED</option>
           </select>
         </div>
       </div>
 
+      <!-- TOMBOL AKSI -->
       <div style="display:flex; gap:8px; border-top:1px solid #1e293b; padding-top:10px;">
         <button onclick="executeSaveGeoToGalleryOnly()" style="flex:1; padding:9px; background:#334155; color:#fff; font-weight:bold; border-radius:6px; border:none; font-size:11px; cursor:pointer;">💾 Simpan Saja</button>
         <button onclick="executeSubmitGeoEvidence()" style="flex:1; padding:9px; background:#00f0ff; color:#000; font-weight:bold; border-radius:6px; border:none; font-size:11px; cursor:pointer;">🚀 Kirim Evidence</button>
