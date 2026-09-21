@@ -5038,7 +5038,7 @@ function openRoadSummaryModal() {
           <div style="background: #1e293b; padding: 10px; border-radius: 8px; border-left: 4px solid #38bdf8;">
             <div style="font-size: 9px; color: #94a3b8;">Total Panjang</div>
             <div style="font-size: 18px; font-weight: 900; color: #f8fafc;">${metrics.totalLength} m</div>
-            <div style="font-size: 9px; color: #cbd5e1;">Flat: ${metrics.flatLength}m | Slope: ${metrics.slopeLength}m</div>
+            <div style="font-size: 9px; color: #cbd5e1;">Flat: ${metrics.flatLength}m | Tanjakan/Turunan: ${metrics.slopeLength}m</div>
           </div>
         </div>
 
