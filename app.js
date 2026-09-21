@@ -3952,7 +3952,7 @@ function renderCrossfallSplitLayer() {
 
   const cleanRoadName = (r) => (r || '').toLowerCase().replace(/^jl\.?\s*/i, '').trim();
 
-  rawWidthFeatures.forEach(feature => {
+  rawWidthFeatures.forEach((feature, index) => {
     const geom = feature.geometry;
     if (!geom || !geom.coordinates) return;
 
@@ -4007,43 +4007,45 @@ function renderCrossfallSplitLayer() {
     crossfallVisualLayer.addLayer(lineRight);
 
     // ==========================================================
-    // LOGIKA PANAH ALIRAN AIR: TINGGI KE RENDAH TERHADAP AS JALAN
+    // OPTIMASI RENDERING PANAH (SAMPLING 1 DARI 3 SEGMENT)
     // ==========================================================
-    const matchingPts = crossSectionData.filter(d => {
-      const dRoad = cleanRoadName(d["Nama Jalan"]);
-      const dMeter = parseMeterSTA(d["STA"]);
-      return dRoad === cleanRoadName(roadVal) && Math.abs(dMeter - meterVal) <= 1;
-    });
+    // Jika tidak dipilih, panah hanya dirender pada kelipatan index ke-3 agar DOM tidak jebol
+    if (isSelected || index % 3 === 0) {
+      const matchingPts = crossSectionData.filter(d => {
+        const dRoad = cleanRoadName(d["Nama Jalan"]);
+        const dMeter = parseMeterSTA(d["STA"]);
+        return dRoad === cleanRoadName(roadVal) && Math.abs(dMeter - meterVal) <= 1;
+      });
 
-    let elevA = null, elevAs = null, elevB = null;
-    if (matchingPts.length >= 3) {
-      const pL = matchingPts.find(p => p["Point"] && p["Point"].includes("Kiri")) || matchingPts[0];
-      const pC = matchingPts.find(p => p["Point"] && p["Point"].includes("As")) || matchingPts[1];
-      const pR = matchingPts.find(p => p["Point"] && p["Point"].includes("Kanan")) || matchingPts[2];
-      elevA = parseFloat(pL["Elevasi_RL"]);
-      elevAs = parseFloat(pC["Elevasi_RL"]);
-      elevB = parseFloat(pR["Elevasi_RL"]);
-    }
-
-    // Panah hanya dimunculkan pada zoom memadai agar peta tidak padat
-    if (currentZoom >= 15) {
-      // 1. SISI KIRI (As vs A / pt1)
-      const posL = L.latLng((mid.lat + pt1.lat) / 2, (mid.lng + pt1.lng) / 2);
-      let fromPtL = mid, toPtL = pt1; // Default As > A (Air mengalir ke luar)
-      if (elevAs !== null && elevA !== null && elevAs < elevA) {
-        fromPtL = pt1; toPtL = mid;   // Jika As < A (Air mengalir ke tengah)
+      let elevA = null, elevAs = null, elevB = null;
+      if (matchingPts.length >= 3) {
+        const pL = matchingPts.find(p => p["Point"] && p["Point"].includes("Kiri")) || matchingPts[0];
+        const pC = matchingPts.find(p => p["Point"] && p["Point"].includes("As")) || matchingPts[1];
+        const pR = matchingPts.find(p => p["Point"] && p["Point"].includes("Kanan")) || matchingPts[2];
+        elevA = parseFloat(pL["Elevasi_RL"]);
+        elevAs = parseFloat(pC["Elevasi_RL"]);
+        elevB = parseFloat(pR["Elevasi_RL"]);
       }
-      const angleL = calcScreenAngle(fromPtL, toPtL);
-      crossfallVisualLayer.addLayer(createFlowArrowMarker(posL, angleL, colorLeft));
 
-      // 2. SISI KANAN (As vs B / pt2)
-      const posR = L.latLng((mid.lat + pt2.lat) / 2, (mid.lng + pt2.lng) / 2);
-      let fromPtR = mid, toPtR = pt2; // Default As > B (Air mengalir ke luar)
-      if (elevAs !== null && elevB !== null && elevAs < elevB) {
-        fromPtR = pt2; toPtR = mid;   // Jika As < B (Air mengalir ke tengah)
+      if (currentZoom >= 14) {
+        // 1. SISI KIRI (As vs A / pt1)
+        const posL = L.latLng((mid.lat + pt1.lat) / 2, (mid.lng + pt1.lng) / 2);
+        let fromPtL = mid, toPtL = pt1; 
+        if (elevAs !== null && elevA !== null && elevAs < elevA) {
+          fromPtL = pt1; toPtL = mid;   
+        }
+        const angleL = calcScreenAngle(fromPtL, toPtL);
+        crossfallVisualLayer.addLayer(createFlowArrowMarker(posL, angleL, colorLeft));
+
+        // 2. SISI KANAN (As vs B / pt2)
+        const posR = L.latLng((mid.lat + pt2.lat) / 2, (mid.lng + pt2.lng) / 2);
+        let fromPtR = mid, toPtR = pt2; 
+        if (elevAs !== null && elevB !== null && elevAs < elevB) {
+          fromPtR = pt2; toPtR = mid;   
+        }
+        const angleR = calcScreenAngle(fromPtR, toPtR);
+        crossfallVisualLayer.addLayer(createFlowArrowMarker(posR, angleR, colorRight));
       }
-      const angleR = calcScreenAngle(fromPtR, toPtR);
-      crossfallVisualLayer.addLayer(createFlowArrowMarker(posR, angleR, colorRight));
     }
 
     if (isSelected) {
