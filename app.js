@@ -208,8 +208,11 @@ window.addEventListener('offline', () => {
 });
 
 // ==========================================
-// 1C. SUPABASE REALTIME BROADCAST & PRESENCE
+// 1C. SUPABASE REALTIME & HEARTBEAT SYNC
 // ==========================================
+let presenceHeartbeatInterval = null;
+let selfRadarMarker = null;
+
 function initSupabaseRealtime() {
   if (realtimeChannel) return;
 
@@ -237,74 +240,138 @@ function initSupabaseRealtime() {
         if (counterElem) counterElem.innerText = `Online: ${onlineCount}`;
         updateRadarMarkers(state);
       })
-.subscribe(async (status) => {
-  if (status === 'SUBSCRIBED') {
-    await realtimeChannel.track({
-      user: currentNRP,
-      role: currentUserRole,
-      latlng: currentUserLatLng ? { lat: currentUserLatLng[0], lng: currentUserLatLng[1] } : null,
-      online_at: new Date().toISOString()
-    });
-  }
-});
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          const sendPresence = async () => {
+            if (!realtimeChannel) return;
+            const payload = {
+              user: currentNRP,
+              role: currentUserRole,
+              online_at: new Date().toISOString()
+            };
+            if (currentUserLatLng) {
+              payload.latlng = { lat: currentUserLatLng[0], lng: currentUserLatLng[1] };
+            }
+            await realtimeChannel.track(payload);
+          };
+
+          await sendPresence();
+
+          // HEARTBEAT 15 DETIK: Jaga koneksi HP tetap aktif agar laptop tidak membaca status offline
+          if (presenceHeartbeatInterval) clearInterval(presenceHeartbeatInterval);
+          presenceHeartbeatInterval = setInterval(sendPresence, 15000);
+        }
+      });
   } catch (err) {
     console.warn("Realtime standby mode:", err.message);
   }
 }
 
-// FUNGSI RENDER BLIP RADAR USER DI PETA
-// FUNGSI RENDER BLIP RADAR USER DI PETA (USER SENDIRI = PINK NEON)
+// Re-assert koneksi saat layar HP dibuka kembali
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && realtimeChannel && currentNRP) {
+    const payload = {
+      user: currentNRP,
+      role: currentUserRole,
+      online_at: new Date().toISOString()
+    };
+    if (currentUserLatLng) {
+      payload.latlng = { lat: currentUserLatLng[0], lng: currentUserLatLng[1] };
+    }
+    realtimeChannel.track(payload);
+  }
+});
+
+// FUNGSI UPDATE BLIP PINK SENDIRI SECARA LOKAL & INSTAN DARI GPS HP
+function updateSelfRadarBlip(latlng) {
+  if (!map.hasLayer(radarMarkersLayer)) radarMarkersLayer.addTo(map);
+
+  const shortName = currentNRP.split('@')[0];
+  const iconHtml = `
+    <div style="display:flex; flex-direction:column; align-items:center;">
+      <div style="background:#ec4899; width:15px; height:15px; border-radius:50%; border:2px solid #ffffff; box-shadow:0 0 14px #ec4899;"></div>
+      <div style="background:rgba(15,23,42,0.92); border:1px solid #ec4899; color:#f472b6; font-size:9px; font-weight:bold; font-family:monospace; padding:1px 6px; border-radius:4px; margin-top:2px; white-space:nowrap; box-shadow:0 2px 6px rgba(0,0,0,0.8);">
+        ★ ${shortName} (Saya)
+      </div>
+    </div>
+  `;
+
+  if (!selfRadarMarker) {
+    selfRadarMarker = L.marker(latlng, {
+      icon: L.divIcon({
+        className: 'radar-user-blip-self',
+        html: iconHtml,
+        iconSize: [90, 32],
+        iconAnchor: [45, 7]
+      }),
+      zIndexOffset: 3500
+    }).bindPopup(`<b>Pengawas:</b> ${currentNRP} <b>(Anda Sendiri)</b><br><b>Role:</b> ${currentUserRole}<br><b>Posisi GPS Real-Time</b>`);
+    radarMarkersLayer.addLayer(selfRadarMarker);
+  } else {
+    if (!radarMarkersLayer.hasLayer(selfRadarMarker)) {
+      radarMarkersLayer.addLayer(selfRadarMarker);
+    }
+    selfRadarMarker.setLatLng(latlng);
+  }
+}
+
+// RENDER HANYA USER LAIN DARI SUPABASE (WARNA CYAN)
 function updateRadarMarkers(presenceState) {
-  radarMarkersLayer.clearLayers();
+  radarMarkersLayer.eachLayer(layer => {
+    if (layer !== selfRadarMarker) {
+      radarMarkersLayer.removeLayer(layer);
+    }
+  });
+
   if (!presenceState) return;
 
   Object.values(presenceState).forEach(presences => {
     presences.forEach(p => {
       if (!p.latlng || !p.latlng.lat || !p.latlng.lng) return;
-      const isSelf = p.user === currentNRP;
+      if (p.user === currentNRP) return; // Diri sendiri di-handle GPS lokal agar 0 ms delay!
+
       const shortName = p.user.split('@')[0];
-      
-      // USER SENDIRI = PINK NEON (#ec4899), USER LAIN = CYAN (#00f0ff)
-      const blipColor = isSelf ? '#ec4899' : '#00f0ff';
-      const labelText = isSelf ? `★ ${shortName} (Saya)` : shortName;
-      const labelTextColor = isSelf ? '#f472b6' : '#ffffff';
+      const blipColor = '#00f0ff';
 
       const iconHtml = `
         <div style="display:flex; flex-direction:column; align-items:center;">
-          <div style="background:${blipColor}; width:${isSelf ? '15px' : '12px'}; height:${isSelf ? '15px' : '12px'}; border-radius:50%; border:2px solid #ffffff; box-shadow:0 0 ${isSelf ? '14px #ec4899' : '8px #00f0ff'};"></div>
-          <div style="background:rgba(15,23,42,0.92); border:1px solid ${blipColor}; color:${labelTextColor}; font-size:9px; font-weight:bold; font-family:monospace; padding:1px 6px; border-radius:4px; margin-top:2px; white-space:nowrap; box-shadow:0 2px 6px rgba(0,0,0,0.8);">
-            ${labelText}
+          <div style="background:${blipColor}; width:12px; height:12px; border-radius:50%; border:2px solid #ffffff; box-shadow:0 0 8px #00f0ff;"></div>
+          <div style="background:rgba(15,23,42,0.92); border:1px solid ${blipColor}; color:#ffffff; font-size:9px; font-weight:bold; font-family:monospace; padding:1px 6px; border-radius:4px; margin-top:2px; white-space:nowrap; box-shadow:0 2px 6px rgba(0,0,0,0.8);">
+            ${shortName}
           </div>
         </div>
       `;
 
       const marker = L.marker([p.latlng.lat, p.latlng.lng], {
         icon: L.divIcon({
-          className: 'radar-user-blip',
+          className: 'radar-user-blip-other',
           html: iconHtml,
           iconSize: [90, 32],
           iconAnchor: [45, 7]
         }),
-        // Posisi user sendiri selalu dirender di layer paling atas
-        zIndexOffset: isSelf ? 3500 : 1500
-      }).bindPopup(`<b>Pengawas:</b> ${p.user} ${isSelf ? '<b>(Anda Sendiri)</b>' : ''}<br><b>Role:</b> ${p.role || 'viewer'}<br><b>Posisi GPS Aktif</b>`);
+        zIndexOffset: 1500
+      }).bindPopup(`<b>Pengawas:</b> ${p.user}<br><b>Role:</b> ${p.role || 'viewer'}<br><b>Posisi GPS Aktif</b>`);
 
       radarMarkersLayer.addLayer(marker);
     });
   });
 }
 
-// TOGGLE TOMBOL RADAR (ON/OFF)
-// TOGGLE TOMBOL RADAR (ON/OFF)
+// TOGGLE RADAR: BERSIH & TANPA TUMPANG TINDIH
 function toggleRadarUserOnline() {
   isRadarActive = !isRadarActive;
   const btn = document.getElementById('btnToggleRadar');
   if (isRadarActive) {
     if (!map.hasLayer(radarMarkersLayer)) radarMarkersLayer.addTo(map);
 
-    // SEMBUNYIKAN TITIK BIRU LOKAL SAAT RADAR ON
+    // Sembunyikan titik biru lokal bawaan
     if (userMarker && map.hasLayer(userMarker)) map.removeLayer(userMarker);
     if (userAccuracyCircle && map.hasLayer(userAccuracyCircle)) map.removeLayer(userAccuracyCircle);
+
+    // Langsung gambar blip pink di posisi HP terkini
+    if (currentUserLatLng) {
+      updateSelfRadarBlip(currentUserLatLng);
+    }
 
     if (btn) {
       btn.style.background = '#00f0ff';
@@ -318,7 +385,7 @@ function toggleRadarUserOnline() {
   } else {
     if (map.hasLayer(radarMarkersLayer)) map.removeLayer(radarMarkersLayer);
 
-    // MUNCULKAN KEMBALI TITIK BIRU SAAT RADAR OFF
+    // Munculkan kembali titik biru bawaan saat radar off
     if (userMarker && !map.hasLayer(userMarker)) map.addLayer(userMarker);
     if (userAccuracyCircle && !map.hasLayer(userAccuracyCircle)) map.addLayer(userAccuracyCircle);
 
@@ -330,7 +397,6 @@ function toggleRadarUserOnline() {
     showToastNotification("📡 Radar Nonaktif");
   }
 }
-
 function broadcastWoSync(actionType, dataPayload, notificationMsg = "") {
   if (!realtimeChannel) return;
   try {
@@ -3516,7 +3582,7 @@ async function loadCloudWorkOrders() {
 }
 
 // ==========================================
-// 7. SILENT GPS TRACKER & RE-CENTER
+// 7. SILENT GPS TRACKER (SMOOTH & RESPONSIVE)
 // ==========================================
 let lastSentRadarLatLng = null;
 
@@ -3530,8 +3596,7 @@ function startSilentGpsTracking() {
       const lng = pos.coords.longitude;
       const accuracy = pos.coords.accuracy;
 
-      // 1. FILTER AKURASI: Abaikan sinyal satelit yang terlalu meleset (> 25 meter)
-      if (accuracy > 25) {
+      if (accuracy > 30) {
         console.warn("Akurasi sinyal rendah (" + Math.round(accuracy) + "m), update posisi ditahan.");
         return;
       }
@@ -3539,7 +3604,26 @@ function startSilentGpsTracking() {
       const latlng = [lat, lng];
       currentUserLatLng = latlng;
 
-      // 2. FILTER GERAK: Hanya pancarkan ke radar jika berpindah minimal 3 meter
+      // JIKA RADAR SEDANG AKTIF: Gerakkan blip pink seketika mengikuti langkah kaki!
+      if (isRadarActive) {
+        updateSelfRadarBlip(latlng);
+        if (userMarker && map.hasLayer(userMarker)) map.removeLayer(userMarker);
+        if (userAccuracyCircle && map.hasLayer(userAccuracyCircle)) map.removeLayer(userAccuracyCircle);
+      } else {
+        // JIKA RADAR OFF: Tampilkan titik biru biasa
+        if (!userMarker) {
+          userAccuracyCircle = L.circle(latlng, { radius: accuracy, color: '#0078d4', fillColor: '#2b88d8', fillOpacity: 0.15, weight: 1 }).addTo(map);
+          userMarker = L.circleMarker(latlng, { radius: 9, color: '#ffffff', fillColor: '#0078d4', fillOpacity: 1, weight: 3 }).addTo(map);
+        } else {
+          if (!map.hasLayer(userMarker)) userMarker.addTo(map);
+          if (!map.hasLayer(userAccuracyCircle)) userAccuracyCircle.addTo(map);
+          userMarker.setLatLng(latlng);
+          userAccuracyCircle.setLatLng(latlng);
+          userAccuracyCircle.setRadius(accuracy);
+        }
+      }
+
+      // Siarkan posisi ke Supabase jika berpindah minimal 2.5 meter
       let shouldBroadcast = false;
       const currentPoint = L.latLng(lat, lng);
 
@@ -3548,7 +3632,7 @@ function startSilentGpsTracking() {
         lastSentRadarLatLng = currentPoint;
       } else {
         const distanceMoved = lastSentRadarLatLng.distanceTo(currentPoint);
-        if (distanceMoved >= 3) {
+        if (distanceMoved >= 2.5) {
           shouldBroadcast = true;
           lastSentRadarLatLng = currentPoint;
         }
@@ -3562,26 +3646,9 @@ function startSilentGpsTracking() {
           online_at: new Date().toISOString()
         });
       }
-
-      // Render marker lokal jika radar sedang mati
-      if (!isRadarActive) {
-        if (!userMarker) {
-          userAccuracyCircle = L.circle(latlng, { radius: accuracy, color: '#0078d4', fillColor: '#2b88d8', fillOpacity: 0.15, weight: 1 }).addTo(map);
-          userMarker = L.circleMarker(latlng, { radius: 9, color: '#ffffff', fillColor: '#0078d4', fillOpacity: 1, weight: 3 }).addTo(map);
-        } else {
-          if (!map.hasLayer(userMarker)) userMarker.addTo(map);
-          if (!map.hasLayer(userAccuracyCircle)) userAccuracyCircle.addTo(map);
-          userMarker.setLatLng(latlng);
-          userAccuracyCircle.setLatLng(latlng);
-          userAccuracyCircle.setRadius(accuracy);
-        }
-      } else {
-        if (userMarker && map.hasLayer(userMarker)) map.removeLayer(userMarker);
-        if (userAccuracyCircle && map.hasLayer(userAccuracyCircle)) map.removeLayer(userAccuracyCircle);
-      }
     },
     (err) => { console.warn(`GPS Silent Error: ${err.message}`); },
-    { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 }
+    { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
   );
 }
 
@@ -3853,6 +3920,26 @@ function createCrossfallAbMarker(latlng, letter) {
   });
 }
 
+// HELPER SUDUT PUTAR MATA PANAH DARI TITIK TINGGI KE RENDAH
+function calcScreenAngle(fromLatLng, toLatLng) {
+  const p1 = map.latLngToContainerPoint(fromLatLng);
+  const p2 = map.latLngToContainerPoint(toLatLng);
+  return Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
+}
+
+function createFlowArrowMarker(latlng, angle, color) {
+  return L.marker(latlng, {
+    icon: L.divIcon({
+      className: 'flow-arrow-marker',
+      html: `<div style="transform: rotate(${angle}deg); color: ${color}; font-size: 13px; font-weight: 900; line-height: 1; text-shadow: 0 0 3px #000, 0 0 5px #000; display: flex; align-items: center; justify-content: center;">➤</div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
+    }),
+    interactive: false,
+    zIndexOffset: 2000
+  });
+}
+
 function renderCrossfallSplitLayer() {
   crossfallVisualLayer.clearLayers();
   if (currentMainTab !== 'parameter' || currentParam !== 'crossfall') return;
@@ -3888,7 +3975,7 @@ function renderCrossfallSplitLayer() {
 
     const mid = L.latLng((pt1.lat + pt2.lat) / 2, (pt1.lng + pt2.lng) / 2);
 
-    // Cocokkan ke Excel Data_Monitoring
+    // Ambil Data Monitoring
     const row = monitoringData.find(d => {
       const dRoad = cleanRoadName(d["Nama Jalan"]);
       const dMeter = parseMeterSTA(d["STA"]);
@@ -3919,13 +4006,52 @@ function renderCrossfallSplitLayer() {
     crossfallVisualLayer.addLayer(lineLeft);
     crossfallVisualLayer.addLayer(lineRight);
 
+    // ==========================================================
+    // LOGIKA PANAH ALIRAN AIR: TINGGI KE RENDAH TERHADAP AS JALAN
+    // ==========================================================
+    const matchingPts = crossSectionData.filter(d => {
+      const dRoad = cleanRoadName(d["Nama Jalan"]);
+      const dMeter = parseMeterSTA(d["STA"]);
+      return dRoad === cleanRoadName(roadVal) && Math.abs(dMeter - meterVal) <= 1;
+    });
+
+    let elevA = null, elevAs = null, elevB = null;
+    if (matchingPts.length >= 3) {
+      const pL = matchingPts.find(p => p["Point"] && p["Point"].includes("Kiri")) || matchingPts[0];
+      const pC = matchingPts.find(p => p["Point"] && p["Point"].includes("As")) || matchingPts[1];
+      const pR = matchingPts.find(p => p["Point"] && p["Point"].includes("Kanan")) || matchingPts[2];
+      elevA = parseFloat(pL["Elevasi_RL"]);
+      elevAs = parseFloat(pC["Elevasi_RL"]);
+      elevB = parseFloat(pR["Elevasi_RL"]);
+    }
+
+    // Panah hanya dimunculkan pada zoom memadai agar peta tidak padat
+    if (currentZoom >= 15) {
+      // 1. SISI KIRI (As vs A / pt1)
+      const posL = L.latLng((mid.lat + pt1.lat) / 2, (mid.lng + pt1.lng) / 2);
+      let fromPtL = mid, toPtL = pt1; // Default As > A (Air mengalir ke luar)
+      if (elevAs !== null && elevA !== null && elevAs < elevA) {
+        fromPtL = pt1; toPtL = mid;   // Jika As < A (Air mengalir ke tengah)
+      }
+      const angleL = calcScreenAngle(fromPtL, toPtL);
+      crossfallVisualLayer.addLayer(createFlowArrowMarker(posL, angleL, colorLeft));
+
+      // 2. SISI KANAN (As vs B / pt2)
+      const posR = L.latLng((mid.lat + pt2.lat) / 2, (mid.lng + pt2.lng) / 2);
+      let fromPtR = mid, toPtR = pt2; // Default As > B (Air mengalir ke luar)
+      if (elevAs !== null && elevB !== null && elevAs < elevB) {
+        fromPtR = pt2; toPtR = mid;   // Jika As < B (Air mengalir ke tengah)
+      }
+      const angleR = calcScreenAngle(fromPtR, toPtR);
+      crossfallVisualLayer.addLayer(createFlowArrowMarker(posR, angleR, colorRight));
+    }
+
     if (isSelected) {
       crossfallVisualLayer.addLayer(createCrossfallAbMarker(pt1, 'A'));
       crossfallVisualLayer.addLayer(createCrossfallAbMarker(pt2, 'B'));
     }
   });
 }
-
 function updateGradeLabelsVisibility() {
   if (!isAnnotationActive || map.getZoom() < 16) {
     gradeLabelsLayer.clearLayers();
@@ -5037,6 +5163,75 @@ function loadImageAsync(src) {
   });
 }
 
+// ==========================================
+// HELPER: GENERATE TILE SATELIT MINI-MAP WATERMARK
+// ==========================================
+async function getSatelliteMiniMap(lat, lng, targetSize) {
+  try {
+    const zoom = 17;
+    const n = Math.pow(2, zoom);
+    const xFloat = ((lng + 180) / 360) * n;
+    const latRad = (lat * Math.PI) / 180;
+    const yFloat = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n;
+
+    const xTile = Math.floor(xFloat);
+    const yTile = Math.floor(yFloat);
+    const pxX = (xFloat - xTile) * 256;
+    const pxY = (yFloat - yTile) * 256;
+
+    const nextX = pxX > 128 ? xTile + 1 : xTile - 1;
+    const nextY = pxY > 128 ? yTile + 1 : yTile - 1;
+    const minX = Math.min(xTile, nextX);
+    const minY = Math.min(yTile, nextY);
+
+    const stitchCanvas = document.createElement('canvas');
+    stitchCanvas.width = 512;
+    stitchCanvas.height = 512;
+    const sCtx = stitchCanvas.getContext('2d');
+
+    const tilePromises = [];
+    for (let dx = 0; dx < 2; dx++) {
+      for (let dy = 0; dy < 2; dy++) {
+        const curX = minX + dx;
+        const curY = minY + dy;
+        const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${curY}/${curX}`;
+        tilePromises.push(
+          loadImageAsync(url).then(img => {
+            sCtx.drawImage(img, dx * 256, dy * 256, 256, 256);
+          }).catch(() => {})
+        );
+      }
+    }
+    await Promise.all(tilePromises);
+
+    const centerX = (xFloat - minX) * 256;
+    const centerY = (yFloat - minY) * 256;
+    const cropSize = 256;
+
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = targetSize;
+    outCanvas.height = targetSize;
+    const outCtx = outCanvas.getContext('2d');
+    outCtx.drawImage(
+      stitchCanvas,
+      centerX - cropSize / 2,
+      centerY - cropSize / 2,
+      cropSize,
+      cropSize,
+      0,
+      0,
+      targetSize,
+      targetSize
+    );
+    return outCanvas;
+  } catch (e) {
+    return null;
+  }
+}
+
+// ==========================================
+// RENDER EVIDENCE BER-WATERMARK DENGAN MINI-MAP NYATA
+// ==========================================
 async function renderWatermarkedEvidence(imgElement, meta) {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
@@ -5085,8 +5280,21 @@ async function renderWatermarkedEvidence(imgElement, meta) {
   ctx.lineTo(w, ribbonY);
   ctx.stroke();
 
-  ctx.fillStyle = '#050a14';
-  ctx.fillRect(mapBoxX, mapBoxY, mapBoxSize, mapBoxSize);
+  // CUPLIKAN SATELIT DI KOTAK RADAR
+  let satCanvas = null;
+  if (meta.latlng && meta.latlng.lat && meta.latlng.lng) {
+    satCanvas = await getSatelliteMiniMap(meta.latlng.lat, meta.latlng.lng, mapBoxSize);
+  }
+
+  if (satCanvas) {
+    ctx.drawImage(satCanvas, mapBoxX, mapBoxY, mapBoxSize, mapBoxSize);
+    ctx.fillStyle = 'rgba(5, 10, 20, 0.40)';
+    ctx.fillRect(mapBoxX, mapBoxY, mapBoxSize, mapBoxSize);
+  } else {
+    ctx.fillStyle = '#050a14';
+    ctx.fillRect(mapBoxX, mapBoxY, mapBoxSize, mapBoxSize);
+  }
+
   ctx.strokeStyle = '#00f0ff';
   ctx.lineWidth = Math.max(1.5, Math.round(mapBoxSize * 0.012));
   ctx.strokeRect(mapBoxX, mapBoxY, mapBoxSize, mapBoxSize);
@@ -5096,7 +5304,7 @@ async function renderWatermarkedEvidence(imgElement, meta) {
   const r = mapBoxSize / 2 - Math.max(6, Math.round(mapBoxSize * 0.07));
   const radarLineW = Math.max(1.5, Math.round(mapBoxSize * 0.012));
 
-  ctx.strokeStyle = 'rgba(0, 240, 255, 0.65)';
+  ctx.strokeStyle = 'rgba(0, 240, 255, 0.70)';
   ctx.lineWidth = radarLineW;
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
