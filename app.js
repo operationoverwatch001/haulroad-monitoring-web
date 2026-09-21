@@ -42,9 +42,11 @@ let roadWidthLayer = null;
 let roadGradeLayer = null; 
 let roadMapLayer = null;
 let roadNonSaranaLayer = null;       
-let gradeLabelsLayer = L.layerGroup();  
+let gradeLabelsLayer = L.layerGroup();
 let crossfallVisualLayer = L.layerGroup();
-let allStaMarkers = []; 
+let isRadarActive = false;
+let radarMarkersLayer = L.layerGroup();
+let allStaMarkers = [];
 let allRoadNameMarkers = [];
 
 let clusterFeatures = [];
@@ -233,18 +235,88 @@ function initSupabaseRealtime() {
         const onlineCount = Object.keys(state).length || 1;
         const counterElem = document.getElementById('onlineCounterText');
         if (counterElem) counterElem.innerText = `Online: ${onlineCount}`;
+        updateRadarMarkers(state);
       })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await realtimeChannel.track({
-            user: currentNRP,
-            role: currentUserRole,
-            online_at: new Date().toISOString()
-          });
-        }
-      });
+.subscribe(async (status) => {
+  if (status === 'SUBSCRIBED') {
+    await realtimeChannel.track({
+      user: currentNRP,
+      role: currentUserRole,
+      latlng: currentUserLatLng ? { lat: currentUserLatLng[0], lng: currentUserLatLng[1] } : null,
+      online_at: new Date().toISOString()
+    });
+  }
+});
   } catch (err) {
     console.warn("Realtime standby mode:", err.message);
+  }
+}
+
+// FUNGSI RENDER BLIP RADAR USER DI PETA
+// FUNGSI RENDER BLIP RADAR USER DI PETA (USER SENDIRI = PINK NEON)
+function updateRadarMarkers(presenceState) {
+  radarMarkersLayer.clearLayers();
+  if (!presenceState) return;
+
+  Object.values(presenceState).forEach(presences => {
+    presences.forEach(p => {
+      if (!p.latlng || !p.latlng.lat || !p.latlng.lng) return;
+      const isSelf = p.user === currentNRP;
+      const shortName = p.user.split('@')[0];
+      
+      // USER SENDIRI = PINK NEON (#ec4899), USER LAIN = CYAN (#00f0ff)
+      const blipColor = isSelf ? '#ec4899' : '#00f0ff';
+      const labelText = isSelf ? `★ ${shortName} (Saya)` : shortName;
+      const labelTextColor = isSelf ? '#f472b6' : '#ffffff';
+
+      const iconHtml = `
+        <div style="display:flex; flex-direction:column; align-items:center;">
+          <div style="background:${blipColor}; width:${isSelf ? '15px' : '12px'}; height:${isSelf ? '15px' : '12px'}; border-radius:50%; border:2px solid #ffffff; box-shadow:0 0 ${isSelf ? '14px #ec4899' : '8px #00f0ff'};"></div>
+          <div style="background:rgba(15,23,42,0.92); border:1px solid ${blipColor}; color:${labelTextColor}; font-size:9px; font-weight:bold; font-family:monospace; padding:1px 6px; border-radius:4px; margin-top:2px; white-space:nowrap; box-shadow:0 2px 6px rgba(0,0,0,0.8);">
+            ${labelText}
+          </div>
+        </div>
+      `;
+
+      const marker = L.marker([p.latlng.lat, p.latlng.lng], {
+        icon: L.divIcon({
+          className: 'radar-user-blip',
+          html: iconHtml,
+          iconSize: [90, 32],
+          iconAnchor: [45, 7]
+        }),
+        // Posisi user sendiri selalu dirender di layer paling atas
+        zIndexOffset: isSelf ? 3500 : 1500
+      }).bindPopup(`<b>Pengawas:</b> ${p.user} ${isSelf ? '<b>(Anda Sendiri)</b>' : ''}<br><b>Role:</b> ${p.role || 'viewer'}<br><b>Posisi GPS Aktif</b>`);
+
+      radarMarkersLayer.addLayer(marker);
+    });
+  });
+}
+
+// TOGGLE TOMBOL RADAR (ON/OFF)
+function toggleRadarUserOnline() {
+  isRadarActive = !isRadarActive;
+  const btn = document.getElementById('btnToggleRadar');
+  if (isRadarActive) {
+    if (!map.hasLayer(radarMarkersLayer)) radarMarkersLayer.addTo(map);
+    if (btn) {
+      btn.style.background = '#00f0ff';
+      btn.style.color = '#000000';
+      btn.style.borderColor = '#ffffff';
+    }
+    if (realtimeChannel) {
+      updateRadarMarkers(realtimeChannel.presenceState());
+    }
+    showToastNotification("📡 Radar Aktif: Menampilkan posisi user online");
+  } else {
+    if (map.hasLayer(radarMarkersLayer)) map.removeLayer(radarMarkersLayer);
+    if (btn) {
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.borderColor = '';
+    }
+    showToastNotification("📡 Radar Nonaktif");
   }
 }
 
@@ -677,7 +749,7 @@ function updateLegendUI() {
         <div class="flex items-center gap-2"><span class="w-5 h-1.5 rounded-sm bg-[#00f0ff]"></span><span>STA Terpilih</span></div>
       `;
     } else {
-      title.innerText = 'LEGENDA: CROSS SECTION';
+      title.innerText = 'LEGENDA: CROSSFALL';
       content.innerHTML = `
         <div class="flex items-center gap-2"><span class="w-5 h-1.5 rounded-sm bg-[#22c55e]"></span><span>Compliant (Normal: 2.0% - 4.0%)</span></div>
         <div class="flex items-center gap-2"><span class="w-5 h-1.5 rounded-sm bg-[#e11d48]"></span><span>Non-Compliant (&lt; 2.0% / &gt; 4.0%)</span></div>
@@ -1059,7 +1131,7 @@ function selectParameter(paramKey) {
   if (mapBtn) mapBtn.className = "font-bold text-xs px-3 sm:px-3.5 py-1 rounded-md transition duration-150 text-slate-300 hover:text-white shrink-0 whitespace-nowrap";
   if (paramBtn) paramBtn.className = "font-bold text-xs px-2.5 sm:px-3 py-1 rounded-md transition duration-150 bg-amber-400 text-slate-950 shadow flex items-center gap-1 shrink-0 whitespace-nowrap";
 
-  const nameMap = { 'grade': 'GRADE', 'lebar': 'LEBAR JALAN', 'crossfall': 'CROSS SECTION' };
+  const nameMap = { 'grade': 'GRADE', 'lebar': 'LEBAR JALAN', 'crossfall': 'CROSSFALL' };
   if (paramLabel) paramLabel.innerText = nameMap[paramKey] || 'PARAMETER';
 
   resetSegmentSelection();
@@ -3443,9 +3515,18 @@ function startSilentGpsTracking() {
     (pos) => {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
-      const accuracy = pos.coords.accuracy;
+ const accuracy = pos.coords.accuracy;
       const latlng = [lat, lng];
       currentUserLatLng = latlng;
+
+      if (realtimeChannel && currentNRP) {
+        realtimeChannel.track({
+          user: currentNRP,
+          role: currentUserRole,
+          latlng: { lat: lat, lng: lng }, // <-- Pakai format objek { lat, lng } biar dibaca mulus sama radar!
+          online_at: new Date().toISOString()
+        });
+      }
 
       if (!userMarker) {
         userAccuracyCircle = L.circle(latlng, { radius: accuracy, color: '#0078d4', fillColor: '#2b88d8', fillOpacity: 0.15, weight: 1 }).addTo(map);
@@ -3734,17 +3815,25 @@ function renderCrossfallSplitLayer() {
   if (currentMainTab !== 'parameter' || currentParam !== 'crossfall') return;
 
   const currentZoom = map ? map.getZoom() : 15;
-  if (currentZoom < 14) return;
+  if (currentZoom < 13) return;
 
   const baseWeight = currentZoom >= 18 ? 5.5 : (currentZoom >= 16 ? 4 : 3);
   const bounds = map.getBounds().pad(0.15);
 
-  rawWidthFeatures.forEach(feature => {
-    const coords = feature.geometry ? feature.geometry.coordinates : null;
-    if (!coords || coords.length < 2) return;
+  const cleanRoadName = (r) => (r || '').toLowerCase().replace(/^jl\.?\s*/i, '').trim();
 
-    const pt1 = L.latLng(coords[0][1], coords[0][0]);
-    const pt2 = L.latLng(coords[1][1], coords[1][0]);
+  rawWidthFeatures.forEach(feature => {
+    const geom = feature.geometry;
+    if (!geom || !geom.coordinates) return;
+
+    let lineCoords = geom.coordinates;
+    if (geom.type === 'MultiLineString') {
+      lineCoords = geom.coordinates[0];
+    }
+    if (!lineCoords || lineCoords.length < 2) return;
+
+    const pt1 = L.latLng(lineCoords[0][1], lineCoords[0][0]);
+    const pt2 = L.latLng(lineCoords[lineCoords.length - 1][1], lineCoords[lineCoords.length - 1][0]);
 
     const props = feature.properties || {};
     const rawSta = props.Station_m !== undefined ? props.Station_m : (props.Station || props.STA || 0);
@@ -3756,7 +3845,13 @@ function renderCrossfallSplitLayer() {
 
     const mid = L.latLng((pt1.lat + pt2.lat) / 2, (pt1.lng + pt2.lng) / 2);
 
-    const row = monitoringData.find(d => (d["Nama Jalan"] || "").trim().toLowerCase() === roadVal.toLowerCase() && parseMeterSTA(d["STA"]) === meterVal);
+    // Cocokkan ke Excel Data_Monitoring
+    const row = monitoringData.find(d => {
+      const dRoad = cleanRoadName(d["Nama Jalan"]);
+      const dMeter = parseMeterSTA(d["STA"]);
+      return dRoad === cleanRoadName(roadVal) && Math.abs(dMeter - meterVal) <= 1;
+    });
+
     const cfL = row ? Math.abs(parseFloat(row["Crossfall Kiri (%)"]) || 0) : 0;
     const cfR = row ? Math.abs(parseFloat(row["Crossfall Kanan (%)"]) || 0) : 0;
 
@@ -5169,9 +5264,20 @@ function closeGeoExifWarningModal() {
   if (modal) modal.style.display = 'none';
 }
 
+// HELPER TOGGLE JENIS ALAT CUSTOM GEOTAGGING
+function toggleGeoToolCustomInput() {
+  const sel = document.getElementById('geoReportToolType');
+  const input = document.getElementById('geoReportToolCustom');
+  if (sel && input) {
+    input.style.display = sel.value === 'CUSTOM' ? 'block' : 'none';
+    if (sel.value === 'CUSTOM') input.focus();
+  }
+}
+
 async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   const latlng = { lat: lat, lng: lng };
   const matchedWo = findNearestActiveWo(latlng, 60);
+  const spatialCluster = detectClusterForLatLng(latlng);
   const photoId = generatePhotoId();
   
   const initialRoad = matchedWo ? matchedWo.road : "";
@@ -5181,6 +5287,7 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
     photoId: photoId,
     latlng: latlng,
     road: initialRoad,
+    cluster: (matchedWo && matchedWo.cluster) ? matchedWo.cluster : spatialCluster.cluster,
     time: initialTime,
     reporter: currentNRP,
     matchedWo: matchedWo,
@@ -5192,8 +5299,13 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   const previewModal = document.getElementById('geoPreviewReportModal');
   const imgElem = document.getElementById('geoPreviewStampedImg');
   const roadInput = document.getElementById('geoReportRoadName');
+  const clusterInput = document.getElementById('geoReportClusterName');
+  const toolSelect = document.getElementById('geoReportToolType');
+  const toolCustom = document.getElementById('geoReportToolCustom');
+  const egiInput = document.getElementById('geoReportEgi');
   const repInput = document.getElementById('geoReportReporter');
   const notesInput = document.getElementById('geoReportNotes');
+  const statusSelect = document.getElementById('geoReportStatus');
   const woBox = document.getElementById('geoDetectedWoBox');
   const jobWrap = document.getElementById('geoJobSelectionWrapper');
   const dateInput = document.getElementById('geoReportDateTime');
@@ -5207,8 +5319,32 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
     dateInput.max = currentNowLocal;
     dateInput.value = currentNowLocal;
     currentCapturedMetadata.time = formatDateTimeLocalToWita(currentNowLocal);
-    currentWatermarkedBase64 = await renderWatermarkedEvidence(imgElement, currentCapturedMetadata);
-    if (imgElem) imgElem.src = currentWatermarkedBase64;
+  }
+
+  // AUTO-DETECT CLUSTER & RUAS JALAN DARI POLIGON / WO
+  if (clusterInput) {
+    clusterInput.value = (matchedWo && matchedWo.cluster) ? matchedWo.cluster : (spatialCluster.cluster || "");
+  }
+
+  if (toolSelect) {
+    let tType = "";
+    if (matchedWo && matchedWo.jobs && matchedWo.jobs[0] && matchedWo.jobs[0].toolType) {
+      tType = matchedWo.jobs[0].toolType;
+    }
+    const isStd = ['Ex', 'Dz', 'Gr', 'Cp', ''].includes(tType);
+    toolSelect.value = isStd ? tType : 'CUSTOM';
+    if (toolCustom) {
+      toolCustom.style.display = isStd ? 'none' : 'block';
+      toolCustom.value = isStd ? '' : tType;
+    }
+  }
+
+  if (egiInput) {
+    egiInput.value = (matchedWo && matchedWo.jobs && matchedWo.jobs[0] && matchedWo.jobs[0].egi) ? matchedWo.jobs[0].egi : "";
+  }
+
+  if (statusSelect) {
+    statusSelect.value = matchedWo ? (matchedWo.status || "PROGRESS") : "PROGRESS";
   }
 
   if (roadInput) {
@@ -5221,7 +5357,7 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
       roadInput.style.color = "#22c55e";
     } else {
       roadInput.value = "";
-      roadInput.placeholder = "Ketik Nama Ruas Jalan (Wajib diisi)...";
+      roadInput.placeholder = "Ketik Ruas Jalan (Wajib diisi)...";
       roadInput.style.borderColor = "#facc15";
       roadInput.style.color = "#facc15";
       setTimeout(() => roadInput.focus(), 250);
@@ -5231,25 +5367,25 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   if (matchedWo) {
     if (woBox) {
       woBox.innerHTML = `
-        <div style="color:#22c55e; font-weight:bold; margin-bottom:2px;">📍 Terdeteksi di Area WO: ${matchedWo.road}</div>
-        <div style="color:#94a3b8; font-size:10px;">Nomor/STA: ${matchedWo.sta || '-'} | Status: ${matchedWo.status}</div>
+        <div style="color:#22c55e; font-weight:bold; margin-bottom:2px;">📍 Terdeteksi di Area Poligon WO: ${matchedWo.road}</div>
+        <div style="color:#94a3b8; font-size:10px;">Cluster: ${matchedWo.cluster || spatialCluster.cluster || '-'} | Nomor/STA: ${matchedWo.sta || '-'} | Status: ${matchedWo.status}</div>
       `;
     }
 
     const jobs = (matchedWo.jobs && matchedWo.jobs.length > 0) ? matchedWo.jobs : [{ detail: "Pekerjaan Lapangan", status: "OPEN" }];
     if (jobWrap) {
       jobWrap.innerHTML = `
-  <label style="font-size:10px; color:#cbd5e1; display:block; margin-bottom:4px; font-weight:bold;">Pilih Target Job Pekerjaan:</label>
-  <select id="geoSelectedJobIndex" style="width:100%; background:#090d16; border:1px solid #475569; padding:6px; border-radius:4px; color:#fff; font-size:11px;">
-  ${jobs.map((j, i) => `<option value="${i}">Job #${i + 1}: ${j.detail || j.category} [${j.status || 'OPEN'}]</option>`).join('')}
-</select>
-`;
+        <label style="font-size:10px; color:#cbd5e1; display:block; margin-bottom:4px; font-weight:bold;">Pilih Target Job Pekerjaan:</label>
+        <select id="geoSelectedJobIndex" style="width:100%; background:#090d16; border:1px solid #475569; padding:6px; border-radius:4px; color:#fff; font-size:11px;">
+       ${jobs.map((j, i) => `<option value="${i}">Job #${i + 1}: ${j.detail || j.category || ''} [${j.status || 'OPEN'}]</option>`).join('')}
+        </select>
+      `;
     }
   } else {
     if (woBox) {
       woBox.innerHTML = `
         <div style="color:#f59e0b; font-weight:bold; margin-bottom:2px;">⚠️ Laporan Temuan Lapangan (Ad-Hoc)</div>
-        <div style="color:#94a3b8; font-size:10px;">Lokasi berada di luar sketsa WO aktif. Masukkan nama ruas jalan di bawah. Pin temuan baru akan dibuat otomatis.</div>
+        <div style="color:#94a3b8; font-size:10px;">Cluster Terdeteksi: <b>${spatialCluster.cluster || 'Area Tambang'}</b>. Pin temuan baru akan dibuat otomatis.</div>
       `;
     }
     if (jobWrap) jobWrap.innerHTML = '';
@@ -5317,6 +5453,10 @@ async function executeSubmitGeoEvidence() {
   if (!currentCapturedMetadata || !currentRawImageElement) return;
 
   const roadInput = document.getElementById('geoReportRoadName');
+  const clusterInput = document.getElementById('geoReportClusterName');
+  const toolSelect = document.getElementById('geoReportToolType');
+  const toolCustom = document.getElementById('geoReportToolCustom');
+  const egiInput = document.getElementById('geoReportEgi');
   const notesInput = document.getElementById('geoReportNotes');
   const repInput = document.getElementById('geoReportReporter');
   const statusSelect = document.getElementById('geoReportStatus');
@@ -5324,6 +5464,14 @@ async function executeSubmitGeoEvidence() {
   const dateInput = document.getElementById('geoReportDateTime');
 
   const finalRoadName = roadInput ? roadInput.value.trim() : "";
+  const finalClusterName = clusterInput ? clusterInput.value.trim() : "";
+  
+  let toolType = toolSelect ? toolSelect.value : "";
+  if (toolType === "CUSTOM") {
+    toolType = toolCustom ? toolCustom.value.trim() : "";
+  }
+  const egi = egiInput ? egiInput.value.trim() : "";
+
   const notes = notesInput ? notesInput.value.trim() : "";
   const reporter = repInput ? repInput.value.trim() : currentNRP;
   const status = statusSelect ? statusSelect.value : "PROGRESS";
@@ -5376,12 +5524,16 @@ async function executeSubmitGeoEvidence() {
       notes: notes,
       reporter: reporter,
       timestamp: currentCapturedMetadata.time,
+      toolType: toolType,
+      egi: egi,
       photoId: currentCapturedMetadata.photoId,
       images: imagePayload
     });
 
     if (matchedWo.jobs && matchedWo.jobs[jobIdx]) {
       matchedWo.jobs[jobIdx].status = status;
+      if (toolType) matchedWo.jobs[jobIdx].toolType = toolType;
+      if (egi) matchedWo.jobs[jobIdx].egi = egi;
     }
     matchedWo.status = calculateParentStatus(matchedWo.jobs);
     createOrUpdateMarker(matchedWo);
@@ -5392,7 +5544,9 @@ async function executeSubmitGeoEvidence() {
       status: status,
       parentStatus: matchedWo.status,
       notes: notes,
-      reporter: reporter
+      reporter: reporter,
+      toolType: toolType,
+      egi: egi
     }, `${reporter} kirim evidence ${jobTargetText} ${finalRoadName}`);
 
   } else {
@@ -5403,11 +5557,11 @@ async function executeSubmitGeoEvidence() {
       id: newWoId,
       createdTime: currentCapturedMetadata.time,
       road: finalRoadName,
-      cluster: spatialCluster.cluster,
+      cluster: finalClusterName || spatialCluster.cluster,
       lokasi: spatialCluster.lokasi,
       sta: "Temuan Lapangan",
       latlng: currentCapturedMetadata.latlng,
-      jobs: [{ detail: notes, status: status }],
+      jobs: [{ toolType: toolType, egi: egi, detail: notes, status: status }],
       notes: notes,
       reporter: reporter,
       photoUrls: [],
@@ -5519,7 +5673,8 @@ window.pickManualPointOnMapFallback = pickManualPointOnMapFallback;
 window.closeGeoExifWarningModal = closeGeoExifWarningModal;
 window.handleGeoDateTimeChange = handleGeoDateTimeChange;
 window.onCrossSectionStaChange = onCrossSectionStaChange;
-
+window.toggleRadarUserOnline = toggleRadarUserOnline;
+window.toggleGeoToolCustomInput = toggleGeoToolCustomInput;
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then((reg) => {
