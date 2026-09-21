@@ -3920,23 +3920,30 @@ function createCrossfallAbMarker(latlng, letter) {
   });
 }
 
-// HELPER SUDUT PUTAR MATA PANAH DARI TITIK TINGGI KE RENDAH
-function calcScreenAngle(fromLatLng, toLatLng) {
-  const p1 = map.latLngToContainerPoint(fromLatLng);
-  const p2 = map.latLngToContainerPoint(toLatLng);
-  return Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
-}
+// ==========================================
+// 7C. CROSSFALL SPLIT LAYER & PANAH ALIRAN PRESISI (FOTO 1 OPTIMIZED)
+// ==========================================
+function createCrossfallArrowMarker(pos, from, to, color) {
+  const dLng = to.lng - from.lng;
+  const y = Math.sin(dLng * Math.PI / 180) * Math.cos(to.lat * Math.PI / 180);
+  const x = Math.cos(from.lat * Math.PI / 180) * Math.sin(to.lat * Math.PI / 180) -
+            Math.sin(from.lat * Math.PI / 180) * Math.cos(to.lat * Math.PI / 180) * Math.cos(dLng * Math.PI / 180);
+  const bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 
-function createFlowArrowMarker(latlng, angle, color) {
-  return L.marker(latlng, {
+  return L.marker(pos, {
     icon: L.divIcon({
-      className: 'flow-arrow-marker',
-      html: `<div style="transform: rotate(${angle}deg); color: ${color}; font-size: 13px; font-weight: 900; line-height: 1; text-shadow: 0 0 3px #000, 0 0 5px #000; display: flex; align-items: center; justify-content: center;">➤</div>`,
+      className: 'crossfall-flow-arrow',
+      html: `
+        <div style="transform: rotate(${bearing}deg); width:16px; height:16px; display:flex; align-items:center; justify-content:center; pointer-events:none;">
+          <svg width="14" height="14" viewBox="0 0 24 24">
+            <path d="M12 2L4 16h6v6h4v-6h6z" fill="${color}" stroke="#ffffff" stroke-width="1.5"/>
+          </svg>
+        </div>
+      `,
       iconSize: [16, 16],
       iconAnchor: [8, 8]
     }),
-    interactive: false,
-    zIndexOffset: 2000
+    interactive: false
   });
 }
 
@@ -3945,20 +3952,20 @@ function renderCrossfallSplitLayer() {
   if (currentMainTab !== 'parameter' || currentParam !== 'crossfall') return;
 
   const currentZoom = map ? map.getZoom() : 15;
-  if (currentZoom < 13) return;
+  if (currentZoom < 14) return;
 
   const baseWeight = currentZoom >= 18 ? 5.5 : (currentZoom >= 16 ? 4 : 3);
-  const bounds = map.getBounds().pad(0.15);
+  const bounds = map.getBounds().pad(0.1);
 
   const cleanRoadName = (r) => (r || '').toLowerCase().replace(/^jl\.?\s*/i, '').trim();
 
-  rawWidthFeatures.forEach((feature, index) => {
-    const geom = feature.geometry;
-    if (!geom || !geom.coordinates) return;
+  rawWidthFeatures.forEach(feature => {
+    const coords = feature.geometry ? feature.geometry.coordinates : null;
+    if (!coords || coords.length < 2) return;
 
-    let lineCoords = geom.coordinates;
-    if (geom.type === 'MultiLineString') {
-      lineCoords = geom.coordinates[0];
+    let lineCoords = coords;
+    if (feature.geometry.type === 'MultiLineString') {
+      lineCoords = coords[0];
     }
     if (!lineCoords || lineCoords.length < 2) return;
 
@@ -3975,13 +3982,7 @@ function renderCrossfallSplitLayer() {
 
     const mid = L.latLng((pt1.lat + pt2.lat) / 2, (pt1.lng + pt2.lng) / 2);
 
-    // Ambil Data Monitoring
-    const row = monitoringData.find(d => {
-      const dRoad = cleanRoadName(d["Nama Jalan"]);
-      const dMeter = parseMeterSTA(d["STA"]);
-      return dRoad === cleanRoadName(roadVal) && Math.abs(dMeter - meterVal) <= 1;
-    });
-
+    const row = monitoringData.find(d => cleanRoadName(d["Nama Jalan"]) === cleanRoadName(roadVal) && Math.abs(parseMeterSTA(d["STA"]) - meterVal) <= 1);
     const cfL = row ? Math.abs(parseFloat(row["Crossfall Kiri (%)"]) || 0) : 0;
     const cfR = row ? Math.abs(parseFloat(row["Crossfall Kanan (%)"]) || 0) : 0;
 
@@ -3993,8 +3994,18 @@ function renderCrossfallSplitLayer() {
       colorRight = "#00f0ff";
     }
 
-    const lineLeft = L.polyline([mid, pt1], { color: colorLeft, weight: isSelected ? baseWeight + 3 : baseWeight, opacity: 0.95, renderer: canvasRenderer });
-    const lineRight = L.polyline([mid, pt2], { color: colorRight, weight: isSelected ? baseWeight + 3 : baseWeight, opacity: 0.95, renderer: canvasRenderer });
+    const lineLeft = L.polyline([mid, pt1], {
+      color: colorLeft,
+      weight: isSelected ? baseWeight + 3 : baseWeight,
+      opacity: 0.95,
+      renderer: canvasRenderer
+    });
+    const lineRight = L.polyline([mid, pt2], {
+      color: colorRight,
+      weight: isSelected ? baseWeight + 3 : baseWeight,
+      opacity: 0.95,
+      renderer: canvasRenderer
+    });
 
     const clickHandler = (e) => {
       L.DomEvent.stopPropagation(e);
@@ -4006,51 +4017,52 @@ function renderCrossfallSplitLayer() {
     crossfallVisualLayer.addLayer(lineLeft);
     crossfallVisualLayer.addLayer(lineRight);
 
-    // ==========================================================
-    // OPTIMASI RENDERING PANAH (SAMPLING 1 DARI 3 SEGMENT)
-    // ==========================================================
-    // Jika tidak dipilih, panah hanya dirender pada kelipatan index ke-3 agar DOM tidak jebol
-    if (isSelected || index % 3 === 0) {
-      const matchingPts = crossSectionData.filter(d => {
-        const dRoad = cleanRoadName(d["Nama Jalan"]);
-        const dMeter = parseMeterSTA(d["STA"]);
-        return dRoad === cleanRoadName(roadVal) && Math.abs(dMeter - meterVal) <= 1;
-      });
-
-      let elevA = null, elevAs = null, elevB = null;
-      if (matchingPts.length >= 3) {
-        const pL = matchingPts.find(p => p["Point"] && p["Point"].includes("Kiri")) || matchingPts[0];
-        const pC = matchingPts.find(p => p["Point"] && p["Point"].includes("As")) || matchingPts[1];
-        const pR = matchingPts.find(p => p["Point"] && p["Point"].includes("Kanan")) || matchingPts[2];
-        elevA = parseFloat(pL["Elevasi_RL"]);
-        elevAs = parseFloat(pC["Elevasi_RL"]);
-        elevB = parseFloat(pR["Elevasi_RL"]);
-      }
-
-      if (currentZoom >= 14) {
-        // 1. SISI KIRI (As vs A / pt1)
-        const posL = L.latLng((mid.lat + pt1.lat) / 2, (mid.lng + pt1.lng) / 2);
-        let fromPtL = mid, toPtL = pt1; 
-        if (elevAs !== null && elevA !== null && elevAs < elevA) {
-          fromPtL = pt1; toPtL = mid;   
-        }
-        const angleL = calcScreenAngle(fromPtL, toPtL);
-        crossfallVisualLayer.addLayer(createFlowArrowMarker(posL, angleL, colorLeft));
-
-        // 2. SISI KANAN (As vs B / pt2)
-        const posR = L.latLng((mid.lat + pt2.lat) / 2, (mid.lng + pt2.lng) / 2);
-        let fromPtR = mid, toPtR = pt2; 
-        if (elevAs !== null && elevB !== null && elevAs < elevB) {
-          fromPtR = pt2; toPtR = mid;   
-        }
-        const angleR = calcScreenAngle(fromPtR, toPtR);
-        crossfallVisualLayer.addLayer(createFlowArrowMarker(posR, angleR, colorRight));
-      }
+    if (isSelected) {
+      const markerA = createCrossfallAbMarker(pt1, 'A');
+      const markerB = createCrossfallAbMarker(pt2, 'B');
+      crossfallVisualLayer.addLayer(markerA);
+      crossfallVisualLayer.addLayer(markerB);
     }
 
-    if (isSelected) {
-      crossfallVisualLayer.addLayer(createCrossfallAbMarker(pt1, 'A'));
-      crossfallVisualLayer.addLayer(createCrossfallAbMarker(pt2, 'B'));
+    // PANAH ALIRAN PERSIS FOTO 1: HANYA MUNCUL DI ZOOM INSPEKSI (>=16) ATAU SAAT STA DIKLIK
+    if (currentZoom >= 16 || isSelected) {
+      const keyTarget = `${roadVal}_${formatKeSTA(meterVal)}`;
+      let pts = crossSectionData.filter(d => (d["Key"] || "").trim() === keyTarget);
+      if (pts.length < 3) {
+        pts = crossSectionData.filter(d => cleanRoadName(d["Nama Jalan"]) === cleanRoadName(roadVal) && Math.abs(parseMeterSTA(d["STA"]) - meterVal) <= 1);
+      }
+
+      let elevAs = null, elevLeft = null, elevRight = null;
+      if (pts.length >= 3) {
+        const ptLeftData = pts.find(p => p["Point"] && p["Point"].includes("Kiri")) || pts[0];
+        const ptAsData = pts.find(p => p["Point"] && p["Point"].includes("As")) || pts[1];
+        const ptRightData = pts.find(p => p["Point"] && p["Point"].includes("Kanan")) || pts[2];
+        elevLeft = parseFloat(ptLeftData["Elevasi_RL"]);
+        elevAs = parseFloat(ptAsData["Elevasi_RL"]);
+        elevRight = parseFloat(ptRightData["Elevasi_RL"]);
+      } else if (row) {
+        elevAs = parseFloat(row["Elevasi As (m)"] || 100);
+        elevLeft = elevAs - 0.2;
+        elevRight = elevAs - 0.2;
+      }
+
+      if (elevAs !== null) {
+        // Sisi Kiri (As vs A): Aliran dari elevasi tinggi ke rendah
+        const arrowLeftPos = L.latLng((mid.lat + pt1.lat) / 2, (mid.lng + pt1.lng) / 2);
+        if (bounds.contains(arrowLeftPos)) {
+          const fromLeft = (elevAs >= elevLeft) ? mid : pt1;
+          const toLeft = (elevAs >= elevLeft) ? pt1 : mid;
+          crossfallVisualLayer.addLayer(createCrossfallArrowMarker(arrowLeftPos, fromLeft, toLeft, colorLeft));
+        }
+
+        // Sisi Kanan (As vs B): Aliran dari elevasi tinggi ke rendah
+        const arrowRightPos = L.latLng((mid.lat + pt2.lat) / 2, (mid.lng + pt2.lng) / 2);
+        if (bounds.contains(arrowRightPos)) {
+          const fromRight = (elevAs >= elevRight) ? mid : pt2;
+          const toRight = (elevAs >= elevRight) ? pt2 : mid;
+          crossfallVisualLayer.addLayer(createCrossfallArrowMarker(arrowRightPos, fromRight, toRight, colorRight));
+        }
+      }
     }
   });
 }
