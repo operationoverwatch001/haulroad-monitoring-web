@@ -4201,9 +4201,25 @@ function handleFeatureClick(feature) {
 
 if (currentMainTab === 'parameter') {
     if (currentParam === 'grade') {
-      // 1 KOTAK = 1 SEGMEN BENTANG 20 METER (STA n-1 s/d STA n)
-      selectedEndMeter = meterVal;
-      selectedStartMeter = Math.max(0, meterVal - 20);
+      if (selectedStartMeter === null || isGradeRangeActive) {
+        // KLIK PERTAMA: Pilih 1 kotak tunggal (bentang 20 meter)
+        selectedEndMeter = meterVal;
+        selectedStartMeter = Math.max(0, meterVal - 20);
+        isGradeRangeActive = false;
+      } else {
+        // KLIK KEDUA: Klik kotak lain -> Kunci rentang dari Kotak A ke Kotak B!
+        if (meterVal === selectedEndMeter) return;
+
+        const box1Start = selectedStartMeter;
+        const box1End = selectedEndMeter;
+        const box2Start = Math.max(0, meterVal - 20);
+        const box2End = meterVal;
+
+        // Ambil batas meter terluar (bisa klik maju maupun mundur)
+        selectedStartMeter = Math.min(box1Start, box2Start);
+        selectedEndMeter = Math.max(box1End, box2End);
+        isGradeRangeActive = true;
+      }
       
       refreshVisibleLayers();
       renderGradeSummary();
