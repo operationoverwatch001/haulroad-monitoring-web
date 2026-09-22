@@ -3872,19 +3872,34 @@ function getGradePolygonBlockStyle(feature) {
   const meterVal = parseMeterSTA(staVal);
   const roadVal = (props.Nama_Jalan || props["Nama Jalan"] || activeRoad).trim();
 
+  // 1. KOTAK AKTIF TERPILIH: Nyala Cyan Terang
   if (isMeterSelected(meterVal, roadVal)) {
-    return { color: "#00f0ff", weight: 3.5, fillColor: "#00f0ff", fillOpacity: 0.95 };
+    return { 
+      color: "#00f0ff", 
+      weight: 3.5, 
+      fillColor: "#00f0ff", 
+      fillOpacity: 0.95 
+    };
   }
 
+  // 2. STATUS GRADE (Bisa baca dari teks status atau angka persen langsung)
   let statusGrade = (props.Status_Gra || props["Status Grade"] || props.Status || "").toString().toUpperCase();
-  let fillColor = "#22c55e"; 
-  if (statusGrade.includes("OVERGRADE") || statusGrade.includes("NON COMPLIANT")) {
-    fillColor = "#e11d48";   
-  } else if (statusGrade.includes("WARNING")) {
-    fillColor = "#eab308";   
+  const rawGrade = parseFloat(props.Grade_Pct || props["Grade Longitudinal (%)"] || props.Grade || 0);
+  const absGrade = Math.abs(rawGrade);
+
+  let fillColor = "#22c55e"; // Hijau (Ongrade < 8%)
+  if (statusGrade.includes("OVERGRADE") || statusGrade.includes("NON COMPLIANT") || absGrade >= 9.0) {
+    fillColor = "#e11d48";   // Merah (Overgrade >= 9%)
+  } else if (statusGrade.includes("WARNING") || absGrade >= 8.0) {
+    fillColor = "#eab308";   // Kuning (Warning 8% - 8.9%)
   }
 
-  return { color: "#000000", weight: 1.2, fillColor: fillColor, fillOpacity: 0.88 };
+  return { 
+    color: "#0f172a",        // GARIS SEKAT FISIK STA: Garis gelap tegas pemisah antar-patok STA!
+    weight: 1.8,             // Ketebalan garis batas
+    fillColor: fillColor,    // Warna status kemiringan
+    fillOpacity: 0.88 
+  };
 }
 
 function getWidthSliceStyle(feature) {
@@ -4169,8 +4184,16 @@ function handleFeatureClick(feature) {
     selectedRoadTarget = activeRoad;
   }
 
-  if (currentMainTab === 'parameter') {
-    if (currentParam === 'lebar' || currentParam === 'grade') {
+if (currentMainTab === 'parameter') {
+    if (currentParam === 'grade') {
+      // 1 KOTAK = 1 SEGMEN BENTANG 20 METER (STA n-1 s/d STA n)
+      // Misal klik kotak STA 0+020: meterVal = 20, startMeter = 0 (2 Titik Terkunci!)
+      selectedEndMeter = meterVal;
+      selectedStartMeter = Math.max(0, meterVal - 20);
+      
+      refreshVisibleLayers();
+      renderGradeSummary();
+    } else if (currentParam === 'lebar') {
       if (selectedStartMeter === null || (selectedStartMeter !== null && selectedEndMeter !== null)) {
         selectedStartMeter = meterVal;
         selectedEndMeter = null;
@@ -4178,8 +4201,8 @@ function handleFeatureClick(feature) {
         selectedEndMeter = meterVal;
       }
       refreshVisibleLayers();
-      if (currentParam === 'lebar') renderLebarSummary();
-      else if (currentParam === 'grade') renderGradeSummary();
+      renderLebarSummary();
+    } else if (currentParam === 'crossfall') {
     } else if (currentParam === 'crossfall') {
       selectedStartMeter = meterVal;
       selectedEndMeter = null;
@@ -4207,17 +4230,6 @@ map.on('click', (e) => {
 async function loadAllVectorLayers() {
   // Load Poligon Cluster GeoJSON jika tersedia
   try {
-    const resCluster = await fetch('data/clusters.geojson');
-    if (resCluster.ok) {
-      const geojsonClusters = await resCluster.json();
-      clusterFeatures = geojsonClusters.features || [];
-      console.log(`Loaded ${clusterFeatures.length} Cluster Polygons.`);
-    }
-  } catch (e) {
-    console.warn("Layer clusters.geojson standby.");
-  }
-
-  try {
     const resGrade = await fetch('data/Road_Grade_Polygons.geojson');
     if (resGrade.ok) {
       const geojsonGrade = await resGrade.json();
@@ -4228,18 +4240,24 @@ async function loadAllVectorLayers() {
         renderer: canvasRenderer,
         onEachFeature: function(feature, layer) {
           const props = feature.properties || {};
-          const sta = props.STA_Akhir || formatKeSTA(props.Station_m || props.STA_Awal || 0);
+          
+          // 1. Ambil STA Akhir & Hitung STA Awal Segmen
+          const endM = parseMeterSTA(props.STA_Akhir || props.STA || props.Station_m || 0);
+          const startM = Math.max(0, endM - 20);
           const road = props.Nama_Jalan || props["Nama Jalan"] || activeRoad;
           
-          let gVal = "";
+          // 2. Format Grade Jadi Positif Absolut
+          let gVal = "-";
           if (props.Grade_Pct !== undefined && props.Grade_Pct !== null && props.Grade_Pct !== "") {
             const parsedG = parseFloat(props.Grade_Pct);
-            if (!isNaN(parsedG)) gVal = parsedG.toFixed(2) + "%";
+            if (!isNaN(parsedG)) gVal = Math.abs(parsedG).toFixed(2) + "%";
           } else if (props.Label_Grad) {
-            gVal = props.Label_Grad.toString().trim();
+            const numOnly = parseFloat(props.Label_Grad.toString().replace(/[^0-9.-]/g, ''));
+            gVal = !isNaN(numOnly) ? Math.abs(numOnly).toFixed(2) + "%" : props.Label_Grad.toString().trim();
           }
 
-          layer.bindTooltip(`<b>${road}</b><br>STA: <b>${sta}</b><br>Grade: <b>${gVal || "-"}</b>`, { sticky: true });
+          // 3. Tooltip Tampilkan Rentang Segmen 20m (misal: 0+000 s/d 0+020)
+          layer.bindTooltip(`<b>${road}</b><br>Segmen: <b>${formatKeSTA(startM)} s/d ${formatKeSTA(endM)}</b><br>Grade: <b>${gVal}</b>`, { sticky: true });
 
           const center = layer.getBounds().getCenter();
           const angle = calculatePolygonAngle(layer);
@@ -4247,7 +4265,7 @@ async function loadAllVectorLayers() {
           const staMarker = L.marker(center, {
             icon: L.divIcon({
               className: 'sta-rotated-label',
-              html: `<span class="sta-text-box" style="transform: rotate(${angle}deg);">${sta}</span>`,
+              html: `<span class="sta-text-box" style="transform: rotate(${angle}deg);">${formatKeSTA(endM)}</span>`,
               iconSize: [40, 12], iconAnchor: [20, 6]
             }),
             interactive: false
@@ -5972,20 +5990,29 @@ async function executeSaveGeoToGalleryOnly() {
   if (!currentWatermarkedBase64 || !currentCapturedMetadata) return;
   const roadInput = document.getElementById('geoReportRoadName');
   const dateInput = document.getElementById('geoReportDateTime');
+  const notesInput = document.getElementById('geoReportNotes');
+  const repInput = document.getElementById('geoReportReporter');
 
+  // Ambil teks yang diketik user di form
+  const cleanRoad = (roadInput && roadInput.value.trim() !== '') 
+    ? roadInput.value.trim() 
+    : (currentCapturedMetadata.road || "Area Tambang");
+
+  currentCapturedMetadata.road = cleanRoad;
+  if (notesInput && notesInput.value.trim()) currentCapturedMetadata.notes = notesInput.value.trim();
+  if (repInput && repInput.value.trim()) currentCapturedMetadata.reporter = repInput.value.trim();
   if (dateInput && dateInput.value) {
     currentCapturedMetadata.time = formatDateTimeLocalToWita(dateInput.value);
-    currentWatermarkedBase64 = await renderWatermarkedEvidence(currentRawImageElement, currentCapturedMetadata);
   }
 
-  const cleanRoad = roadInput && roadInput.value.trim() ? roadInput.value.trim() : "Area_Tambang";
+  // Render ulang stempel watermark foto
+  currentWatermarkedBase64 = await renderWatermarkedEvidence(currentRawImageElement, currentCapturedMetadata);
+
   const filename = `${currentCapturedMetadata.photoId}_${cleanRoad.replace(/\s+/g, '_')}.jpg`;
-  
   downloadBase64Image(currentWatermarkedBase64, filename);
   alert("Foto berhasil diunduh dan disimpan ke Galeri HP!");
   closeGeoPreviewModal();
 }
-
 async function executeSubmitGeoEvidence() {
   if (!currentCapturedMetadata || !currentRawImageElement) return;
 
