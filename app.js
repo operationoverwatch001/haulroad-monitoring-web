@@ -3821,13 +3821,26 @@ function isMeterSelected(meterVal, roadName) {
   if (roadName.toLowerCase() !== selectedRoadTarget.toLowerCase()) return false;
 
   if (selectedEndMeter !== null) {
+    // KHUSUS PARAMETER GRADE:
+    if (currentParam === 'grade') {
+      const minM = Math.min(selectedStartMeter, selectedEndMeter);
+      const maxM = Math.max(selectedStartMeter, selectedEndMeter);
+      
+      // Jika seleksi bentang 20m (klik 1 kotak), HANYA nyalakan kotak yang diklik (maxM)!
+      if (maxM - minM === 20) {
+        return meterVal === maxM;
+      }
+      // Jika seleksi multi-segmen rentang panjang
+      return meterVal > minM && meterVal <= maxM;
+    }
+
+    // UNTUK PARAMETER LAIN (LEBAR & CROSSFALL): Tetap inklusif >= dan <=
     const minM = Math.min(selectedStartMeter, selectedEndMeter);
     const maxM = Math.max(selectedStartMeter, selectedEndMeter);
     return meterVal >= minM && meterVal <= maxM;
   }
   return meterVal === selectedStartMeter;
 }
-
 function calculatePolygonAngle(layer) {
   try {
     const latlngs = layer.getLatLngs();
@@ -4187,7 +4200,6 @@ function handleFeatureClick(feature) {
 if (currentMainTab === 'parameter') {
     if (currentParam === 'grade') {
       // 1 KOTAK = 1 SEGMEN BENTANG 20 METER (STA n-1 s/d STA n)
-      // Misal klik kotak STA 0+020: meterVal = 20, startMeter = 0 (2 Titik Terkunci!)
       selectedEndMeter = meterVal;
       selectedStartMeter = Math.max(0, meterVal - 20);
       
@@ -4202,8 +4214,7 @@ if (currentMainTab === 'parameter') {
       }
       refreshVisibleLayers();
       renderLebarSummary();
-    } else if (currentParam === 'crossfall') {
-    } else if (currentParam === 'crossfall') {
+   } else if (currentParam === 'crossfall') {
       selectedStartMeter = meterVal;
       selectedEndMeter = null;
       selectedRoadTarget = activeRoad;
@@ -4216,7 +4227,6 @@ if (currentMainTab === 'parameter') {
     }
   }
 }
-
 map.on('click', (e) => {
   if (isWorkOrderModeActive) {
     handleMapClickForWo(e.latlng);
@@ -4230,11 +4240,21 @@ map.on('click', (e) => {
 async function loadAllVectorLayers() {
   // Load Poligon Cluster GeoJSON jika tersedia
   try {
+    const resCluster = await fetch('data/clusters.geojson');
+    if (resCluster.ok) {
+      const geojsonClusters = await resCluster.json();
+      clusterFeatures = geojsonClusters.features || [];
+      console.log(`Loaded ${clusterFeatures.length} Cluster Polygons.`);
+    }
+  } catch (e) {
+    console.warn("Layer clusters.geojson standby.");
+  }
+
+  try {
     const resGrade = await fetch('data/Road_Grade_Polygons.geojson');
     if (resGrade.ok) {
       const geojsonGrade = await resGrade.json();
       allStaMarkers = [];
-
       roadGradeLayer = L.geoJSON(geojsonGrade, {
         style: getGradePolygonBlockStyle,
         renderer: canvasRenderer,
@@ -5901,7 +5921,7 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
   if (statusSelect) {
     statusSelect.value = matchedWo ? (matchedWo.status || "PROGRESS") : "PROGRESS";
   }
-
+  // Live update watermark saat user mengetik nama jalan
   if (roadInput) {
     roadInput.readOnly = false;
     roadInput.style.background = "#090d16";
@@ -5917,6 +5937,12 @@ async function proceedWithPhotoLocation(lat, lng, takenTime, imgElement) {
       roadInput.style.color = "#facc15";
       setTimeout(() => roadInput.focus(), 250);
     }
+
+    roadInput.oninput = async () => {
+      currentCapturedMetadata.road = roadInput.value.trim() || 'Area Tambang';
+      currentWatermarkedBase64 = await renderWatermarkedEvidence(currentRawImageElement, currentCapturedMetadata);
+      if (imgElem) imgElem.src = currentWatermarkedBase64;
+    };
   }
 
   if (matchedWo) {
