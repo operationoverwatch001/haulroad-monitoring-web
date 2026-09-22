@@ -55,6 +55,7 @@ let clusterGeoJsonLayer = null;
 let selectedStartMeter = null;
 let selectedEndMeter = null;
 let selectedRoadTarget = "";
+let isGradeRangeActive = false;
 
 let isWorkOrderModeActive = false;
 let activeWoTool = null;
@@ -3826,15 +3827,15 @@ function isMeterSelected(meterVal, roadName) {
       const minM = Math.min(selectedStartMeter, selectedEndMeter);
       const maxM = Math.max(selectedStartMeter, selectedEndMeter);
       
-      // Jika seleksi bentang 20m (klik 1 kotak), HANYA nyalakan kotak yang diklik (maxM)!
-      if (maxM - minM === 20) {
+      // Jika mode 1 kotak (bukan rentang panjang), HANYA nyalakan 1 kotak yang diklik
+      if (!isGradeRangeActive) {
         return meterVal === maxM;
       }
-      // Jika seleksi multi-segmen rentang panjang
+      // Jika mode rentang (klik A ke B), nyalakan seluruh kotak di dalam rentang
       return meterVal > minM && meterVal <= maxM;
     }
 
-    // UNTUK PARAMETER LAIN (LEBAR & CROSSFALL): Tetap inklusif >= dan <=
+    // PARAMETER LAIN (LEBAR & CROSSFALL)
     const minM = Math.min(selectedStartMeter, selectedEndMeter);
     const maxM = Math.max(selectedStartMeter, selectedEndMeter);
     return meterVal >= minM && meterVal <= maxM;
@@ -4125,6 +4126,7 @@ function resetSegmentSelection() {
   selectedStartMeter = null;
   selectedEndMeter = null;
   selectedRoadTarget = "";
+  isGradeRangeActive = false; // <-- TAMBAHKAN INI
   refreshVisibleLayers();
   renderTabContent();
 }
