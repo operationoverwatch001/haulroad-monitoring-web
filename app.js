@@ -21,6 +21,10 @@ const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
 let currentNRP = "SUPABASE_USER";
 let currentUserRole = "viewer"; 
+// --- STATE MODE APLIKASI (PORTAL ROAD vs BLASTMAP) ---
+let currentAppMode = 'road';
+let blastmapLayerGroup = L.layerGroup();
+let currentLoadedBlastDate = null;
 
 let currentMainTab = 'map';
 let currentParam = 'grade';
@@ -104,6 +108,7 @@ const map = L.map('map', {
   preferCanvas: true,
   renderer: canvasRenderer
 }).setView([-2.169338, 115.572115], 15);
+blastmapLayerGroup.addTo(map);
 
 const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
@@ -123,8 +128,7 @@ if (pmtilesLib) {
         this.options.pmtilesProtocol = protocol;
       });
     }
-
-    const p = new pmtilesLib.PMTiles(PMTILES_URL);
+       const p = new pmtilesLib.PMTiles(PMTILES_URL);
     protocol.add(p);
 
     orthoLayer = pmtilesLib.leafletRasterLayer(p, {
@@ -155,7 +159,200 @@ if (pmtilesLib) {
     console.error("Gagal mounting layer PMTiles:", err);
   }
 }
+// ==========================================
+// 1B. LOGIKA SWITCHING DUA PORTAL (ROAD vs BLASTMAP)
+// ==========================================
+function openModulePortal() {
+  const portal = document.getElementById('modulePortalOverlay');
+  if (portal) portal.style.display = 'flex';
+}
 
+function closeModulePortal() {
+  const portal = document.getElementById('modulePortalOverlay');
+  if (portal) portal.style.display = 'none';
+}
+
+function selectAppMode(mode) {
+  currentAppMode = mode;
+  closeModulePortal();
+
+  const iconElem = document.getElementById('labelCurrentModuleIcon');
+  const nameElem = document.getElementById('labelCurrentModuleName');
+  const centerTabs = document.getElementById('centerTabsContainer');
+  const rightSidebar = document.getElementById('rightSidebarContainer');
+  const bottomPanel = document.getElementById('bottom-panel');
+  const floatingGroup = document.getElementById('floatingActionGroup');
+  const dataUpdateBtn = document.getElementById('btnDataUpdateStatus');
+
+  if (mode === 'road') {
+    if (iconElem) iconElem.innerText = '🛣️';
+    if (nameElem) nameElem.innerText = 'ROAD';
+
+    if (centerTabs) centerTabs.style.display = 'flex';
+    if (rightSidebar) rightSidebar.style.display = 'flex';
+    if (bottomPanel) bottomPanel.style.display = 'flex';
+    if (dataUpdateBtn) dataUpdateBtn.style.display = 'flex';
+
+    if (floatingGroup) {
+      floatingGroup.style.display = 'flex';
+      floatingGroup.style.bottom = `${(bottomPanel ? bottomPanel.getBoundingClientRect().height : 38) + 14}px`;
+    }
+
+    blastmapLayerGroup.clearLayers();
+    if (map.hasLayer(blastmapLayerGroup)) map.removeLayer(blastmapLayerGroup);
+
+    refreshVisibleLayers();
+    updateLegendUI();
+    showToastNotification("🛣️ Modul Haul Road Aktif");
+
+  } else if (mode === 'blastmap') {
+    if (iconElem) iconElem.innerText = '💣';
+    if (nameElem) nameElem.innerText = 'BLASTMAP';
+
+    if (centerTabs) centerTabs.style.display = 'none';
+    if (rightSidebar) rightSidebar.style.display = 'none';
+    if (bottomPanel) bottomPanel.style.display = 'none';
+    if (dataUpdateBtn) dataUpdateBtn.style.display = 'none';
+
+    if (floatingGroup) {
+      floatingGroup.style.bottom = '16px';
+    }
+
+    if (isWorkOrderModeActive) {
+      toggleWorkOrderFloating();
+    }
+
+    // Bersihkan seluruh layer vektor jalan dari peta
+    if (roadGradeLayer && map.hasLayer(roadGradeLayer)) map.removeLayer(roadGradeLayer);
+    if (roadWidthLayer && map.hasLayer(roadWidthLayer)) map.removeLayer(roadWidthLayer);
+    if (roadMapLayer && map.hasLayer(roadMapLayer)) map.removeLayer(roadMapLayer);
+    if (roadNonSaranaLayer && map.hasLayer(roadNonSaranaLayer)) map.removeLayer(roadNonSaranaLayer);
+    if (crossfallVisualLayer && map.hasLayer(crossfallVisualLayer)) map.removeLayer(crossfallVisualLayer);
+    if (gradeLabelsLayer && map.hasLayer(gradeLabelsLayer)) map.removeLayer(gradeLabelsLayer);
+
+    if (!map.hasLayer(blastmapLayerGroup)) blastmapLayerGroup.addTo(map);
+
+    const activeDate = calendarFilterDate || getTodayYMDWita();
+    loadBlastmapData(activeDate);
+
+    updateLegendUI();
+    showToastNotification("💣 Modul Blastmap Monitoring Aktif");
+  }
+}
+
+// ==========================================
+// 1C. LOADER BLASTMAP GEOJSON
+// ==========================================
+async function loadBlastmapData(dateStr) {
+  if (!dateStr) dateStr = getTodayYMDWita();
+  currentLoadedBlastDate = dateStr;
+  blastmapLayerGroup.clearLayers();
+
+  setSyncStatus('updating', `Memuat blastmap ${dateStr}...`);
+
+  const targetFile = `data/blastmaps/blast_${dateStr}.geojson`;
+  const fallbackFile = `data/blastmaps/overwatch.geojson`;
+
+  let geojsonData = null;
+
+  try {
+    let res = await fetch(targetFile);
+    if (!res.ok) {
+      res = await fetch(fallbackFile);
+    }
+
+    if (!res.ok) {
+      setSyncStatus('updated');
+      showToastNotification(`⚠️ Belum ada blastmap untuk tanggal ${dateStr}`);
+      return;
+    }
+
+    geojsonData = await res.json();
+  } catch (err) {
+    setSyncStatus('updated');
+    showToastNotification(`Gagal memuat file blastmap (${err.message})`);
+    return;
+  }
+
+  try {
+    const blastGeoLayer = L.geoJSON(geojsonData, {
+      style: function(feature) {
+        const p = feature.properties || {};
+        const isBendera = (p.tipe && p.tipe.includes("Bendera")) || p.fillOpacity === 1.0;
+        const isBlastArea = p.tipe === "Blast Area";
+
+        if (isBlastArea) {
+          return {
+            color: p.color || "#00ffff",
+            fillColor: p.fillColor || "#00ffff",
+            fillOpacity: p.fillOpacity !== undefined ? p.fillOpacity : 0.6,
+            weight: p.weight || 2
+          };
+        }
+
+        if (isBendera) {
+          return {
+            color: p.color || "#ffffff",
+            fillColor: p.fillColor || p.color,
+            fillOpacity: 1.0,
+            weight: 1
+          };
+        }
+
+        // Garis kawat lingkaran radius & tiang bendera
+        return {
+          color: p.color || "#ffffff",
+          weight: p.weight || 2.5,
+          fill: false,
+          opacity: 0.95
+        };
+      },
+      pointToLayer: function(feature, latlng) {
+        const p = feature.properties || {};
+        const blockerText = p.kode || p.name || p.Teks || "B";
+        const textColor = p.color || "#ff00ff";
+
+        const marker = L.marker(latlng, {
+          icon: L.divIcon({
+            className: 'custom-text-blocker',
+            html: `<span style="color:${textColor};">${blockerText}</span>`,
+            iconSize: [26, 26],
+            iconAnchor: [13, 13]
+          }),
+          zIndexOffset: 3000
+        });
+
+        marker.bindPopup(`
+          <div style="font-size:11px; font-family:monospace; padding:2px;">
+            <b style="color:#ff00ff; font-size:13px;">TITIK BLOCKER: ${blockerText}</b><br>
+            <span style="color:#64748b;">Tanggal: ${currentLoadedBlastDate}</span><br>
+            <span>Koordinat: ${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}</span>
+          </div>
+        `);
+
+        return marker;
+      },
+      onEachFeature: function(feature, layer) {
+        const p = feature.properties || {};
+        if (p.tipe && !layer.getPopup()) {
+          layer.bindTooltip(`<b>${p.tipe}</b>`, { sticky: true });
+        }
+      }
+    });
+
+    blastmapLayerGroup.addLayer(blastGeoLayer);
+
+    if (blastGeoLayer.getBounds().isValid()) {
+      map.fitBounds(blastGeoLayer.getBounds(), { padding: [50, 50], maxZoom: 18 });
+    }
+
+    setSyncStatus('updated');
+    showToastNotification(`💣 Blastmap ${dateStr} berhasil dimuat!`);
+  } catch (renderErr) {
+    console.error("Error rendering blastmap:", renderErr);
+    setSyncStatus('updated');
+  }
+}
 // ==========================================
 // 1B. BADGE NOTIFIKASI SINKRONISASI PINTAR
 // ==========================================
@@ -801,6 +998,37 @@ function updateLegendUI() {
   const title = document.getElementById('legendTitle');
   const content = document.getElementById('legendContent');
   if (!title || !content) return;
+
+  if (currentAppMode === 'blastmap') {
+    title.innerText = 'LEGENDA: BLASTMAP MONITORING';
+    content.innerHTML = `
+      <div class="legend-blastmap-item">
+        <span class="flex items-center gap-2"><span class="legend-color-box bg-[#00ffff]"></span><span>Blast Area (Solid)</span></span>
+        <span class="text-[9px] font-mono text-cyan-400 font-bold">PELEDAKAN</span>
+      </div>
+      <div class="legend-blastmap-item">
+        <span class="flex items-center gap-2"><span class="legend-line-sample bg-[#ff00ff]"></span><span>Radius 100 Meter</span></span>
+        <span class="text-[9px] font-mono text-fuchsia-400 font-bold">100m</span>
+      </div>
+      <div class="legend-blastmap-item">
+        <span class="flex items-center gap-2"><span class="legend-line-sample bg-[#ffff00]"></span><span>Radius 150 Meter</span></span>
+        <span class="text-[9px] font-mono text-yellow-400 font-bold">150m</span>
+      </div>
+      <div class="legend-blastmap-item">
+        <span class="flex items-center gap-2"><span class="legend-line-sample bg-[#ff0000]"></span><span>Radius 300 Meter</span></span>
+        <span class="text-[9px] font-mono text-rose-500 font-bold">300m</span>
+      </div>
+      <div class="legend-blastmap-item">
+        <span class="flex items-center gap-2"><span class="legend-line-sample bg-[#00ff00]"></span><span>Radius 500 Meter (Aman)</span></span>
+        <span class="text-[9px] font-mono text-emerald-400 font-bold">500m</span>
+      </div>
+      <div class="legend-blastmap-item mt-1 pt-1.5 border-t border-slate-700/80">
+        <span class="flex items-center gap-2"><b class="text-[#ff00ff] font-mono text-xs">[A]</b><span>Titik Blocker Pengawas</span></span>
+        <span class="text-[9px] font-mono text-slate-400">POINT</span>
+      </div>
+    `;
+    return;
+  }
 
   if (currentMainTab === 'map') {
     title.innerText = 'LEGENDA: MAP';
@@ -2799,11 +3027,26 @@ function closeImageLightbox() {
 function openCalendarFilterModal() {
   const modal = document.getElementById('calendarFilterModal');
   const dateInput = document.getElementById('mapCalendarDateInput');
+  const heading = document.getElementById('calendarModalHeading');
+  const targetLabel = document.getElementById('calendarTargetLabel');
+  const exportSec = document.getElementById('calendarExportSection');
   const todayYMD = getTodayYMDWita();
+
   if (dateInput) {
     dateInput.max = todayYMD;
     dateInput.value = calendarFilterDate || todayYMD;
   }
+
+  if (currentAppMode === 'blastmap') {
+    if (heading) heading.innerText = '📅 FILTER TANGGAL BLASTMAP';
+    if (targetLabel) targetLabel.innerText = 'Tampilkan Peta Peledakan Tanggal:';
+    if (exportSec) exportSec.style.display = 'none';
+  } else {
+    if (heading) heading.innerText = '📅 FILTER KALENDER & HISTORY WO';
+    if (targetLabel) targetLabel.innerText = 'Tampilkan Data WO Tanggal:';
+    if (exportSec) exportSec.style.display = 'block';
+  }
+
   if (modal) modal.style.display = 'flex';
 }
 
@@ -2826,18 +3069,24 @@ function applyCalendarDateFilter() {
   calendarFilterDate = dateInput.value;
   updateActiveWoDateButtonText();
   closeCalendarFilterModal();
-  refreshWorkOrderMapDisplay();
-
-  alert(`Menampilkan data WO untuk tanggal: ${calendarFilterDate}`);
+if (currentAppMode === 'blastmap') {
+    loadBlastmapData(calendarFilterDate);
+  } else {
+    refreshWorkOrderMapDisplay();
+    alert(`Menampilkan data WO untuk tanggal: ${calendarFilterDate}`);
+  }
 }
 
 function resetCalendarToToday() {
   calendarFilterDate = null;
   updateActiveWoDateButtonText();
   closeCalendarFilterModal();
-  refreshWorkOrderMapDisplay();
-
-  alert("Peta kembali ke tampilan hari ini (Live Real-Time)!");
+if (currentAppMode === 'blastmap') {
+    loadBlastmapData(getTodayYMDWita());
+  } else {
+    refreshWorkOrderMapDisplay();
+    alert("Peta kembali ke tampilan hari ini (Live Real-Time)!");
+  }
 }
 
 // LOGIKA OPTIMASI & PERBAIKAN BUG ANOMALI KOTAK CLOSED
@@ -3726,7 +3975,8 @@ function mulaiAnimasiIntroDanLoadData() {
         splash.style.display = 'none';
         splash.remove();
         if (map) map.invalidateSize(true);
-        switchMainTab('map');
+// TAMPILKAN PORTAL 2 KOTAK (ROAD vs BLASTMAP) DI AWAL
+openModulePortal();
       }, 400);
     }
   }, 3200);
@@ -4132,6 +4382,7 @@ function resetSegmentSelection() {
 }
 
 function refreshVisibleLayers() {
+  if (currentAppMode === 'blastmap') return;
   if (currentMainTab === 'map') {
     if (roadGradeLayer && map.hasLayer(roadGradeLayer)) map.removeLayer(roadGradeLayer);
     if (roadWidthLayer && map.hasLayer(roadWidthLayer)) map.removeLayer(roadWidthLayer);
@@ -4670,6 +4921,7 @@ function onCrossSectionStaChange(staVal) {
 }
 
 function renderTabContent() {
+  if (currentAppMode === 'blastmap') return;
   if (currentMainTab === 'map') {
     renderMapOverviewSummary();
     return;
@@ -6285,6 +6537,9 @@ window.toggleRadarUserOnline = toggleRadarUserOnline;
 window.toggleGeoToolCustomInput = toggleGeoToolCustomInput;
 window.openRoadSummaryModal = openRoadSummaryModal;
 window.closeRoadSummaryModal = closeRoadSummaryModal;
+window.openModulePortal = openModulePortal;
+window.closeModulePortal = closeModulePortal;
+window.selectAppMode = selectAppMode;
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then((reg) => {
