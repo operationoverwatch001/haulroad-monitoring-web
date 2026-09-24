@@ -176,6 +176,7 @@ function selectAppMode(mode) {
   currentAppMode = mode;
   closeModulePortal();
 
+  // 1. Ambil elemen-elemen UI utama
   const iconElem = document.getElementById('labelCurrentModuleIcon');
   const nameElem = document.getElementById('labelCurrentModuleName');
   const centerTabs = document.getElementById('centerTabsContainer');
@@ -184,7 +185,20 @@ function selectAppMode(mode) {
   const floatingGroup = document.getElementById('floatingActionGroup');
   const dataUpdateBtn = document.getElementById('btnDataUpdateStatus');
 
+  // Ambil elemen tombol WO & Kamera Geotagging
+  const woBtn = document.getElementById('woFloatingBtn');
+  const cameraBtn = document.getElementById('floatingCameraBtn');
+  const woPlus = document.getElementById('woPlusBtn');
+  const woSub = document.getElementById('woSubmenu');
+
+  // ==========================================
+  // JIKA PILIH MODE HAUL ROAD
+  // ==========================================
   if (mode === 'road') {
+    // Langsung aktifkan kembali tanpa getElementById ulang
+    if (woBtn) woBtn.style.display = 'flex';
+    if (cameraBtn) cameraBtn.style.display = 'flex';
+
     if (iconElem) iconElem.innerText = '🛣️';
     if (nameElem) nameElem.innerText = 'ROAD';
 
@@ -192,6 +206,10 @@ function selectAppMode(mode) {
     if (rightSidebar) rightSidebar.style.display = 'flex';
     if (bottomPanel) bottomPanel.style.display = 'flex';
     if (dataUpdateBtn) dataUpdateBtn.style.display = 'flex';
+
+    // MUNCULKAN KEMBALI tombol WO & Kamera
+    if (woBtn) woBtn.style.display = 'flex';
+    if (cameraBtn) cameraBtn.style.display = 'flex';
 
     if (floatingGroup) {
       floatingGroup.style.display = 'flex';
@@ -205,6 +223,9 @@ function selectAppMode(mode) {
     updateLegendUI();
     showToastNotification("🛣️ Modul Haul Road Aktif");
 
+  // ==========================================
+  // JIKA PILIH MODE BLASTMAP
+  // ==========================================
   } else if (mode === 'blastmap') {
     if (iconElem) iconElem.innerText = '💣';
     if (nameElem) nameElem.innerText = 'BLASTMAP';
@@ -213,6 +234,12 @@ function selectAppMode(mode) {
     if (rightSidebar) rightSidebar.style.display = 'none';
     if (bottomPanel) bottomPanel.style.display = 'none';
     if (dataUpdateBtn) dataUpdateBtn.style.display = 'none';
+
+    // SEMBUNYIKAN TOTAL tombol WO & Kamera (untuk SEMUA user)
+    if (woBtn) woBtn.style.display = 'none';
+    if (cameraBtn) cameraBtn.style.display = 'none';
+    if (woPlus) woPlus.style.display = 'none';
+    if (woSub) woSub.style.display = 'none';
 
     if (floatingGroup) {
       floatingGroup.style.bottom = '16px';
@@ -6549,3 +6576,77 @@ if ('serviceWorker' in navigator) {
     });
   });
 }
+
+// ==========================================
+// EXPORT BLASTMAP STANDALONE OFFLINE HTML
+// ==========================================
+async function exportBlastmapOfflineHtml() {
+  const activeDate = currentLoadedBlastDate || getTodayYMDWita();
+  const targetFile = `data/blastmaps/blast_${activeDate}.geojson`;
+  const fallbackFile = `data/blastmaps/overwatch.geojson`;
+
+  let geojsonData = null;
+  try {
+    let res = await fetch(targetFile);
+    if (!res.ok) res = await fetch(fallbackFile);
+    geojsonData = await res.json();
+  } catch (e) {
+    alert("Gagal mengambil data GeoJSON untuk diekspor!");
+    return;
+  }
+
+  const htmlContent = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blastmap Offline - ${activeDate}</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+  <style>
+    html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; background: #040508; }
+    .offline-badge { position: fixed; top: 12px; left: 12px; z-index: 1000; background: rgba(15,23,42,0.9); border: 1px solid #00f0ff; color: #fff; padding: 8px 14px; border-radius: 8px; font-family: monospace; font-size: 11px; }
+    .leaflet-div-icon.custom-text-blocker { background: transparent !important; border: none !important; font-family: monospace; font-weight: 900; color: #ff00ff; font-size: 14px; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; }
+  </style>
+</head>
+<body>
+  <div class="offline-badge">
+    💣 <b>OVERWATCH BLASTMAP (STANDALONE OFFLINE)</b><br>
+    Tanggal: <span style="color:#00f0ff;">${activeDate}</span>
+  </div>
+  <div id="map"></div>
+  <script>
+    const map = L.map('map').setView([-2.169338, 115.572115], 15);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
+    
+    const blastData = ${JSON.stringify(geojsonData)};
+    const layer = L.geoJSON(blastData, {
+      style: function(f) {
+        const p = f.properties || {};
+        if (p.tipe === "Blast Area") return { color: "#00ffff", fillColor: "#00ffff", fillOpacity: 0.6, weight: 2 };
+        if (p.fillOpacity === 1.0) return { color: p.color, fillColor: p.color, fillOpacity: 1.0, weight: 1 };
+        return { color: p.color || "#fff", weight: 2.5, fill: false };
+      },
+      pointToLayer: function(f, latlng) {
+        const p = f.properties || {};
+        return L.marker(latlng, {
+          icon: L.divIcon({ className: 'custom-text-blocker', html: p.kode || 'B', iconSize: [24, 24], iconAnchor: [12, 12] })
+        });
+      }
+    }).addTo(map);
+    if (layer.getBounds().isValid()) map.fitBounds(layer.getBounds(), { padding: [40, 40] });
+  <\/script>
+</body>
+</html>`;
+
+  const blob = new Blob([htmlContent], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Blastmap_Offline_${activeDate}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showToastNotification(`💾 File offline Blastmap ${activeDate} berhasil diunduh!`);
+}
+
+window.exportBlastmapOfflineHtml = exportBlastmapOfflineHtml;
