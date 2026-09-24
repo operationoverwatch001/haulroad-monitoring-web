@@ -40262,6 +40262,831 @@
         "fillOpacity": 0.6,
         "weight": 2
       }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5809666,
+          -2.1863091
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "Q",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5869818,
+          -2.1479242
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "A",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5896219,
+          -2.1479335
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "B",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5910655,
+          -2.1490641
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "C",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5920808,
+          -2.1499739
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "D",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5927938,
+          -2.1510241
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "E",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5931282,
+          -2.1523189
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "F",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5934614,
+          -2.1539356
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "G",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5931923,
+          -2.1556738
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "H",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5905114,
+          -2.1598186
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "I",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5868759,
+          -2.1607978
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "J",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5852724,
+          -2.1605513
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "K",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5830983,
+          -2.1585537
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "L",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5818131,
+          -2.1575385
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "M",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.575767,
+          -2.1616589
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "A",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5722043,
+          -2.1694178
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "B",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5724294,
+          -2.1702737
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "C",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5729775,
+          -2.1708686
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "D",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5734864,
+          -2.1716596
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "E",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5741273,
+          -2.1722871
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "F",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5746667,
+          -2.17269
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "G",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5763948,
+          -2.1734655
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "H",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5780806,
+          -2.1733797
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "I",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5791442,
+          -2.1735667
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "J",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5800797,
+          -2.1743639
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "K",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5810825,
+          -2.1746204
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "L",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5798665,
+          -2.175546
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "M",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5784829,
+          -2.1851159
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "O",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5793916,
+          -2.1857619
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "P",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5823071,
+          -2.1863588
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "R",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5828953,
+          -2.1874186
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "S",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5839041,
+          -2.1887077
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "T",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5865247,
+          -2.1901869
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "U",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5939417,
+          -2.1861046
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "V",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5933342,
+          -2.1827169
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "W",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.593051,
+          -2.1811419
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "X",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5915012,
+          -2.1800169
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "Y",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5902101,
+          -2.1789083
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "Z",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.58875,
+          -2.1788854
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "AA",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5875815,
+          -2.178518
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "BB",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5868861,
+          -2.1773255
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "CC",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5857282,
+          -2.176405
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "DD",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5851399,
+          -2.1754525
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "EE",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5843442,
+          -2.1749241
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "FF",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5852975,
+          -2.1743264
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "GG",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5865696,
+          -2.1734253
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "HH",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5730029,
+          -2.1659907
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "L",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5779426,
+          -2.1771547
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "N",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5807962,
+          -2.1595103
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "N",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5819344,
+          -2.1598603
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "O",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.582807,
+          -2.1603758
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "P",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5837612,
+          -2.1610214
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "Q",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.584317,
+          -2.1617413
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "R",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.584929,
+          -2.1626666
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "R",
+        "color": "#ff00ff"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          115.5866262,
+          -2.1637169
+        ]
+      },
+      "properties": {
+        "tipe": "Blocker",
+        "kode": "S",
+        "color": "#ff00ff"
+      }
     }
   ]
 }
