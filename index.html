@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Monitoring Haul Road - Overwatch</title>
+  <title>Monitoring Haul Road & Blastmap - Overwatch</title>
   
   <!-- PRECONNECT DNS UNTUK AKSELERASI LOADING TILE CLOUDFLARE R2 & ESRI -->
   <link rel="preconnect" href="https://ortho-tiles.operationoverwatch001.workers.dev" crossorigin>
@@ -481,11 +481,25 @@
       filter: invert(0.8) sepia(100%) saturate(500%) hue-rotate(150deg);
       cursor: pointer;
     }
+
+    /* LABEL TEXT BLOCKER BLASTMAP DI MAP */
+    .custom-text-blocker {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: monospace;
+      font-weight: 900;
+      text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 4px #000;
+      user-select: none;
+      pointer-events: auto;
+    }
   </style>
 </head>
 <body>
 
-  <!-- MODAL LOGIN SUPABASE OTP -->
+  <!-- ========================================================== -->
+  <!-- 0A. MODAL LOGIN SUPABASE OTP                               -->
+  <!-- ========================================================== -->
   <div id="auth-overlay" class="fixed inset-0 bg-slate-950/95 z-[999999] flex items-center justify-center p-4">
       <div class="bg-slate-900 border border-slate-700 p-8 rounded-xl shadow-2xl w-full max-w-md text-white">
           <h2 class="text-2xl font-bold mb-2 text-center text-cyan-400">WebGIS Overwatch</h2>
@@ -516,6 +530,73 @@
       </div>
   </div>
 
+  <!-- ========================================================== -->
+  <!-- 0B. PORTAL SELEKSI MODUL OVERWATCH (ROAD vs BLASTMAP)      -->
+  <!-- ========================================================== -->
+  <div id="modulePortalOverlay" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[999990] flex items-center justify-center p-4">
+    <div class="w-full max-w-xl text-center">
+      
+      <!-- HEADER LOGO & JUDUL PORTAL -->
+      <div class="mb-6">
+        <div class="w-16 h-16 mx-auto mb-3 bg-slate-900 border border-slate-700 rounded-2xl flex items-center justify-center p-2 shadow-xl shadow-cyan-500/10">
+          <img src="logo_overwatch.png" alt="Overwatch" class="w-full h-full object-fit-contain">
+        </div>
+        <h1 class="text-xl sm:text-2xl font-black text-white font-mono tracking-wider">
+          OPERATION <span class="text-cyan-400">OVERWATCH</span>
+        </h1>
+        <p class="text-xs sm:text-sm text-slate-400 mt-1">Pilih portal sistem operasional yang ingin diakses:</p>
+      </div>
+
+      <!-- 2 KOTAK PILIHAN MODUL -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        
+        <!-- KOTAK KIRI: ROAD MONITORING -->
+        <div onclick="selectAppMode('road')" 
+          class="group relative bg-slate-900/90 hover:bg-slate-800/90 border-2 border-slate-800 hover:border-amber-400 rounded-2xl p-5 text-left cursor-pointer transition-all duration-300 hover:scale-[1.02] shadow-xl hover:shadow-amber-400/20 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-3xl">🛣️</span>
+              <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-400/10 text-amber-400 border border-amber-400/30">ROAD ENG</span>
+            </div>
+            <h3 class="text-base font-bold text-white group-hover:text-amber-400 transition font-mono">HAUL ROAD</h3>
+            <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+              Monitoring geometri jalan tambang: Grade, Lebar, Crossfall, dan manajemen Work Order (WO) perbaikan lapangan.
+            </p>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-amber-400 font-bold font-mono">
+            <span>BUKA MODUL</span>
+            <span class="group-hover:translate-x-1 transition-transform">➔</span>
+          </div>
+        </div>
+
+        <!-- KOTAK KANAN: BLASTMAP MONITORING -->
+        <div onclick="selectAppMode('blastmap')" 
+          class="group relative bg-slate-900/90 hover:bg-slate-800/90 border-2 border-slate-800 hover:border-rose-500 rounded-2xl p-5 text-left cursor-pointer transition-all duration-300 hover:scale-[1.02] shadow-xl hover:shadow-rose-500/20 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-3xl">💣</span>
+              <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/30">D&B ENG</span>
+            </div>
+            <h3 class="text-base font-bold text-white group-hover:text-rose-400 transition font-mono">BLASTMAP</h3>
+            <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+              Monitoring peledakan harian: Blast Area, radius aman evakuasi 100m–500m, dan posisi titik blocker pengawas pit.
+            </p>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-rose-400 font-bold font-mono">
+            <span>BUKA MODUL</span>
+            <span class="group-hover:translate-x-1 transition-transform">➔</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- FOOTER PORTAL -->
+      <div class="mt-6 text-[10px] text-slate-500 font-mono">
+        Sistem Integrasi Tambang Batubara &bull; PT Adaro Indonesia
+      </div>
+    </div>
+  </div>
+
   <!-- 1. INTRO SPLASH SCREEN -->
   <div id="intro-splash">
     <div class="splash-logo-container">
@@ -531,15 +612,26 @@
   <!-- 2. HEADER UTAMA -->
   <header class="app-header fixed top-0 left-0 right-0 z-[1001] bg-slate-950/95 border-b border-slate-800 px-2 sm:px-3 py-1.5 flex items-center justify-between shadow-lg backdrop-blur-md gap-1 select-none overflow-visible">
     
-    <!-- KOTAK KIRI: INDIKATOR TANGGAL AKTIF WO -->
-    <button id="btnActiveWoDate" onclick="openCalendarFilterModal()" title="Klik untuk pilih tanggal pantauan WO" 
-      class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-[10px] sm:text-[11px] px-2 sm:px-2.5 py-1.5 rounded-md shadow flex items-center gap-1 transition active:scale-95 cursor-pointer shrink-0 whitespace-nowrap">
-      <span class="text-xs">📅</span>
-      <span id="labelActiveWoDate" class="font-mono">19/09/2026</span>
-    </button>
+    <!-- KOTAK KIRI: TOMBOL SWITCH PORTAL & TANGGAL AKTIF -->
+    <div class="flex items-center gap-1.5 shrink-0">
+      <!-- TOMBOL SAKELAR CEPAT MODUL (ROAD / BLASTMAP) -->
+      <button id="btnSwitchModulePortal" onclick="openModulePortal()" title="Pindah antara modul Road & Blastmap"
+        class="bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-700 font-mono font-bold text-[10px] sm:text-[11px] px-2 sm:px-2.5 py-1.5 rounded-md shadow flex items-center gap-1 transition active:scale-95 cursor-pointer shrink-0">
+        <span id="labelCurrentModuleIcon">🛣️</span>
+        <span id="labelCurrentModuleName" class="hidden sm:inline">ROAD</span>
+        <span class="text-[9px] text-slate-500">⇄</span>
+      </button>
 
-    <!-- KOTAK TENGAH: TAB MAP & PARAMETER -->
-    <div class="flex items-center gap-1 bg-slate-900/90 p-0.5 rounded-lg border border-slate-800 shrink-0">
+      <!-- TOMBOL INDIKATOR TANGGAL AKTIF (WO / BLASTMAP) -->
+      <button id="btnActiveWoDate" onclick="openCalendarFilterModal()" title="Klik untuk pilih tanggal pantauan" 
+        class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-[10px] sm:text-[11px] px-2 sm:px-2.5 py-1.5 rounded-md shadow flex items-center gap-1 transition active:scale-95 cursor-pointer shrink-0 whitespace-nowrap">
+        <span class="text-xs">📅</span>
+        <span id="labelActiveWoDate" class="font-mono">24/09/2026</span>
+      </button>
+    </div>
+
+    <!-- KOTAK TENGAH: TAB MAP & PARAMETER (BISA AUTO-HIDE SAAT MODE BLASTMAP) -->
+    <div id="centerTabsContainer" class="flex items-center gap-1 bg-slate-900/90 p-0.5 rounded-lg border border-slate-800 shrink-0">
       <button id="tabMapBtn" onclick="switchMainTab('map')" 
         class="font-bold text-xs px-3 sm:px-3.5 py-1 rounded-md transition duration-150 bg-amber-400 text-slate-950 shadow shrink-0 whitespace-nowrap">
         MAP
@@ -569,7 +661,7 @@
     <button id="btnDataUpdateStatus" onclick="handleDataUpdateClick()" title="Tanggal update data audit terakhir"
       class="bg-amber-400 text-slate-950 font-bold text-[9px] sm:text-[10px] px-2 sm:px-2.5 py-1 rounded-md shadow text-center transition leading-tight flex flex-col items-center cursor-default shrink-0 whitespace-nowrap">
       <span class="text-[8px] uppercase tracking-wider font-extrabold text-slate-800">Update Data</span>
-      <span id="labelDataUpdateDate" class="font-mono text-[9px] sm:text-[10px]">19-09-2026</span>
+      <span id="labelDataUpdateDate" class="font-mono text-[9px] sm:text-[10px]">24-09-2026</span>
     </button>
   </header>
 
@@ -618,7 +710,7 @@
   </div>
 
   <!-- TOMBOL SIDEBAR KANAN -->
-  <div class="right-sidebar-controls">
+  <div id="rightSidebarContainer" class="right-sidebar-controls">
     <button id="btnOutstandingToggle" onclick="toggleOutstandingDrawer()" class="vertical-nav-btn text-cyan-300 border-cyan-500/60 relative" title="Buka Daftar Work Order Aktif (Open & Progress)">
       <span id="outstandingCountBadge" class="outstanding-badge">0</span>
       <span>O</span>
@@ -675,7 +767,7 @@
     </div>
   </div>
 
-  <!-- POPUP MINI: LEGENDA DINAMIS -->
+  <!-- POPUP MINI: LEGENDA DINAMIS (MENDUKUNG MODE ROAD & BLASTMAP) -->
   <div id="legendDrawer" class="fixed top-28 left-8 w-64 max-w-[80vw] bg-slate-950/95 border border-slate-700 rounded-lg shadow-2xl z-[100000] hidden flex-col backdrop-blur-md p-3">
     <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
       <h4 id="legendTitle" class="text-[11px] font-mono font-bold text-amber-400 tracking-wider">LEGENDA PETA</h4>
@@ -710,7 +802,7 @@
     <button class="gps-btn" onclick="locateUser()" title="Posisi Saya (Re-Center)">📍</button>
   </div>
 
-  <!-- 4. PANEL BAWAH -->
+  <!-- 4. PANEL BAWAH (ROAD ONLY) -->
   <div id="bottom-panel" class="bottom-panel">
     <div class="panel-header cursor-pointer" onclick="handlePanelHeaderClick(event)">
       <div class="panel-drag-box" id="panelDragHandleBtn" title="Sentuh atau geser untuk buka/tutup panel">
@@ -968,17 +1060,17 @@
   </div>
 
   <!-- ========================================================== -->
-  <!-- 7. MODAL FILTER KALENDER & DUA OPSI EXPORT REKAP WO        -->
+  <!-- 7. MODAL FILTER KALENDER (ROAD & BLASTMAP INTEGRATION)     -->
   <!-- ========================================================== -->
   <div id="calendarFilterModal" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:100000; justify-content:center; align-items:center; padding:12px;">
     <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:400px; border:1px solid #334155; box-shadow:0 10px 25px rgba(0,0,0,0.7);">
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:12px;">
-        <h3 style="margin:0; font-size:13px; color:#38bdf8; font-family:monospace; letter-spacing:1px;">📅 FILTER KALENDER & HISTORY WO</h3>
+        <h3 id="calendarModalHeading" style="margin:0; font-size:13px; color:#38bdf8; font-family:monospace; letter-spacing:1px;">📅 FILTER TANGGAL PANTAUAN</h3>
         <button onclick="closeCalendarFilterModal()" style="background:#1e293b; color:#94a3b8; border:none; width:26px; height:26px; border-radius:50%; font-size:12px; cursor:pointer;">✕</button>
       </div>
 
       <div style="font-size:12px; margin-bottom:16px;">
-        <label style="color:#cbd5e1; font-size:11px; display:block; margin-bottom:4px;">Tampilkan Data WO Tanggal:</label>
+        <label id="calendarTargetLabel" style="color:#cbd5e1; font-size:11px; display:block; margin-bottom:4px;">Tampilkan Data Tanggal:</label>
         <div style="display:flex; gap:6px;">
           <input type="date" id="mapCalendarDateInput" style="flex:1; background:#1e293b; border:1px solid #475569; padding:6px 10px; border-radius:6px; color:#fff; font-size:12px;">
           <button onclick="applyCalendarDateFilter()" style="background:#00f0ff; color:#000; border:none; padding:6px 12px; border-radius:6px; font-weight:bold; font-size:11px; cursor:pointer;">Terapkan</button>
@@ -986,8 +1078,9 @@
         <button onclick="resetCalendarToToday()" style="background:transparent; color:#38bdf8; border:none; padding:4px 0; font-size:10px; cursor:pointer; text-decoration:underline; margin-top:4px;">Kembali ke Hari Ini (Live Real-Time)</button>
       </div>
 
-      <div style="border-top:1px solid #1e293b; padding-top:12px; font-size:12px;">
-        <label style="color:#eab308; font-size:11px; font-weight:bold; display:block; margin-bottom:6px;">📊 Export Rekap Laporan:</label>
+      <!-- BAGIAN REKAP LAPORAN (HANYA MUNCUL DI MODE ROAD) -->
+      <div id="calendarExportSection" style="border-top:1px solid #1e293b; padding-top:12px; font-size:12px;">
+        <label style="color:#eab308; font-size:11px; font-weight:bold; display:block; margin-bottom:6px;">📊 Export Rekap Laporan WO:</label>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-bottom:10px;">
           <div>
             <span style="font-size:10px; color:#94a3b8;">Dari:</span>
