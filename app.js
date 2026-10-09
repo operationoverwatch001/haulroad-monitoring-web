@@ -1132,7 +1132,21 @@ function checkStoredSession() {
   if (!raw) return null;
   try {
     const sess = JSON.parse(raw);
-    if (Date.now() - sess.loginTime < THIRTY_DAYS_MS) {
+    
+    // Jika GUEST_VIEWER, limit cuma 1 jam (60 menit). User biasa tetap 30 hari.
+    const maxDuration = sess.nrp === "GUEST_VIEWER" ? (60 * 60 * 1000) : THIRTY_DAYS_MS;
+    const timeElapsed = Date.now() - sess.loginTime;
+
+    if (timeElapsed < maxDuration) {
+      // Jika masih dalam 1 jam tapi akun demo, pasang timer auto-kick untuk sisa waktunya
+      if (sess.nrp === "GUEST_VIEWER") {
+        const remainingTime = maxDuration - timeElapsed;
+        setTimeout(() => {
+          alert("⏰ Masa akses demo preview (1 jam) telah berakhir!");
+          localStorage.removeItem(SESSION_STORAGE_KEY);
+          location.reload();
+        }, remainingTime);
+      }
       return sess;
     } else {
       localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -1275,11 +1289,21 @@ window.requestOtp = async function() {
     return;
   }
 
-  if (rawVal === "foxhunt88") {
-    statusMsg.innerText = 'Access Granted (Viewer Mode)...';
+  if (rawVal === "TesDemo") {
+    statusMsg.innerText = 'Access Granted (Demo Mode 1 Jam)...';
     currentUserRole = "viewer";
     currentNRP = "GUEST_VIEWER";
+    
+    // Simpan sesi login dengan timestamp saat ini
     saveUserSession("GUEST_VIEWER", "viewer");
+
+    // Timer auto-kick pas 1 jam (60 menit) jika aplikasi dibuka terus tanpa reload
+    setTimeout(() => {
+      alert("⏰ Masa akses demo preview (1 jam) telah berakhir!");
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      location.reload();
+    }, 60 * 60 * 1000);
+
     setTimeout(() => {
       const authOverlay = document.getElementById('auth-overlay');
       if (authOverlay) authOverlay.style.display = 'none';
