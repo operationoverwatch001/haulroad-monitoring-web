@@ -1276,7 +1276,7 @@ window.requestOtp = async function() {
     return;
   }
 
-  if (rawVal === "blackmamba11") {
+  if (rawVal === "alkali123") {
     statusMsg.innerText = 'Access Granted (Developer Mode)...';
     currentUserRole = "admin";
     currentNRP = "DEVELOPER";
@@ -1289,7 +1289,7 @@ window.requestOtp = async function() {
     return;
   }
 
-  if (rawVal === "TesDemo") {
+  if (rawVal === "DemoTest2") {
     statusMsg.innerText = 'Access Granted (Demo Mode 1 Jam)...';
     currentUserRole = "viewer";
     currentNRP = "GUEST_VIEWER";
