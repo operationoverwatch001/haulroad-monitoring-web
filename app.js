@@ -514,6 +514,13 @@ function setSyncStatus(status, detailText = "") {
     syncStatusTimeout = setTimeout(() => {
       badge.style.display = "none";
     }, 3500);
+  } else if (status === 'error') {
+    // Gagal sinkron: badge MERAH dan tetap tampil sampai sinkron berikutnya berhasil (jangan disembunyikan diam-diam)
+    badge.className = "px-2.5 py-1 rounded-xl shadow-lg border backdrop-blur-md transition-all duration-300 pointer-events-auto flex items-center gap-2 bg-rose-950/90 border-rose-600 text-white";
+    dot.className = "w-2 h-2 rounded-full bg-rose-400 animate-pulse";
+    text.innerText = "GAGAL SINKRON";
+    if (sub) sub.innerText = detailText || "Cek koneksi / login";
+    badge.style.display = "flex";
   } else if (status === 'hide') {
     badge.style.display = "none";
   }
@@ -4056,8 +4063,14 @@ async function loadCloudWorkOrders() {
       setSyncStatus('updated');
     }
   } catch (e) {
-    if (!navigator.onLine) setSyncStatus('offline');
-    else setSyncStatus('updated');
+    if (!navigator.onLine) { setSyncStatus('offline'); return; }
+    // Dulu error di sini ditelan dan badge tetap "UPDATED" padahal data tidak termuat. Sekarang ditampilkan.
+    console.warn('[WO] GET_CLOUD_WO gagal:', e && e.message, e);
+    let msg = String((e && e.message) || 'Server tidak merespons');
+    if (e && e.auth) msg = 'Belum login / sesi habis. Login ulang.';
+    else if (/Tidak ada koneksi/i.test(msg)) msg = 'Apps Script tidak terjangkau. Cek deploy (Anyone).';
+    else if (/Respons tidak dikenal/i.test(msg)) msg = 'Apps Script membalas aneh. Cek versi deploy.';
+    setSyncStatus('error', msg.slice(0, 80));
   }
 }
 
