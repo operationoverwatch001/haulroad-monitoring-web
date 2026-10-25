@@ -102,7 +102,7 @@
 
   <!-- ===================== DITOLAK ===================== -->
   <section id="viewDenied" class="card hidden">
-    <h2>AKSES DITOLAK</h2>
+    <h2 id="deniedTitle">AKSES DITOLAK</h2>
     <p style="font-size:13px;line-height:1.5" id="deniedMsg">Akun ini bukan admin, jadi tidak bisa upload data.</p>
   </section>
 
@@ -345,12 +345,24 @@
     try {
       var me = await api("/api/me");
       if (!me.canUpload) {
+        $("deniedTitle").textContent = "AKSES DITOLAK";
         $("deniedMsg").textContent = "Akun " + me.email + " (role: " + me.role + ") bukan admin, jadi tidak bisa upload data.";
         show("viewDenied", true);
         return;
       }
     } catch (e) {
-      $("deniedMsg").textContent = e.message;
+      if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(String(e && e.message))) {
+        // Bukan soal role: browser gagal menghubungi Worker (hampir selalu CORS: ALLOWED_ORIGINS belum berisi alamat halaman ini).
+        $("deniedTitle").textContent = "TIDAK BISA TERHUBUNG KE WORKER";
+        $("deniedMsg").innerHTML = "Browser gagal menghubungi <code></code>. Ini bukan masalah role. Penyebab paling umum: " +
+          "<code>ALLOWED_ORIGINS</code> di Worker belum berisi alamat halaman ini, yaitu <b id=\"deniedOrigin\"></b>. " +
+          "Tambahkan alamat itu (tanpa <code>/</code> di akhir, dipisah koma dengan yang lain), klik Deploy di Worker, lalu muat ulang.";
+        $("deniedMsg").querySelector("code").textContent = API;
+        $("deniedOrigin").textContent = location.origin;
+      } else {
+        $("deniedTitle").textContent = "AKSES DITOLAK";
+        $("deniedMsg").textContent = e.message;
+      }
       show("viewDenied", true);
       return;
     }
