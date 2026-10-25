@@ -658,8 +658,8 @@
     </div>
 
     <!-- KOTAK KANAN: UPDATE DATA STATUS -->
-    <button id="btnDataUpdateStatus" onclick="handleDataUpdateClick()" title="Tanggal update data audit terakhir"
-      class="bg-amber-400 text-slate-950 font-bold text-[9px] sm:text-[10px] px-2 sm:px-2.5 py-1 rounded-md shadow text-center transition leading-tight flex flex-col items-center cursor-default shrink-0 whitespace-nowrap">
+    <button id="btnDataUpdateStatus" onclick="handleDataUpdateClick()" title="Pilih data update (mingguan)"
+      class="bg-amber-400 text-slate-950 font-bold text-[9px] sm:text-[10px] px-2 sm:px-2.5 py-1 rounded-md shadow text-center transition leading-tight flex flex-col items-center cursor-pointer active:scale-95 shrink-0 whitespace-nowrap">
       <span class="text-[8px] uppercase tracking-wider font-extrabold text-slate-800">Update Data</span>
       <span id="labelDataUpdateDate" class="font-mono text-[9px] sm:text-[10px]">24-09-2026</span>
     </button>
@@ -697,6 +697,22 @@
       <span class="text-xs">🔔</span>
       <span>LOG</span>
       <span id="notifBadgeDot" class="hidden w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+    </button>
+    <button id="btnDashboard" onclick="window.OwDash && OwDash.toggle()" class="left-btn" title="Dashboard semua jalan: peringkat ruas, KPI, tren">
+      <span class="text-xs">📊</span>
+      <span>DASH</span>
+    </button>
+    <button id="btnCompare" onclick="window.OwCompare && OwCompare.toggle()" class="left-btn" title="Bandingkan dua rilis audit (geser sebelum / sesudah)">
+      <span class="text-xs">↔</span>
+      <span>BANDING</span>
+    </button>
+    <button id="btnMeasure" onclick="window.OwMeasure && OwMeasure.toggle()" class="left-btn" title="Ukur jarak / luas horizontal (UTM 50S)">
+      <span class="text-xs">📏</span>
+      <span>UKUR</span>
+    </button>
+    <button id="btnDrone" onclick="window.OwDrone && OwDrone.toggle()" class="left-btn" title="Drone View 3D: ortho drone di atas DEM seluruh tambang">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="5" r="2.6"/><circle cx="19" cy="5" r="2.6"/><circle cx="5" cy="19" r="2.6"/><circle cx="19" cy="19" r="2.6"/><path d="M7 7l3.5 3.5M17 7l-3.5 3.5M7 17l3.5-3.5M17 17l-3.5-3.5"/><rect x="9.5" y="9.5" width="5" height="5" rx="1.2" fill="currentColor"/></svg>
+      <span>3D</span>
     </button>
     <button id="btnLegendToggle" onclick="toggleLegendDrawer()" class="vertical-nav-btn text-amber-300 border-amber-500/60" title="Buka Legenda Peta">
       <span>L</span>
@@ -785,8 +801,7 @@
   <!-- GROUP TOMBOL FLOATING DI KANAN BAWAH DINAMIS -->
   <div id="floatingActionGroup" class="floating-action-group">
     <div id="woSubmenu" class="wo-submenu-container">
-      <button class="wo-sub-btn" onclick="setWoTool('mark')" title="Tandai Titik Mark di Peta">MARK</button>
-      <button class="wo-sub-btn" onclick="setWoTool('draw')" title="Gambar Garis / Sketsa di Peta">DRAW</button>
+      <button class="wo-sub-btn" onclick="startWoAreaDraw()" title="Gambar area Work Order di peta (ketuk titik, bisa undo dan geser)">AREA WO</button>
       <button id="btnFinishDraw" onclick="finalizeDrawLine()" class="wo-sub-btn finish-draw-btn" style="display:none;" title="Selesaikan Garis Ini">✓ SELESAI</button>
     </div>
 
@@ -1141,20 +1156,11 @@
     </div>
   </div>
 
-  <!-- 10. MODAL SET TANGGAL UPDATE DATA AUDIT -->
-  <div id="adminDataUpdateModal" style="display:none; position:fixed; inset:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:100010; justify-content:center; align-items:center; padding:12px;">
-    <div style="background:#0f172a; color:#fff; padding:20px; border-radius:10px; width:100%; max-width:320px; border:1px solid #eab308; box-shadow:0 10px 30px rgba(0,0,0,0.8);">
-      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:12px;">
-        <h3 style="margin:0; font-size:13px; color:#eab308; font-family:monospace; letter-spacing:1px;">⚙️ SET TANGGAL UPDATE DATA</h3>
-        <button onclick="closeAdminDataUpdateModal()" style="background:#1e293b; color:#94a3b8; border:none; width:26px; height:26px; border-radius:50%; font-size:12px; cursor:pointer;">✕</button>
-      </div>
-      <p style="font-size:11px; color:#94a3b8; margin-bottom:10px;">Atur tanggal pembaruan data audit peta (Grade, Lebar, Crossfall):</p>
-      <input type="date" id="adminNewUpdateDateInput" style="width:100%; background:#1e293b; border:1px solid #475569; padding:7px 10px; border-radius:6px; color:#fff; font-size:12px; margin-bottom:14px;">
-      <div style="display:flex; justify-content:flex-end; gap:8px;">
-        <button onclick="closeAdminDataUpdateModal()" style="background:#1e293b; color:#cbd5e1; border:none; padding:6px 12px; border-radius:6px; font-size:11px; cursor:pointer;">Batal</button>
-        <button onclick="saveAdminDataUpdateDate()" style="background:#eab308; color:#000; border:none; padding:6px 14px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">Simpan Tanggal</button>
-      </div>
-    </div>
+  <!-- 10. DROPDOWN PILIH RILIS DATA (AUDIT / BLASTMAP) -->
+  <div id="releaseDropdown" class="release-dd" style="display:none;">
+    <div id="releaseDdTitle" class="release-dd-head">PILIH DATA UPDATE</div>
+    <div id="releaseDdList" class="release-dd-list"></div>
+    <a id="releaseDdUpload" class="release-dd-foot" href="upload.html" style="display:none;">⬆ Upload data baru</a>
   </div>
 
   <!-- ========================================================== -->
@@ -1281,6 +1287,16 @@
   </div>
 
   <!-- Script Logic Utama WebGIS & Supabase Auth -->
+  <script src="config.js"></script>
+  <script src="release-lib.js"></script>
+  <script src="gas-client.js"></script>
+  <script src="wo-poly.js"></script>
   <script src="app.js"></script>
+  <script src="wo-integration.js"></script>
+  <script src="infra.js"></script>
+  <script src="measure.js"></script>
+  <script src="dashboard.js"></script>
+  <script src="compare.js"></script>
+  <script src="drone.js"></script>
 </body>
 </html>

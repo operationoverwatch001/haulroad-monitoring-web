@@ -1,13 +1,23 @@
-const CACHE_NAME = 'overwatch-cache-v1';
+// Naikkan angka versi ini setiap kali ada perubahan besar pada app.js / index.html / style.css
+const CACHE_NAME = 'overwatch-cache-v4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './style.css',
+  './config.js',
+  './release-lib.js',
+  './gas-client.js',
+  './wo-poly.js',
+  './wo-integration.js',
+  './infra.js',
+  './measure.js',
+  './dashboard.js',
+  './compare.js',
+  './drone.js',
   './app.js',
-  './logo_overwatch.png',
-  './data/Overwatch.xlsx',
-  './data/Road_Grade_Polygons.geojson',
-  './data/Road_Layers.geojson'
+  './logo_overwatch.png'
+  // Data audit TIDAK di-precache lagi: sekarang datang dari server (per rilis) dan
+  // otomatis tersimpan di cache saat pertama dibuka, jadi tetap bisa dilihat offline.
 ];
 
 // 1. Install & Cache Asset Inti
@@ -41,14 +51,17 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = event.request.url;
 
+  if (event.request.method !== 'GET') return;
   if (url.includes('script.google.com') || url.includes('supabase.co') || url.includes('googleusercontent.com')) {
     return;
   }
+  // halaman upload admin tidak perlu masuk cache
+  if (url.includes('/upload.html')) return;
 
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && event.request.method === 'GET') {
+        if (networkResponse && networkResponse.status === 200) {
           const responseClone = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseClone);

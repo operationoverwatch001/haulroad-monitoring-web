@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Overwatch Upload Data</title>
+<link rel="icon" type="image/png" href="./logo_overwatch.png">
+<style>
+  :root{
+    --bg:#040508; --panel:#0f172a; --panel2:#1e293b; --line:#334155; --txt:#e2e8f0; --mut:#94a3b8;
+    --cy:#00f0ff; --am:#facc15; --ok:#22c55e; --warn:#eab308; --err:#f43f5e;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  html,body{background:var(--bg);color:var(--txt);min-height:100%}
+  body{padding:0 16px 48px}
+  .wrap{max-width:760px;margin:0 auto}
+  header{display:flex;align-items:center;gap:12px;padding:16px 0 12px;border-bottom:1px solid var(--panel2)}
+  header img{width:36px;height:36px;object-fit:contain}
+  header h1{font-size:16px;letter-spacing:1px;font-family:ui-monospace,monospace}
+  header h1 span{color:var(--cy)}
+  header .who{margin-left:auto;font-size:11px;color:var(--mut);text-align:right}
+  header .who button{background:none;border:none;color:var(--cy);cursor:pointer;font-size:11px;text-decoration:underline}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:16px}
+  h2{font-size:13px;color:var(--cy);font-family:ui-monospace,monospace;letter-spacing:1px;margin-bottom:10px}
+  label{display:block;font-size:12px;color:var(--mut);margin:10px 0 4px}
+  input[type=text],input[type=email],input[type=date],input[type=number],select{
+    width:100%;background:var(--panel2);border:1px solid #475569;color:#fff;border-radius:8px;padding:10px 12px;font-size:14px}
+  input:focus,select:focus{outline:none;border-color:var(--cy)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  button.btn{background:var(--cy);color:#000;border:none;border-radius:8px;padding:11px 16px;font-weight:700;font-size:13px;cursor:pointer;min-height:44px}
+  button.btn:disabled{opacity:.4;cursor:not-allowed}
+  button.btn.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+  button.btn.danger{background:var(--err);color:#fff}
+  .tabs{display:flex;gap:6px;margin-top:16px;overflow-x:auto}
+  .tabs button{flex:1;white-space:nowrap;background:var(--panel);border:1px solid var(--line);color:var(--mut);padding:10px 12px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer}
+  .tabs button.on{background:var(--am);color:#000;border-color:var(--am)}
+  .drop{border:2px dashed #475569;border-radius:12px;padding:26px 14px;text-align:center;color:var(--mut);cursor:pointer;transition:.15s}
+  .drop.over{border-color:var(--cy);background:rgba(0,240,255,.06);color:var(--txt)}
+  .drop b{color:var(--txt)}
+  .slots{display:grid;gap:8px;margin-top:12px}
+  .slot{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13px}
+  .slot .ic{width:22px;text-align:center;font-size:16px}
+  .slot .nm{flex:1;min-width:0}
+  .slot .nm small{display:block;color:var(--mut);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .msgs{margin-top:12px;display:grid;gap:6px}
+  .msg{font-size:12px;padding:8px 10px;border-radius:8px;border:1px solid;line-height:1.4}
+  .msg.e{background:rgba(244,63,94,.1);border-color:var(--err);color:#fecdd3}
+  .msg.w{background:rgba(234,179,8,.1);border-color:var(--warn);color:#fef08a}
+  .msg.i{background:rgba(34,197,94,.08);border-color:#166534;color:#bbf7d0}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .chip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:11px;color:var(--mut)}
+  .chip b{color:var(--txt)}
+  .idbox{font-family:ui-monospace,monospace;font-size:15px;color:var(--am);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:6px;word-break:break-all}
+  .progress{margin-top:12px;display:grid;gap:4px;font-size:12px;font-family:ui-monospace,monospace}
+  .progress div.ok{color:var(--ok)} .progress div.run{color:var(--am)} .progress div.er{color:var(--err)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--panel2);vertical-align:top}
+  th{color:var(--mut);font-weight:600}
+  .hint{font-size:11px;color:var(--mut);margin-top:6px;line-height:1.5}
+  .hidden{display:none!important}
+  a.link{color:var(--cy)}
+  .irow{display:grid;grid-template-columns:1fr 90px 40px;gap:6px;margin-top:6px}
+  .iobj{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:8px;cursor:pointer}
+  .iobj.on{border-color:var(--cy)}
+  .iobj .nm{flex:1;min-width:0;font-size:13px}.iobj small{display:block;color:var(--mut);font-size:11px}
+  .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:8px}
+  .thumb{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px;font-size:11px}
+  .thumb img{width:100%;height:80px;object-fit:cover;border-radius:6px;background:#000;display:block}
+  .thumb input[type=date]{padding:5px 6px;font-size:11px;margin-top:4px}
+  .thumb button{width:100%;margin-top:4px;background:none;border:1px solid var(--line);color:var(--err);border-radius:6px;padding:4px;font-size:11px;cursor:pointer}
+  .cap3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--am);padding:10px 16px;border-radius:10px;font-size:13px;z-index:50;max-width:92vw;display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="./logo_overwatch.png" alt="">
+    <h1>OVERWATCH <span>UPLOAD</span></h1>
+    <div class="who"><div id="whoEmail"></div><button id="btnLogout" class="hidden">Keluar</button></div>
+  </header>
+
+  <!-- ===================== LOGIN ===================== -->
+  <section id="viewLogin" class="card hidden">
+    <h2>LOGIN ADMIN</h2>
+    <div id="stepEmail">
+      <label for="inEmail">Email terdaftar</label>
+      <input id="inEmail" type="email" autocomplete="email" placeholder="nama@email.com">
+      <div style="margin-top:12px"><button class="btn" id="btnSendOtp">Kirim kode OTP</button></div>
+    </div>
+    <div id="stepOtp" class="hidden">
+      <label for="inOtp">Kode OTP dari email</label>
+      <input id="inOtp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456">
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn" id="btnVerify">Masuk</button>
+        <button class="btn sec" id="btnBackEmail">Ganti email</button>
+      </div>
+    </div>
+    <div class="hint" id="loginMsg"></div>
+  </section>
+
+  <!-- ===================== DITOLAK ===================== -->
+  <section id="viewDenied" class="card hidden">
+    <h2>AKSES DITOLAK</h2>
+    <p style="font-size:13px;line-height:1.5" id="deniedMsg">Akun ini bukan admin, jadi tidak bisa upload data.</p>
+  </section>
+
+  <!-- ===================== SETUP BELUM LENGKAP ===================== -->
+  <section id="viewNoApi" class="card hidden">
+    <h2>WORKER BELUM DIATUR</h2>
+    <p style="font-size:13px;line-height:1.5">Isi <code>DATA_API</code> di <code>config.js</code> dengan URL Worker kamu, lalu muat ulang halaman ini.</p>
+  </section>
+
+  <!-- ===================== APLIKASI ===================== -->
+  <main id="viewApp" class="hidden">
+    <div class="tabs" id="tabs">
+      <button data-tab="audit" class="on">Data Audit</button>
+      <button data-tab="blast">Blastmap</button>
+      <button data-tab="infra">Infrastruktur</button>
+      <button data-tab="static">Layer Statis</button>
+      <button data-tab="manage">Kelola Rilis</button>
+    </div>
+
+    <!-- ---------- AUDIT ---------- -->
+    <section id="tab-audit" class="card">
+      <h2>RILIS DATA AUDIT MINGGUAN</h2>
+      <div class="drop" id="dropAudit">
+        <div style="font-size:26px">📂</div>
+        <div><b>Tarik 3 file hasil script ke sini</b>, atau ketuk untuk memilih</div>
+        <div class="hint">Road_Layers.geojson + Road_Grade_Polygons.geojson + Overwatch.xlsx.<br>Nama file bebas, sistem mengenali dari isinya.<br>Opsional: <b>terrain.pmtiles</b> (tile elevasi DEM) untuk Drone View 3D.</div>
+        <input type="file" id="fileAudit" multiple accept=".geojson,.json,.xlsx,.pmtiles" class="hidden">
+      </div>
+      <div class="slots" id="slotsAudit"></div>
+      <div class="msgs" id="msgsAudit"></div>
+      <div class="chips" id="chipsAudit"></div>
+
+      <div id="auditForm" class="hidden">
+        <div class="row">
+          <div><label for="inDate">Tanggal DEM / pengukuran</label><input type="date" id="inDate"></div>
+          <div><label for="inWeek">Nomor minggu</label><input type="number" id="inWeek" min="1" max="53"></div>
+        </div>
+        <div class="hint">Nomor minggu terisi otomatis (ISO-8601), boleh diubah kalau penomoran di tempatmu beda.</div>
+        <label>Nama rilis (yang tampil di dropdown peta)</label>
+        <div class="idbox" id="idPreview">-</div>
+        <label for="inNote">Catatan (opsional)</label>
+        <input type="text" id="inNote" maxlength="300" placeholder="mis. setelah regrade Jl Lampung">
+        <div id="terrainOpts" class="hidden">
+          <label for="inKeep">Simpan tile 3D untuk berapa rilis terakhir?</label>
+          <input type="number" id="inKeep" min="1" max="52" value="8">
+          <div class="hint">Tile 3D besar (ratusan MB per rilis). Rilis yang lebih lama tetap bisa dilihat di peta 2D, hanya Drone View-nya yang dibuang.</div>
+        </div>
+        <div style="margin-top:14px"><button class="btn" id="btnPublishAudit" disabled>Publish rilis</button></div>
+        <div class="progress" id="progAudit"></div>
+      </div>
+    </section>
+
+    <!-- ---------- BLAST ---------- -->
+    <section id="tab-blast" class="card hidden">
+      <h2>BLASTMAP</h2>
+      <div class="drop" id="dropBlast">
+        <div style="font-size:26px">💣</div>
+        <div><b>Pilih file blastmap (.geojson)</b></div>
+        <input type="file" id="fileBlast" accept=".geojson,.json" class="hidden">
+      </div>
+      <div class="slots" id="slotsBlast"></div>
+      <div class="msgs" id="msgsBlast"></div>
+      <div class="row">
+        <div><label for="inBlastDate">Tanggal peledakan</label><input type="date" id="inBlastDate"></div>
+        <div><label for="inBlastShift">Shift / kode (opsional)</label><input type="text" id="inBlastShift" maxlength="10" placeholder="S2"></div>
+      </div>
+      <label>ID rilis</label>
+      <div class="idbox" id="idPreviewBlast">-</div>
+      <div style="margin-top:14px"><button class="btn" id="btnPublishBlast" disabled>Publish blastmap</button></div>
+      <div class="progress" id="progBlast"></div>
+    </section>
+
+    <!-- ---------- INFRASTRUKTUR ---------- -->
+    <section id="tab-infra" class="card hidden">
+      <h2>INFRASTRUKTUR (CSA, WATERFILL, PITSTOP, BUSPAD)</h2>
+      <div class="hint">Berlaku terus sampai dihapus dari sini. Tidak terikat tanggal atau rilis audit.</div>
+      <div id="infraList"></div>
+      <div style="margin-top:12px"><button class="btn" id="btnInfraNew">+ Objek baru</button></div>
+
+      <div id="infraForm" class="hidden" style="margin-top:16px;border-top:1px solid var(--line);padding-top:6px">
+        <h2 id="infraFormTitle">OBJEK BARU</h2>
+        <div class="row">
+          <div><label for="inInfraType">Jenis</label>
+            <select id="inInfraType"><option value="csa">CSA</option><option value="waterfill">Waterfill</option><option value="pitstop">Pitstop</option><option value="buspad">Buspad</option><option value="lainnya">Lainnya</option></select></div>
+          <div><label for="inInfraName">Nama</label><input type="text" id="inInfraName" maxlength="80" placeholder="CSA 12"></div>
+        </div>
+        <div class="hint">ID di sistem: <b id="infraIdPreview">-</b></div>
+
+        <div id="infraCapWrap">
+          <label>Kapasitas unit per kelas</label>
+          <div class="cap3">
+            <div><input type="number" id="inCap100" min="0" max="9999" placeholder="100 T"><div class="hint">DT 100 T</div></div>
+            <div><input type="number" id="inCap150" min="0" max="9999" placeholder="150 T"><div class="hint">DT 150 T</div></div>
+            <div><input type="number" id="inCap200" min="0" max="9999" placeholder="200 T"><div class="hint">DT 200 T</div></div>
+          </div>
+          <div class="hint">Total: <b id="infraCapTotal">0</b> unit</div>
+        </div>
+
+        <label>Fasilitas (nama dan jumlah)</label>
+        <div id="infraFac"></div>
+        <div style="margin-top:8px"><button class="btn sec" id="btnFacAdd" type="button">+ Tambah fasilitas</button></div>
+        <div class="hint">Contoh: Kontainer 4, Tower lamp 6, Toilet 2. Bebas diisi sesuai kebutuhan.</div>
+
+        <label for="inInfraNote">Catatan (opsional)</label>
+        <input type="text" id="inInfraNote" maxlength="300">
+
+        <label>Desain (GeoJSON)</label>
+        <div class="drop" id="dropInfraDesign" style="padding:16px">
+          <div><b id="infraDesignLbl">Pilih file desain .geojson</b></div>
+          <div class="hint">Satu file berisi semua: batas area, crest/toe bundwall, buspad, slot parkir, gambar DT.<br>Tambahkan atribut <b>Kategori</b> per fitur (batas, crest, toe, parkir, dt, buspad) supaya warnanya otomatis.</div>
+          <input type="file" id="fileInfraDesign" accept=".geojson,.json" class="hidden">
+        </div>
+        <div class="msgs" id="msgsInfra"></div>
+        <div class="chips" id="chipsInfra"></div>
+
+        <label>Foto aktual (drone)</label>
+        <div class="drop" id="dropInfraPhoto" style="padding:16px">
+          <div><b>Tambah foto (bisa banyak)</b></div>
+          <div class="hint">Otomatis dikecilkan ke maks 2400 px. Isi tanggal terbang di tiap foto. Yang terbaru tampil pertama di peta.</div>
+          <input type="file" id="fileInfraPhoto" accept="image/*" multiple class="hidden">
+        </div>
+        <div class="thumbs" id="infraThumbs"></div>
+
+        <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn" id="btnInfraSave">Simpan objek</button>
+          <button class="btn sec" id="btnInfraCancel">Batal</button>
+          <button class="btn danger hidden" id="btnInfraDelete" style="margin-left:auto">Hapus objek</button>
+        </div>
+        <div class="progress" id="progInfra"></div>
+      </div>
+    </section>
+
+    <!-- ---------- STATIC ---------- -->
+    <section id="tab-static" class="card hidden">
+      <h2>LAYER STATIS (JARANG BERUBAH)</h2>
+      <div class="hint" style="margin-bottom:8px">Road_Map, Road_Non_Sarana, dan clusters. Upload hanya kalau memang berubah. Berlaku untuk semua rilis.</div>
+      <label for="selStatic">Layer</label>
+      <select id="selStatic">
+        <option>Road_Map.geojson</option>
+        <option>Road_Non_Sarana.geojson</option>
+        <option>clusters.geojson</option>
+      </select>
+      <label for="fileStatic">File</label>
+      <input type="file" id="fileStatic" accept=".geojson,.json">
+      <div class="msgs" id="msgsStatic"></div>
+      <div style="margin-top:14px"><button class="btn" id="btnPublishStatic" disabled>Upload layer</button></div>
+      <div class="progress" id="progStatic"></div>
+    </section>
+
+    <!-- ---------- MANAGE ---------- -->
+    <section id="tab-manage" class="card hidden">
+      <h2>KELOLA RILIS</h2>
+      <div style="display:flex;gap:8px;margin-bottom:10px"><button class="btn sec" id="btnReload">Muat ulang daftar</button></div>
+      <div id="manageList"></div>
+    </section>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="config.js"></script>
+<script src="release-lib.js"></script>
+<script>
+(function () {
+  "use strict";
+  var CFG = window.OVERWATCH_CONFIG || {};
+  var RL = window.OverwatchRelease;
+  var API = (CFG.DATA_API || "").replace(/\/+$/, "");
+  var $ = function (id) { return document.getElementById(id); };
+  var sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+  });
+
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function toast(t) { var el = $("toast"); el.textContent = t; el.style.display = "block"; clearTimeout(toast._t); toast._t = setTimeout(function () { el.style.display = "none"; }, 3500); }
+  function todayWita() {
+    var d = new Date(Date.now() + 8 * 3600 * 1000); // WITA = UTC+8
+    return d.toISOString().slice(0, 10);
+  }
+  function mb(n) { return (n / 1048576).toFixed(1) + " MB"; }
+  function show(id, on) { $(id).classList.toggle("hidden", !on); }
+
+  /* ------------------------------ API ------------------------------ */
+  async function token() {
+    var r = await sb.auth.getSession();
+    return r.data.session ? r.data.session.access_token : null;
+  }
+  async function api(path, opts) {
+    opts = opts || {};
+    var t = await token();
+    var h = Object.assign({}, opts.headers || {});
+    if (t) h.Authorization = "Bearer " + t;
+    var res = await fetch(API + path, Object.assign({}, opts, { headers: h }));
+    var body = null;
+    try { body = await res.clone().json(); } catch (e) {}
+    if (!res.ok) throw new Error((body && body.error) || ("HTTP " + res.status));
+    return body;
+  }
+  function putFile(kind, id, name, blob) {
+    return api("/api/upload/" + kind + "/" + encodeURIComponent(id) + "/" + name, { method: "PUT", body: blob });
+  }
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  // Upload bertahap (multipart R2) untuk file besar. Tiap bagian dicoba ulang 3x, gagal total = dibatalkan bersih.
+  async function putBig(kind, id, name, file, onProgress) {
+    var path = "/api/mpu/" + kind + "/" + encodeURIComponent(id) + "/" + name;
+    var c = await api(path + "?action=create", { method: "POST" });
+    var size = c.partSize, total = Math.max(1, Math.ceil(file.size / size)), parts = [];
+    var q = "uploadId=" + encodeURIComponent(c.uploadId);
+    try {
+      for (var n = 1; n <= total; n++) {
+        var blob = file.slice((n - 1) * size, Math.min(file.size, n * size)), tries = 0, res;
+        for (;;) {
+          try { res = await api(path + "?" + q + "&part=" + n, { method: "PUT", body: blob }); break; }
+          catch (e) { if (++tries >= 3) throw e; await sleep(1500 * tries); }
+        }
+        parts.push({ partNumber: res.partNumber, etag: res.etag });
+        if (onProgress) onProgress(n, total);
+      }
+      return await api(path + "?action=complete&" + q, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ parts: parts }) });
+    } catch (e) {
+      try { await api(path + "?" + q, { method: "DELETE" }); } catch (_) {}
+      throw e;
+    }
+  }
+
+  /* ------------------------------ login ------------------------------ */
+  var loginEmail = "";
+  async function boot() {
+    if (!API) { show("viewNoApi", true); return; }
+    var s = (await sb.auth.getSession()).data.session;
+    if (!s) { show("viewLogin", true); return; }
+    await afterLogin(s);
+  }
+  async function afterLogin(session) {
+    $("whoEmail").textContent = session.user.email;
+    show("btnLogout", true);
+    show("viewLogin", false);
+    try {
+      var me = await api("/api/me");
+      if (!me.canUpload) {
+        $("deniedMsg").textContent = "Akun " + me.email + " (role: " + me.role + ") bukan admin, jadi tidak bisa upload data.";
+        show("viewDenied", true);
+        return;
+      }
+    } catch (e) {
+      $("deniedMsg").textContent = e.message;
+      show("viewDenied", true);
+      return;
+    }
+    show("viewApp", true);
+    initAudit(); initBlast(); initStatic();
+    loadManage();
+  }
+  $("btnSendOtp").onclick = async function () {
+    var email = $("inEmail").value.trim().toLowerCase();
+    if (!email) { $("loginMsg").textContent = "Isi email dulu."; return; }
+    $("loginMsg").textContent = "Mengirim kode...";
+    var r = await sb.auth.signInWithOtp({ email: email, options: { shouldCreateUser: true } });
+    if (r.error) { $("loginMsg").textContent = "Gagal: " + r.error.message; return; }
+    loginEmail = email;
+    show("stepEmail", false); show("stepOtp", true);
+    $("loginMsg").textContent = "Kode terkirim ke " + email + ".";
+  };
+  $("btnBackEmail").onclick = function () { show("stepEmail", true); show("stepOtp", false); };
+  $("btnVerify").onclick = async function () {
+    var code = $("inOtp").value.trim();
+    if (code.length < 6) { $("loginMsg").textContent = "Kode belum lengkap."; return; }
+    $("loginMsg").textContent = "Memeriksa...";
+    var r = await sb.auth.verifyOtp({ email: loginEmail, token: code, type: "email" });
+    if (r.error) { $("loginMsg").textContent = "Kode salah / kedaluwarsa: " + r.error.message; return; }
+    await afterLogin(r.data.session);
+  };
+  $("btnLogout").onclick = async function () { await sb.auth.signOut(); location.reload(); };
+
+  /* ------------------------------ tabs ------------------------------ */
+  $("tabs").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-tab]"); if (!b) return;
+    document.querySelectorAll("#tabs button").forEach(function (x) { x.classList.toggle("on", x === b); });
+    ["audit", "blast", "infra", "static", "manage"].forEach(function (t) { show("tab-" + t, t === b.dataset.tab); });
+    if (b.dataset.tab === "manage") loadManage();
+    if (b.dataset.tab === "infra") loadInfra();
+  });
+
+  function setupDrop(dropId, inputId, onFiles) {
+    var d = $(dropId), inp = $(inputId);
+    d.onclick = function () { inp.click(); };
+    inp.onchange = function () { if (inp.files.length) onFiles(Array.from(inp.files)); inp.value = ""; };
+    ["dragenter", "dragover"].forEach(function (ev) { d.addEventListener(ev, function (e) { e.preventDefault(); d.classList.add("over"); }); });
+    ["dragleave", "drop"].forEach(function (ev) { d.addEventListener(ev, function (e) { e.preventDefault(); d.classList.remove("over"); }); });
+    d.addEventListener("drop", function (e) { if (e.dataTransfer.files.length) onFiles(Array.from(e.dataTransfer.files)); });
+  }
+  function renderMsgs(boxId, res) {
+    var h = "";
+    res.errors.forEach(function (m) { h += '<div class="msg e">❌ ' + esc(m) + "</div>"; });
+    res.warnings.forEach(function (m) { h += '<div class="msg w">⚠️ ' + esc(m) + "</div>"; });
+    $(boxId).innerHTML = h;
+  }
+  function prog(boxId) {
+    var box = $(boxId); box.innerHTML = "";
+    return function (text, cls) {
+      var d = document.createElement("div"); d.className = cls || "run"; d.textContent = text; box.appendChild(d); return d;
+    };
+  }
+
+  /* ------------------------------ AUDIT ------------------------------ */
+  var A = { layers: null, grade: null, wb: null, sheets: null, xlsxBuf: null, terrain: null, names: {}, sizes: {}, prevRoads: null, weekTouched: false };
+
+  async function initAudit() {
+    $("inDate").value = todayWita(); $("inDate").max = todayWita();
+    syncWeek();
+    setupDrop("dropAudit", "fileAudit", handleAuditFiles);
+    $("inDate").onchange = function () { syncWeek(); updateAuditId(); };
+    $("inWeek").oninput = function () { A.weekTouched = true; updateAuditId(); };
+    $("btnPublishAudit").onclick = publishAudit;
+    try {
+      var idx = await api("/api/releases");
+      var last = (idx.releases || [])[0];
+      A.prevRoads = last && last.roads ? last.roads : null;
+    } catch (e) {}
+    renderSlotsAudit();
+  }
+  function syncWeek() {
+    if (A.weekTouched) return;
+    var v = $("inDate").value; if (v) $("inWeek").value = RL.isoWeek(v);
+  }
+  function auditId() {
+    var d = $("inDate").value, w = parseInt($("inWeek").value, 10);
+    if (!d || !w || w < 1 || w > 53) return null;
+    return RL.releaseId(d, w);
+  }
+  function updateAuditId() {
+    var id = auditId();
+    $("idPreview").textContent = id || "-";
+    $("btnPublishAudit").disabled = !(id && auditReady());
+  }
+  function auditReady() { return A.layers && A.grade && A.sheets && !A.errors; }
+
+  async function handleAuditFiles(files) {
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i], low = f.name.toLowerCase();
+      try {
+        if (low.endsWith(".pmtiles")) {
+          var head = new Uint8Array(await f.slice(0, 127).arrayBuffer());
+          var th = RL.parsePmtilesHeader(head), tv = RL.validateTerrainHeader(th);
+          if (tv.errors.length) { A.terrain = null; A.terrainMsg = tv; toast(tv.errors[0]); }
+          else { A.terrain = f; A.terrainMsg = tv; A.names.terrain = f.name; A.sizes.terrain = f.size; A.terrainInfo = th; }
+        } else if (low.endsWith(".xlsx")) {
+          var buf = await f.arrayBuffer();
+          var wb = XLSX.read(buf, { type: "array" });
+          var sheets = {};
+          ["Data_Monitoring", "CrossSection_3Pts"].forEach(function (n) {
+            if (wb.Sheets[n]) sheets[n] = XLSX.utils.sheet_to_json(wb.Sheets[n]);
+          });
+          A.sheets = sheets; A.xlsxBuf = buf; A.names.xlsx = f.name; A.sizes.xlsx = f.size;
+        } else {
+          var fc = JSON.parse(await f.text());
+          var g = fc && fc.features && fc.features.find(function (x) { return x.geometry; });
+          var t = g && g.geometry.type || "";
+          if (/Polygon/.test(t)) { A.grade = fc; A.names.grade = f.name; A.sizes.grade = f.size; }
+          else if (/LineString/.test(t)) { A.layers = fc; A.names.layers = f.name; A.sizes.layers = f.size; }
+          else toast("File " + f.name + " tidak dikenali (bukan garis/poligon).");
+        }
+      } catch (e) { toast("Gagal membaca " + f.name + ": " + e.message); }
+    }
+    validateAudit();
+  }
+
+  function validateAudit() {
+    var res = { errors: [], warnings: [] };
+    var chips = [];
+    if (A.layers) {
+      var v = RL.validateRoadLayers(A.layers); res.errors = res.errors.concat(v.errors); res.warnings = res.warnings.concat(v.warnings);
+      chips.push(["Garis lebar", v.stats.features]);
+    }
+    if (A.grade) {
+      var g = RL.validateGradePolygons(A.grade); res.errors = res.errors.concat(g.errors); res.warnings = res.warnings.concat(g.warnings);
+      chips.push(["Blok grade", g.stats.features]);
+    }
+    if (A.sheets) {
+      var w = RL.validateWorkbook(A.sheets); res.errors = res.errors.concat(w.errors); res.warnings = res.warnings.concat(w.warnings);
+      chips.push(["Baris monitoring", (w.stats.Data_Monitoring || 0)]);
+    }
+    if (A.layers && A.grade) {
+      res.warnings = res.warnings.concat(RL.compareRoads(A.layers, A.grade, A.prevRoads));
+      chips.push(["Jalan", Object.keys(RL.roadSet(A.grade)).length]);
+    }
+    if (A.terrainMsg) {
+      res.errors = res.errors.concat(A.terrainMsg.errors); res.warnings = res.warnings.concat(A.terrainMsg.warnings);
+      if (A.terrain && A.terrainInfo) chips.push(["Tile 3D", "z" + A.terrainInfo.minZoom + "-" + A.terrainInfo.maxZoom + " " + A.terrainInfo.tileType + " " + mb(A.terrain.size)]);
+    }
+    show("terrainOpts", !!A.terrain);
+    A.errors = res.errors.length > 0;
+    renderSlotsAudit();
+    renderMsgs("msgsAudit", res);
+    $("chipsAudit").innerHTML = chips.map(function (c) { return '<span class="chip">' + esc(c[0]) + ": <b>" + esc(c[1]) + "</b></span>"; }).join("");
+    show("auditForm", !!(A.layers || A.grade || A.sheets || A.terrain));
+    updateAuditId();
+  }
+  function renderSlotsAudit() {
+    var rows = [
+      ["layers", "Road_Layers.geojson", "garis lebar & crossfall"],
+      ["grade", "Road_Grade_Polygons.geojson", "blok grade 20 m"],
+      ["xlsx", "Overwatch.xlsx", "data monitoring & cross-section"],
+      ["terrain", "terrain.pmtiles (opsional)", "tile elevasi untuk Drone View 3D", true]
+    ];
+    $("slotsAudit").innerHTML = rows.map(function (r) {
+      var has = A.names[r[0]];
+      return '<div class="slot"><div class="ic">' + (has ? "✅" : r[3] ? "➖" : "⬜") + '</div><div class="nm">' + esc(r[1]) +
+        "<small>" + (has ? esc(A.names[r[0]]) + " · " + mb(A.sizes[r[0]]) : esc(r[2])) + "</small></div></div>";
+    }).join("");
+  }
+
+  async function publishAudit() {
+    var id = auditId(); if (!id || !auditReady()) return;
+    var btn = $("btnPublishAudit"); btn.disabled = true;
+    var log = prog("progAudit");
+    try {
+      var idx = await api("/api/releases");
+      if ((idx.releases || []).some(function (r) { return r.id === id; })) {
+        if (!confirm("Rilis " + id + " sudah ada. Timpa dengan data baru?")) { btn.disabled = false; return; }
+      }
+      var summary = RL.buildSummary(A.layers, A.grade);
+      var steps = [
+        ["Road_Layers.geojson", new Blob([RL.compactGeoJSON(RL.normalizeProps(A.layers))], { type: "application/json" })],
+        ["Road_Grade_Polygons.geojson", new Blob([RL.compactGeoJSON(RL.normalizeProps(A.grade))], { type: "application/json" })],
+        ["monitoring.json", new Blob([JSON.stringify({ monitoring: A.sheets.Data_Monitoring, crossSection: A.sheets.CrossSection_3Pts })], { type: "application/json" })],
+        ["summary.json", new Blob([JSON.stringify(summary)], { type: "application/json" })],
+        ["Overwatch.xlsx", new Blob([A.xlsxBuf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })]
+      ];
+      for (var i = 0; i < steps.length; i++) {
+        var line = log("⏳ Upload " + steps[i][0] + " (" + mb(steps[i][1].size) + ")...", "run");
+        await putFile("releases", id, steps[i][0], steps[i][1]);
+        line.className = "ok"; line.textContent = "✔ " + steps[i][0] + " (" + mb(steps[i][1].size) + ")";
+      }
+      if (A.terrain) {
+        var lt = log("⏳ Upload terrain.pmtiles (" + mb(A.terrain.size) + ")...", "run");
+        await putBig("releases", id, "terrain.pmtiles", A.terrain, function (n, t) { lt.textContent = "⏳ terrain.pmtiles bagian " + n + "/" + t + " (" + mb(A.terrain.size) + ")..."; });
+        lt.className = "ok"; lt.textContent = "✔ terrain.pmtiles (" + mb(A.terrain.size) + ")";
+      }
+      var d = $("inDate").value, w = $("inWeek").value;
+      var line2 = log("⏳ Mendaftarkan rilis...", "run");
+      var out = await api("/api/publish", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "releases", id: id,
+          meta: { label: "Week" + w + " · " + RL.prettyDate(d), note: $("inNote").value.trim(), totals: summary.totals, roads: summary.roads.map(function (r) { return r.name; }) }
+        })
+      });
+      line2.className = "ok"; line2.textContent = "✔ Rilis live. Terbaru sekarang: " + out.latest;
+      if (A.terrain) {
+        var keep = Math.max(1, parseInt($("inKeep").value, 10) || 8);
+        var pr = await api("/api/terrain/prune", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keep: keep }) });
+        log("✔ Tile 3D disimpan untuk " + pr.kept + " rilis terakhir" + (pr.removed.length ? " (dibuang: " + pr.removed.join(", ") + ")" : "") + ".", "ok");
+      }
+      log('✔ Selesai. Buka peta dan pilih rilis dari dropdown "Update Data".', "ok");
+      toast("Rilis " + id + " berhasil dipublish");
+      A.layers = A.grade = A.sheets = A.xlsxBuf = A.terrain = A.terrainMsg = A.terrainInfo = null; A.names = {}; A.sizes = {}; show("terrainOpts", false);
+      A.prevRoads = summary.roads.map(function (r) { return r.name; });
+      loadManage();
+    } catch (e) {
+      log("❌ " + e.message, "er");
+    }
+    btn.disabled = false;
+    renderSlotsAudit(); updateAuditId();
+  }
+
+  /* ------------------------------ BLAST ------------------------------ */
+  var B = { fc: null, errors: true };
+  function initBlast() {
+    $("inBlastDate").value = todayWita();
+    setupDrop("dropBlast", "fileBlast", async function (files) {
+      var f = files[0];
+      try {
+        B.fc = JSON.parse(await f.text());
+        var v = RL.validateBlast(B.fc); B.errors = v.errors.length > 0;
+        renderMsgs("msgsBlast", v);
+        $("slotsBlast").innerHTML = '<div class="slot"><div class="ic">' + (B.errors ? "❌" : "✅") + '</div><div class="nm">' + esc(f.name) +
+          "<small>" + mb(f.size) + " · " + esc(v.stats.features || 0) + " fitur</small></div></div>";
+        var m = /(\d{4}-\d{2}-\d{2})/.exec(f.name); if (m) $("inBlastDate").value = m[1];
+      } catch (e) { toast("File bukan JSON valid: " + e.message); B.fc = null; B.errors = true; }
+      updateBlast();
+    });
+    $("inBlastDate").onchange = updateBlast; $("inBlastShift").oninput = updateBlast;
+    $("btnPublishBlast").onclick = publishBlast;
+  }
+  function blastId() {
+    var d = $("inBlastDate").value, s = $("inBlastShift").value.trim();
+    if (!d) return null;
+    if (s && !/^[A-Za-z0-9]{1,10}$/.test(s)) return null;
+    var id = d + (s ? "_" + s : "");
+    return RL.BLAST_ID_RE.test(id) ? id : null;
+  }
+  function updateBlast() {
+    var id = blastId();
+    $("idPreviewBlast").textContent = id || "-";
+    $("btnPublishBlast").disabled = !(id && B.fc && !B.errors);
+  }
+  async function publishBlast() {
+    var id = blastId(); if (!id || !B.fc) return;
+    var btn = $("btnPublishBlast"); btn.disabled = true;
+    var log = prog("progBlast");
+    try {
+      var idx = await api("/api/blasts");
+      if ((idx.releases || []).some(function (r) { return r.id === id; }) && !confirm("Blastmap " + id + " sudah ada. Timpa?")) { btn.disabled = false; return; }
+      var blob = new Blob([RL.compactGeoJSON(B.fc)], { type: "application/json" });
+      var l1 = log("⏳ Upload blast.geojson (" + mb(blob.size) + ")...", "run");
+      await putFile("blast", id, "blast.geojson", blob);
+      l1.className = "ok"; l1.textContent = "✔ blast.geojson (" + mb(blob.size) + ")";
+      var out = await api("/api/publish", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "blast", id: id, meta: { label: "Blast " + RL.prettyDate(id.slice(0, 10)) + (id.length > 10 ? " (" + id.slice(11) + ")" : "") } })
+      });
+      log("✔ Selesai. Blastmap terbaru: " + out.latest, "ok");
+      toast("Blastmap " + id + " dipublish");
+      B.fc = null; $("slotsBlast").innerHTML = ""; $("msgsBlast").innerHTML = "";
+      loadManage();
+    } catch (e) { log("❌ " + e.message, "er"); }
+    updateBlast();
+  }
+
+  /* ------------------------------ STATIC ------------------------------ */
+  var S = { fc: null, errors: true };
+  function initStatic() {
+    $("fileStatic").onchange = async function () {
+      var f = $("fileStatic").files[0]; if (!f) return;
+      try {
+        S.fc = JSON.parse(await f.text());
+        var v = RL.validateStatic(S.fc, $("selStatic").value); S.errors = v.errors.length > 0;
+        v.warnings.push(f.name + ": " + mb(f.size) + ", " + (v.stats.features || 0) + " fitur.");
+        renderMsgs("msgsStatic", v);
+      } catch (e) { toast("File bukan JSON valid"); S.fc = null; S.errors = true; }
+      $("btnPublishStatic").disabled = !(S.fc && !S.errors);
+    };
+    $("btnPublishStatic").onclick = async function () {
+      var log = prog("progStatic"), name = $("selStatic").value;
+      $("btnPublishStatic").disabled = true;
+      try {
+        var blob = new Blob([RL.compactGeoJSON(S.fc)], { type: "application/json" });
+        var l = log("⏳ Upload " + name + "...", "run");
+        await putFile("static", "current", name, blob);
+        l.className = "ok"; l.textContent = "✔ " + name + " (" + mb(blob.size) + ") sudah live";
+        toast(name + " diperbarui");
+      } catch (e) { log("❌ " + e.message, "er"); }
+    };
+  }
+
+  /* ------------------------------ INFRASTRUKTUR ------------------------------ */
+  var I = { objects: [], cur: null, isNew: true, design: null, designMsgs: null, photos: [], fac: [], loaded: false };
+  var TYPE_LABEL = { csa: "CSA", waterfill: "Waterfill", pitstop: "Pitstop", buspad: "Buspad", lainnya: "Lainnya" };
+
+  function slug(name) {
+    return String(name).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+  }
+  function infraIdFromForm() {
+    if (!I.isNew) return I.cur.id;
+    var base = slug($("inInfraName").value);
+    if (base.length < 2) return null;
+    var id = base, n = 2;
+    while (I.objects.some(function (o) { return o.id === id; })) id = base.slice(0, 36) + "-" + (n++);
+    return id;
+  }
+  async function loadInfra() {
+    try {
+      var d = await api("/api/infra");
+      I.objects = d.objects || []; I.loaded = true;
+      renderInfraList();
+    } catch (e) { $("infraList").innerHTML = '<div class="msg e">' + esc(e.message) + "</div>"; }
+  }
+  function totalCap(c) { c = c || {}; return (c.t100 || 0) + (c.t150 || 0) + (c.t200 || 0); }
+  function renderInfraList() {
+    if (!I.objects.length) { $("infraList").innerHTML = '<div class="hint" style="margin-top:10px">Belum ada objek infrastruktur.</div>'; return; }
+    $("infraList").innerHTML = I.objects.map(function (o) {
+      var cap = o.type === "csa" || totalCap(o.capacity) ? " · " + totalCap(o.capacity) + " unit" : "";
+      return '<div class="iobj' + (I.cur && I.cur.id === o.id ? " on" : "") + '" data-id="' + esc(o.id) + '"><div class="nm"><b>' + esc(o.name) + "</b><small>" +
+        esc(TYPE_LABEL[o.type] || o.type) + cap + " · " + (o.photos || []).length + " foto" + (o.design ? " · desain ✓" : " · belum ada desain") + "</small></div><span>✎</span></div>";
+    }).join("");
+  }
+  $("infraList").addEventListener("click", function (e) {
+    var b = e.target.closest(".iobj"); if (!b) return;
+    editInfra(I.objects.find(function (o) { return o.id === b.dataset.id; }));
+  });
+  $("btnInfraNew").onclick = function () { editInfra(null); };
+  $("btnInfraCancel").onclick = function () { closeInfraForm(); };
+
+  function closeInfraForm() {
+    I.photos.forEach(function (p) { if (p.url) URL.revokeObjectURL(p.url); });
+    I.cur = null; I.design = null; I.designMsgs = null; I.photos = []; I.fac = [];
+    show("infraForm", false); renderInfraList();
+  }
+
+  function editInfra(o, keepLog) {
+    closeInfraForm();
+    I.isNew = !o; I.cur = o || { id: "" };
+    $("infraFormTitle").textContent = o ? "UBAH: " + o.name.toUpperCase() : "OBJEK BARU";
+    $("inInfraType").value = o ? o.type : "csa";
+    $("inInfraName").value = o ? o.name : "";
+    $("inInfraName").disabled = false;
+    $("inInfraNote").value = o ? (o.note || "") : "";
+    var c = (o && o.capacity) || {};
+    $("inCap100").value = c.t100 || ""; $("inCap150").value = c.t150 || ""; $("inCap200").value = c.t200 || "";
+    I.fac = o ? (o.facilities || []).map(function (f) { return { name: f.name, qty: f.qty }; }) : [];
+    I.photos = o ? (o.photos || []).map(function (p) { return { existing: true, file: p.file, date: p.date || "", caption: p.caption || "" }; }) : [];
+    $("infraDesignLbl").textContent = o && o.design ? "Desain sudah ada. Pilih file untuk menggantinya" : "Pilih file desain .geojson";
+    $("msgsInfra").innerHTML = ""; $("chipsInfra").innerHTML = ""; if (!keepLog) $("progInfra").innerHTML = "";
+    show("btnInfraDelete", !!o);
+    show("infraForm", true);
+    renderFac(); renderThumbs(); updateInfraUi();
+    renderInfraList();
+    $("infraForm").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  function updateInfraUi() {
+    var id = infraIdFromForm();
+    $("infraIdPreview").textContent = id || "-";
+    var t = (parseInt($("inCap100").value, 10) || 0) + (parseInt($("inCap150").value, 10) || 0) + (parseInt($("inCap200").value, 10) || 0);
+    $("infraCapTotal").textContent = t;
+    show("infraCapWrap", $("inInfraType").value === "csa" || t > 0);
+  }
+  ["inInfraName", "inCap100", "inCap150", "inCap200"].forEach(function (k) { $(k).addEventListener("input", updateInfraUi); });
+  $("inInfraType").addEventListener("change", updateInfraUi);
+
+  function renderFac() {
+    $("infraFac").innerHTML = I.fac.map(function (f, i) {
+      return '<div class="irow"><input type="text" data-fi="' + i + '" data-k="name" value="' + esc(f.name) + '" maxlength="60" placeholder="Nama fasilitas">' +
+        '<input type="number" data-fi="' + i + '" data-k="qty" value="' + esc(f.qty) + '" min="0" placeholder="Jml"><button class="btn sec" style="padding:0" data-fdel="' + i + '" type="button">✕</button></div>';
+    }).join("");
+  }
+  $("infraFac").addEventListener("input", function (e) {
+    var i = e.target.dataset.fi; if (i === undefined) return;
+    I.fac[i][e.target.dataset.k] = e.target.dataset.k === "qty" ? (parseInt(e.target.value, 10) || 0) : e.target.value;
+  });
+  $("infraFac").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-fdel]"); if (!b) return;
+    I.fac.splice(parseInt(b.dataset.fdel, 10), 1); renderFac();
+  });
+  $("btnFacAdd").onclick = function () { I.fac.push({ name: "", qty: 1 }); renderFac(); var inp = $("infraFac").querySelectorAll("input[data-k=name]"); if (inp.length) inp[inp.length - 1].focus(); };
+
+  // desain
+  setupDrop("dropInfraDesign", "fileInfraDesign", async function (files) {
+    var f = files[0];
+    try {
+      var fc = JSON.parse(await f.text()), v = RL.validateInfraDesign(fc);
+      renderMsgs("msgsInfra", v);
+      var cats = v.stats.categories || {};
+      $("chipsInfra").innerHTML = '<span class="chip">Fitur: <b>' + esc(v.stats.features || 0) + "</b></span>" +
+        Object.keys(cats).map(function (k) { return '<span class="chip">' + esc(k) + ": <b>" + cats[k] + "</b></span>"; }).join("");
+      if (v.errors.length) { I.design = null; return; }
+      var bb = RL.geojsonBBox(fc);
+      if (!bb || bb[0] < 90 || bb[2] > 145 || bb[1] < -12 || bb[3] > 7) {
+        I.design = null;
+        $("msgsInfra").innerHTML += '<div class="msg e">❌ Koordinat desain di luar Indonesia / bukan WGS84 (lon/lat). Ekspor dari ArcGIS dengan GCS WGS 1984.</div>';
+        return;
+      }
+      I.design = { fc: fc, name: f.name, size: f.size, bbox: bb };
+      $("infraDesignLbl").textContent = f.name + " (" + mb(f.size) + ") siap diunggah";
+    } catch (e) { toast("File bukan JSON valid: " + e.message); I.design = null; }
+  });
+
+  // foto: kecilkan di perangkat sebelum diunggah
+  function downscale(file, maxSide, q) {
+    return createImageBitmap(file, { imageOrientation: "from-image" }).then(function (bmp) {
+      var k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+      var c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      return new Promise(function (res, rej) { c.toBlob(function (b) { b ? res(b) : rej(new Error("Gagal memproses foto")); }, "image/jpeg", q); });
+    });
+  }
+  setupDrop("dropInfraPhoto", "fileInfraPhoto", async function (files) {
+    for (var i = 0; i < files.length; i++) {
+      try {
+        var blob = await downscale(files[i], 2400, 0.85);
+        I.photos.push({ existing: false, blob: blob, url: URL.createObjectURL(blob), name: files[i].name, date: todayWita(), caption: "" });
+      } catch (e) { toast("Foto " + files[i].name + " tidak bisa dibaca"); }
+    }
+    renderThumbs();
+  });
+  function renderThumbs() {
+    $("infraThumbs").innerHTML = I.photos.map(function (p, i) {
+      return '<div class="thumb"><img data-pi="' + i + '" ' + (p.url ? 'src="' + p.url + '"' : "") + ' alt=""><input type="date" data-pd="' + i + '" value="' + esc(p.date) + '" max="' + todayWita() + '">' +
+        '<button type="button" data-pdel="' + i + '">Hapus</button></div>';
+    }).join("");
+    // foto lama dimuat dengan token (bucket privat)
+    I.photos.forEach(function (p, i) {
+      if (!p.existing || p.url) return;
+      token().then(function (t) {
+        return fetch(API + "/data/infra/" + encodeURIComponent(I.cur.id) + "/" + p.file, { headers: { Authorization: "Bearer " + t } });
+      }).then(function (r) { return r.ok ? r.blob() : null; }).then(function (b) {
+        if (!b) return; p.url = URL.createObjectURL(b);
+        var img = document.querySelector('img[data-pi="' + i + '"]'); if (img) img.src = p.url;
+      }).catch(function () {});
+    });
+  }
+  $("infraThumbs").addEventListener("input", function (e) { var i = e.target.dataset.pd; if (i !== undefined) I.photos[i].date = e.target.value; });
+  $("infraThumbs").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-pdel]"); if (!b) return;
+    var p = I.photos.splice(parseInt(b.dataset.pdel, 10), 1)[0]; if (p && p.url) URL.revokeObjectURL(p.url); renderThumbs();
+  });
+
+  $("btnInfraSave").onclick = async function () {
+    var id = infraIdFromForm(), name = $("inInfraName").value.trim();
+    if (!name || !id) { toast("Isi nama objek dulu."); return; }
+    var hasDesign = !!I.design || (!I.isNew && I.cur.design);
+    if (!hasDesign) { toast("Desain GeoJSON wajib: tanpa desain objek tidak punya lokasi di peta."); return; }
+    var facs = I.fac.filter(function (f) { return String(f.name).trim(); });
+    var btn = $("btnInfraSave"); btn.disabled = true;
+    var log = prog("progInfra");
+    try {
+      if (I.design) {
+        var blob = new Blob([RL.compactGeoJSON(I.design.fc)], { type: "application/json" });
+        var l = log("⏳ Upload desain (" + mb(blob.size) + ")...", "run");
+        await putFile("infra", id, "design.geojson", blob);
+        l.className = "ok"; l.textContent = "✔ Desain (" + mb(blob.size) + ")";
+      }
+      var photos = [], base = Date.now();
+      for (var i = 0; i < I.photos.length; i++) {
+        var p = I.photos[i];
+        if (p.existing) { photos.push({ file: p.file, date: p.date, caption: p.caption }); continue; }
+        var fname = "photo-" + (base + i) + ".jpg";
+        var lp = log("⏳ Upload foto " + (i + 1) + "/" + I.photos.length + " (" + mb(p.blob.size) + ")...", "run");
+        await putFile("infra", id, fname, p.blob);
+        lp.className = "ok"; lp.textContent = "✔ Foto " + (i + 1) + " (" + mb(p.blob.size) + ")";
+        photos.push({ file: fname, date: p.date, caption: p.caption });
+      }
+      var meta = {
+        type: $("inInfraType").value, name: name, note: $("inInfraNote").value.trim(),
+        capacity: { t100: parseInt($("inCap100").value, 10) || 0, t150: parseInt($("inCap150").value, 10) || 0, t200: parseInt($("inCap200").value, 10) || 0 },
+        facilities: facs, design: true, photos: photos
+      };
+      if (I.design) meta.bbox = I.design.bbox;
+      await api("/api/infra/" + encodeURIComponent(id), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(meta) });
+      log("✔ " + name + " tersimpan dan langsung tampil di peta (kalau toggle Infra aktif).", "ok");
+      toast(name + " disimpan");
+      await loadInfra();
+      editInfra(I.objects.find(function (o) { return o.id === id; }), true);
+    } catch (e) { log("❌ " + e.message, "er"); }
+    btn.disabled = false;
+  };
+  $("btnInfraDelete").onclick = async function () {
+    if (!I.cur || !I.cur.id) return;
+    if (!confirm("Hapus " + I.cur.name + " beserta desain dan fotonya? Tidak bisa dibatalkan.")) return;
+    try { await api("/api/infra/" + encodeURIComponent(I.cur.id), { method: "DELETE" }); toast("Dihapus"); closeInfraForm(); loadInfra(); }
+    catch (e) { toast("Gagal: " + e.message); }
+  };
+
+  /* ------------------------------ MANAGE ------------------------------ */
+  async function loadManage() {
+    var box = $("manageList");
+    try {
+      var r = await Promise.all([api("/api/releases"), api("/api/blasts")]);
+      var h = "";
+      [["releases", "Rilis Audit", r[0]], ["blast", "Blastmap", r[1]]].forEach(function (g) {
+        h += '<div class="hint" style="margin:12px 0 4px"><b>' + g[1] + "</b></div>";
+        var list = g[2].releases || [];
+        if (!list.length) { h += '<div class="hint">Belum ada.</div>'; return; }
+        h += "<table><tr><th>Nama</th><th>Oleh</th><th></th></tr>";
+        list.forEach(function (x) {
+          h += "<tr><td>" + esc(x.id) + (x.id === g[2].latest ? ' <span class="chip">terbaru</span>' : "") +
+            (x.note ? '<div class="hint">' + esc(x.note) + "</div>" : "") + "</td><td>" + esc(x.publishedBy || "") +
+            '</td><td><button class="btn danger" style="min-height:34px;padding:6px 10px" data-del="' + g[0] + "|" + esc(x.id) + '">Hapus</button></td></tr>';
+        });
+        h += "</table>";
+      });
+      box.innerHTML = h;
+    } catch (e) { box.innerHTML = '<div class="msg e">' + esc(e.message) + "</div>"; }
+  }
+  $("btnReload").onclick = loadManage;
+  $("manageList").addEventListener("click", async function (e) {
+    var b = e.target.closest("button[data-del]"); if (!b) return;
+    var p = b.dataset.del.split("|");
+    if (!confirm("Hapus " + p[1] + " secara permanen? Tidak bisa dibatalkan.")) return;
+    try { await api("/api/release/" + p[0] + "/" + encodeURIComponent(p[1]), { method: "DELETE" }); toast("Dihapus"); loadManage(); }
+    catch (er) { toast("Gagal: " + er.message); }
+  });
+
+  boot();
+})();
+</script>
+</body>
+</html>

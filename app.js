@@ -14,6 +14,108 @@ const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, 
 
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycby59dwiJ6H78OiXH_NIIvLj6mS6qwGH0zKa-7Pf70XYAoiQEXoeTK37Hav6zLkVIxUH/exec";
 
+// Klien Apps Script: token login di setiap permintaan, antrean offline, anti-dobel (lihat gas-client.js)
+const GAS = window.OverwatchGas.init({
+  url: WEB_APP_URL,
+  getToken: async () => {
+    try { const { data: { session } } = await _supabase.auth.getSession(); return session ? session.access_token : null; }
+    catch (e) { return null; }
+  },
+  getOwner: () => currentNRP,
+  onToast: (m) => { try { showToastNotification(m); } catch (e) { console.log(m); } }
+});
+// Pembungkus bacaan supaya kode lama (res.ok / res.json()) tetap jalan
+async function gasGet(action, params) {
+  const body = await GAS.read(action, params);
+  return { ok: true, json: async () => body };
+}
+
+// ==========================================
+// 1A. SISTEM RILIS DATA (R2 via Worker) + FALLBACK KE GITHUB
+// ==========================================
+// DATA_API diisi di config.js. Kalau kosong / server tak terjangkau, peta jalan seperti dulu
+// (baca folder data/ di GitHub), jadi aman dipasang bertahap.
+const OW_CFG = window.OVERWATCH_CONFIG || {};
+const DATA_API = (OW_CFG.DATA_API || "").replace(/\/+$/, "");
+const OW_NORM = (window.OverwatchRelease && window.OverwatchRelease.normalizeProps) ? window.OverwatchRelease.normalizeProps : function (x) { return x; };
+let releaseIndex = null;     // { latest, releases:[{id,label,note,...}] }
+let blastIndex = null;
+let activeReleaseId = null;
+let activeBlastId = null;
+let staticLoaded = false;
+let releaseDdKind = null;
+let releasePollTimer = null;
+
+async function owAuthHeaders() {
+  try {
+    const { data: { session } } = await _supabase.auth.getSession();
+    return session ? { Authorization: 'Bearer ' + session.access_token } : {};
+  } catch (e) { return {}; }
+}
+
+async function owApi(path, timeoutMs = 30000) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    return await fetch(DATA_API + path, { headers: await owAuthHeaders(), signal: ctl.signal });
+  } finally { clearTimeout(timer); }
+}
+
+async function loadReleaseIndexes() {
+  if (!DATA_API) return;
+  try {
+    const r = await owApi('/api/releases', 8000);
+    if (r.ok) releaseIndex = await r.json();
+  } catch (e) { console.warn('Index rilis tidak terjangkau, pakai data GitHub:', e.message); }
+  try {
+    const r = await owApi('/api/blasts', 8000);
+    if (r.ok) blastIndex = await r.json();
+  } catch (e) { /* blastmap jatuh ke data GitHub */ }
+}
+
+// File rilis aktif dari R2; kalau gagal / belum ada rilis -> folder data/ di GitHub.
+async function fetchReleaseFile(file) {
+  if (DATA_API && activeReleaseId) {
+    try {
+      const r = await owApi('/data/releases/' + encodeURIComponent(activeReleaseId) + '/' + file);
+      if (r.ok) return r;
+    } catch (e) { console.warn('R2 gagal untuk', file, e.message); }
+  }
+  return fetch('data/' + file);
+}
+
+async function fetchStaticFile(file) {
+  if (DATA_API && releaseIndex) {
+    try {
+      const r = await owApi('/data/static/current/' + file);
+      if (r.ok) return r;
+    } catch (e) { /* lanjut ke GitHub */ }
+  }
+  return fetch('data/' + file);
+}
+
+async function fetchBlastFile(dateOrId) {
+  if (DATA_API && blastIndex && (blastIndex.releases || []).length) {
+    const list = blastIndex.releases;
+    let hit = list.find(r => r.id === dateOrId) || list.find(r => r.date === dateOrId);
+    let usedFallback = false;
+    if (!hit) { hit = list.find(r => r.id === blastIndex.latest) || list[0]; usedFallback = true; }
+    try {
+      const res = await owApi('/data/blast/' + encodeURIComponent(hit.id) + '/blast.geojson');
+      if (res.ok) {
+        activeBlastId = hit.id;
+        currentLoadedBlastDate = hit.id;
+        updateBlastButtonText(hit);
+        if (usedFallback) showToastNotification('ℹ️ Blastmap ' + dateOrId + ' tidak ada. Menampilkan yang terbaru: ' + hit.id);
+        return res;
+      }
+    } catch (e) { console.warn('R2 blast gagal:', e.message); }
+  }
+  let res = await fetch('data/blastmaps/blast_' + dateOrId + '.geojson');
+  if (!res.ok) res = await fetch('data/blastmaps/overwatch.geojson');
+  return res;
+}
+
 const SESSION_STORAGE_KEY = "overwatch_user_session";
 const NOTIF_LOGS_KEY = "overwatch_notification_logs";
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -277,16 +379,10 @@ async function loadBlastmapData(dateStr) {
 
   setSyncStatus('updating', `Memuat blastmap ${dateStr}...`);
 
-  const targetFile = `data/blastmaps/blast_${dateStr}.geojson`;
-  const fallbackFile = `data/blastmaps/overwatch.geojson`;
-
   let geojsonData = null;
 
   try {
-    let res = await fetch(targetFile);
-    if (!res.ok) {
-      res = await fetch(fallbackFile);
-    }
+    let res = await fetchBlastFile(dateStr);
 
     if (!res.ok) {
       setSyncStatus('updated');
@@ -1115,7 +1211,8 @@ function sanitizeDrawLineForBroadcast(line) {
     id: line.id,
     road: line.road,
     points: line.points,
-    reporter: line.reporter
+    reporter: line.reporter,
+    kind: line.kind || 'line'
   };
 }
 
@@ -1163,6 +1260,11 @@ async function logoutUser() {
   try {
     localStorage.removeItem(SESSION_STORAGE_KEY);
     await _supabase.auth.signOut();
+    // hapus data audit yang tersimpan di cache perangkat supaya tidak bisa dibuka orang berikutnya
+    if (window.caches) {
+      const ks = await caches.keys();
+      await Promise.all(ks.filter(k => k.startsWith('overwatch-cache')).map(k => caches.delete(k)));
+    }
   } catch (err) {
     console.warn("Logout auth err:", err);
   }
@@ -1203,20 +1305,17 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   initGeotaggingCameraModule();
 
-  const savedSession = checkStoredSession();
-  if (savedSession) {
-    currentNRP = savedSession.nrp;
-    currentUserRole = savedSession.role;
-    const authOverlay = document.getElementById('auth-overlay');
-    if (authOverlay) authOverlay.style.display = 'none';
-    mulaiAnimasiIntroDanLoadData();
-    return;
-  }
-
+  // KEAMANAN: sesi hanya sah kalau ada sesi Supabase asli. Role SELALU diambil ulang dari tabel Whitelist.
+  // localStorage hanya cache role untuk mode offline, tidak pernah jadi penentu akses.
+  const cachedSess = checkStoredSession();
   const { data: { session } } = await _supabase.auth.getSession();
   if (session && session.user && session.user.email) {
     currentNRP = session.user.email;
-    await checkUserRole(currentNRP);
+    if (navigator.onLine) {
+      await checkUserRole(currentNRP);
+    } else if (cachedSess && cachedSess.nrp === currentNRP) {
+      currentUserRole = cachedSess.role;
+    }
     saveUserSession(currentNRP, currentUserRole);
     const authOverlay = document.getElementById('auth-overlay');
     if (authOverlay) authOverlay.style.display = 'none';
@@ -1273,42 +1372,6 @@ window.requestOtp = async function() {
   const rawVal = emailInput.value.trim();
   if (!rawVal) {
     statusMsg.innerText = 'Masukkan email dulu, bre!';
-    return;
-  }
-
-  if (rawVal === "alkali123") {
-    statusMsg.innerText = 'Access Granted (Developer Mode)...';
-    currentUserRole = "admin";
-    currentNRP = "DEVELOPER";
-    saveUserSession("DEVELOPER", "admin");
-    setTimeout(() => {
-      const authOverlay = document.getElementById('auth-overlay');
-      if (authOverlay) authOverlay.style.display = 'none';
-      mulaiAnimasiIntroDanLoadData();
-    }, 500);
-    return;
-  }
-
-  if (rawVal === "DemoTest2") {
-    statusMsg.innerText = 'Access Granted (Demo Mode 1 Jam)...';
-    currentUserRole = "viewer";
-    currentNRP = "GUEST_VIEWER";
-    
-    // Simpan sesi login dengan timestamp saat ini
-    saveUserSession("GUEST_VIEWER", "viewer");
-
-    // Timer auto-kick pas 1 jam (60 menit) jika aplikasi dibuka terus tanpa reload
-    setTimeout(() => {
-      alert("⏰ Masa akses demo preview (1 jam) telah berakhir!");
-      localStorage.removeItem(SESSION_STORAGE_KEY);
-      location.reload();
-    }, 60 * 60 * 1000);
-
-    setTimeout(() => {
-      const authOverlay = document.getElementById('auth-overlay');
-      if (authOverlay) authOverlay.style.display = 'none';
-      mulaiAnimasiIntroDanLoadData();
-    }, 500);
     return;
   }
 
@@ -1402,7 +1465,7 @@ function updateDataDateUI(newDateStr, shouldBroadcast = true) {
   dataUpdateDate = newDateStr;
   localStorage.setItem('overwatch_data_update_date', newDateStr);
   const label = document.getElementById('labelDataUpdateDate');
-  if (label) label.innerText = newDateStr;
+  if (label && !activeReleaseId) label.innerText = newDateStr;
 
   if (shouldBroadcast && realtimeChannel) {
     try {
@@ -1415,35 +1478,155 @@ function updateDataDateUI(newDateStr, shouldBroadcast = true) {
   }
 }
 
+// ==========================================
+// 2B-2. DROPDOWN RILIS DATA (AUDIT & BLASTMAP)
+// ==========================================
+function updateReleaseButtonText() {
+  const label = document.getElementById('labelDataUpdateDate');
+  if (!label) return;
+  const r = releaseIndex && (releaseIndex.releases || []).find(x => x.id === activeReleaseId);
+  if (r) {
+    const m = /^Week(\d+)_\((\d{2})-(\d{2})-(\d{4})\)$/.exec(r.id);
+    label.innerText = m ? ('W' + m[1] + ' · ' + m[2] + '-' + m[3] + '-' + m[4].slice(2)) : r.id;
+  } else {
+    label.innerText = dataUpdateDate;
+  }
+}
+
+function updateBlastButtonText(entry) {
+  const label = document.getElementById('labelActiveWoDate');
+  if (!label || !entry || !entry.date) return;
+  const p = entry.date.split('-');
+  label.innerText = p[2] + '/' + p[1] + '/' + p[0] + (entry.shift ? ' ' + entry.shift : '');
+}
+
 function handleDataUpdateClick() {
-  if (currentUserRole !== 'admin') {
-    alert("Hanya pengawas dengan hak akses ADMIN yang dapat mengubah tanggal update data audit!");
+  if (!DATA_API || !releaseIndex || !(releaseIndex.releases || []).length) {
+    showToastNotification('ℹ️ Belum ada rilis data di server. Menampilkan data bawaan.');
     return;
   }
-  const modal = document.getElementById('adminDataUpdateModal');
-  const input = document.getElementById('adminNewUpdateDateInput');
-  if (input) {
-    input.max = getTodayYMDWita();
-    input.value = getTodayYMDWita();
+  const btn = document.getElementById('btnDataUpdateStatus');
+  if (btn) btn.classList.remove('release-new');
+  toggleReleaseDropdown('audit');
+}
+
+function toggleReleaseDropdown(kind) {
+  const dd = document.getElementById('releaseDropdown');
+  if (!dd) return;
+  if (dd.style.display === 'flex' && releaseDdKind === kind) { closeReleaseDropdown(); return; }
+  releaseDdKind = kind;
+
+  const data = kind === 'audit' ? releaseIndex : blastIndex;
+  const activeId = kind === 'audit' ? activeReleaseId : activeBlastId;
+  document.getElementById('releaseDdTitle').textContent = kind === 'audit' ? 'PILIH DATA UPDATE' : 'PILIH BLASTMAP';
+
+  const box = document.getElementById('releaseDdList');
+  box.innerHTML = '';
+  ((data && data.releases) || []).forEach(r => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'release-dd-item' + (r.id === activeId ? ' active' : '');
+    const main = document.createElement('span');
+    main.className = 'release-dd-main';
+    main.textContent = r.id;
+    if (r.id === data.latest) {
+      const b = document.createElement('span');
+      b.className = 'release-dd-badge';
+      b.textContent = 'TERBARU';
+      main.appendChild(b);
+    }
+    item.appendChild(main);
+    if (r.note) {
+      const sub = document.createElement('span');
+      sub.className = 'release-dd-sub';
+      sub.textContent = r.note;
+      item.appendChild(sub);
+    }
+    item.onclick = () => { if (kind === 'audit') selectRelease(r.id); else selectBlast(r.id); };
+    box.appendChild(item);
+  });
+
+  dd.style.left = kind === 'audit' ? 'auto' : '8px';
+  dd.style.right = kind === 'audit' ? '8px' : 'auto';
+  const up = document.getElementById('releaseDdUpload');
+  if (up) up.style.display = currentUserRole === 'admin' ? 'block' : 'none';
+  dd.style.display = 'flex';
+}
+
+function closeReleaseDropdown() {
+  const dd = document.getElementById('releaseDropdown');
+  if (dd) dd.style.display = 'none';
+}
+
+document.addEventListener('click', (e) => {
+  const dd = document.getElementById('releaseDropdown');
+  if (!dd || dd.style.display !== 'flex') return;
+  if (dd.contains(e.target) || e.target.closest('#btnDataUpdateStatus') || e.target.closest('#btnActiveWoDate')) return;
+  closeReleaseDropdown();
+});
+
+function clearAuditLayers() {
+  [roadGradeLayer, roadWidthLayer].forEach(l => { if (l && map.hasLayer(l)) map.removeLayer(l); });
+  roadGradeLayer = null;
+  roadWidthLayer = null;
+  allStaMarkers = [];
+  rawWidthFeatures = [];
+  try { gradeLabelsLayer.clearLayers(); } catch (e) {}
+  try { crossfallVisualLayer.clearLayers(); } catch (e) {}
+  selectedStartMeter = null;
+  selectedEndMeter = null;
+  selectedRoadTarget = "";
+  isGradeRangeActive = false;
+}
+
+async function selectRelease(id) {
+  closeReleaseDropdown();
+  if (!id || id === activeReleaseId) return;
+  activeReleaseId = id;
+  updateReleaseButtonText();
+  setSyncStatus('updating', 'Memuat ' + id + '...');
+  clearAuditLayers();
+  try {
+    await Promise.all([loadExcelData(), loadAllVectorLayers()]);
+    renderTabContent();
+    showToastNotification('📅 Data: ' + id);
+  } catch (e) {
+    showToastNotification('Gagal memuat ' + id + ': ' + e.message);
   }
-  if (modal) modal.style.display = 'flex';
+  setSyncStatus('updated');
+  catatLogKeServer("PILIH RILIS DATA", 'Memilih rilis ' + id);
 }
 
-function closeAdminDataUpdateModal() {
-  const modal = document.getElementById('adminDataUpdateModal');
-  if (modal) modal.style.display = 'none';
+function selectBlast(id) {
+  closeReleaseDropdown();
+  if (!id) return;
+  loadBlastmapData(id);
 }
 
-function saveAdminDataUpdateDate() {
-  const input = document.getElementById('adminNewUpdateDateInput');
-  if (!input || !input.value) return;
-  const val = input.value;
-  const p = val.split('-');
-  const formatted = `${p[2]}-${p[1]}-${p[0]}`;
-  updateDataDateUI(formatted, true);
-  catatLogKeServer("UPDATE DATA DATE", `Admin menyetel tanggal update data menjadi: ${formatted}`);
-  alert(`Tanggal Update Data berhasil diperbarui menjadi: ${formatted}`);
-  closeAdminDataUpdateModal();
+async function initAuditDataThenLoad() {
+  await loadReleaseIndexes();
+  if (releaseIndex && releaseIndex.latest) activeReleaseId = releaseIndex.latest;
+  updateReleaseButtonText();
+  loadExcelData();
+  loadAllVectorLayers();
+  scheduleReleasePolling();
+}
+
+function scheduleReleasePolling() {
+  if (!DATA_API || releasePollTimer) return;
+  releasePollTimer = setInterval(checkNewRelease, 10 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkNewRelease(); });
+}
+
+async function checkNewRelease() {
+  if (!DATA_API || !navigator.onLine) return;
+  const oldLatest = releaseIndex && releaseIndex.latest;
+  await loadReleaseIndexes();
+  if (releaseIndex && releaseIndex.latest && releaseIndex.latest !== oldLatest) {
+    showToastNotification('🆕 Data baru: ' + releaseIndex.latest + '. Pilih lewat "Update Data".');
+    const btn = document.getElementById('btnDataUpdateStatus');
+    if (btn) btn.classList.add('release-new');
+  }
 }
 
 // ==========================================
@@ -1841,11 +2024,7 @@ function hapusGarisDraw(lineId) {
   delete allDrawLines[lineId];
 
   setSyncStatus('updating', 'Menghapus garis...');
-  fetch(WEB_APP_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    body: JSON.stringify({ action: "DELETE_DRAW_LINE", id: lineId })
-  }).then(() => setSyncStatus('updated')).catch(() => setSyncStatus('updated'));
+  GAS.write({ action: "DELETE_DRAW_LINE", id: lineId }).then(() => setSyncStatus('updated')).catch(() => setSyncStatus('updated'));
 
   broadcastWoSync('DELETE_DRAW_LINE', { id: lineId }, `${currentNRP} Menghapus sketsa garis.`);
   catatLogKeServer("DELETE DRAW", `Menghapus sketsa garis ID: ${lineId}`);
@@ -1853,17 +2032,13 @@ function hapusGarisDraw(lineId) {
 
 function syncDrawLineToCloud(lineItem) {
   setSyncStatus('updating', 'Menyimpan sketsa garis...');
-  fetch(WEB_APP_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    body: JSON.stringify({
+  GAS.write({
       action: "SAVE_DRAW_LINE",
       id: lineItem.id,
       road: lineItem.road,
       points: lineItem.points,
       reporter: lineItem.reporter
-    })
-  }).then(() => setSyncStatus('updated')).catch(() => setSyncStatus('updated'));
+    }).then(() => setSyncStatus('updated')).catch(() => setSyncStatus('updated'));
 }
 
 function handleMapClickForWo(latlng) {
@@ -2115,6 +2290,7 @@ function calculateParentStatus(jobsList) {
 }
 
 function closeWoModal() {
+  if (typeof discardPendingAreaIfAny === 'function') discardPendingAreaIfAny();
   const modal = document.getElementById('woModalOverlay');
   if (modal) modal.style.display = 'none';
   selectedLineForWo = null;
@@ -2513,6 +2689,7 @@ async function submitWorkOrder() {
 
     allWorkOrders[woId] = woItem;
     createOrUpdateMarker(woItem);
+    if (typeof commitPendingArea === 'function') commitPendingArea(linkedLineId);
 
     if (linkedLineId && allDrawLines[linkedLineId]) {
       renderDrawLineOnMap(allDrawLines[linkedLineId]);
@@ -2808,11 +2985,14 @@ async function executeSubmitJobUpdateWithStatus(statusBaru) {
 }
 
 function syncWorkOrderToCloud(payload) {
-  fetch(WEB_APP_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    body: JSON.stringify(payload)
-  }).then(() => setSyncStatus('updated')).catch(err => {
+  // Masuk antrean perangkat dulu (aman dari putus sinyal), lalu langsung dicoba kirim.
+  return GAS.write(payload).then((r) => {
+    if (r && r.queued) {
+      setSyncStatus('offline');
+      showToastNotification('📡 Belum ada sinyal. Data aman di perangkat dan dikirim otomatis nanti.');
+    } else setSyncStatus('updated');
+    return r;
+  }).catch(err => {
     console.error("Sync error:", err);
     setSyncStatus('updated');
   });
@@ -2889,21 +3069,13 @@ function deleteCurrentWorkOrder() {
     }
     delete allDrawLines[linkedLineId];
 
-    fetch(WEB_APP_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      body: JSON.stringify({ action: "DELETE_DRAW_LINE", id: linkedLineId })
-    }).catch(err => console.warn("Sync delete draw err:", err));
+    GAS.write({ action: "DELETE_DRAW_LINE", id: linkedLineId }).catch(err => console.warn("Sync delete draw err:", err));
 
     broadcastWoSync('DELETE_DRAW_LINE', { id: linkedLineId });
   }
 
   setSyncStatus('updating', 'Menghapus Work Order...');
-  fetch(WEB_APP_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    body: JSON.stringify({ action: "DELETE_WORK_ORDER", id: currentActiveWoId })
-  }).then(() => setSyncStatus('updated')).catch(() => setSyncStatus('updated'));
+  GAS.write({ action: "DELETE_WORK_ORDER", id: currentActiveWoId }).then(() => setSyncStatus('updated')).catch(() => setSyncStatus('updated'));
 
   const notifMsg = `${currentNRP} Menghapus WO di ${woItem.road}`;
   broadcastWoSync('DELETE_WO', { id: currentActiveWoId, linkedLineId: linkedLineId }, notifMsg);
@@ -2955,7 +3127,7 @@ async function openProgressTimelineModal() {
   if (modal) modal.style.display = 'flex';
 
   try {
-    const res = await fetch(`${WEB_APP_URL}?action=GET_WO_HISTORY&wo_id=${encodeURIComponent(currentActiveWoId)}`);
+    const res = await gasGet('GET_WO_HISTORY', { wo_id: currentActiveWoId });
     if (res.ok) {
       const result = await res.json();
       currentTimelineHistory = result.history || [];
@@ -3076,6 +3248,10 @@ function closeImageLightbox() {
 // 6. FILTER KALENDER & OPTIMASI QUERY (LAZY LOAD)
 // ==========================================
 function openCalendarFilterModal() {
+  if (currentAppMode === 'blastmap' && DATA_API && blastIndex && (blastIndex.releases || []).length) {
+    toggleReleaseDropdown('blast');
+    return;
+  }
   const modal = document.getElementById('calendarFilterModal');
   const dateInput = document.getElementById('mapCalendarDateInput');
   const heading = document.getElementById('calendarModalHeading');
@@ -3163,6 +3339,9 @@ function refreshWorkOrderMapDisplay() {
       shouldShow = true;
     } else if (woDateYMD < activeQueryDate && status !== 'CLOSED') {
       shouldShow = true;
+    } else if (status === 'CLOSED' && wo.closedAt && String(wo.closedAt).slice(0, 10) === activeQueryDate) {
+      // CLOSED tetap terlihat pada hari penutupannya; besoknya hilang. Hanya Open/Progress yang bertahan.
+      shouldShow = true;
     }
 
     if (shouldShow) {
@@ -3219,7 +3398,7 @@ async function executeExportRekapWO() {
   setSyncStatus('updating', 'Menyusun Form PKH SIS...');
 
   try {
-    const res = await fetch(`${WEB_APP_URL}?action=EXPORT_REKAP`);
+    const res = await gasGet('EXPORT_REKAP');
     if (!res.ok) throw new Error("Gagal mengambil data dari cloud backend.");
     const json = await res.json();
     const allData = json.data || [];
@@ -3622,7 +3801,7 @@ async function executeExportRekapEvidence() {
   setSyncStatus('updating', 'Menyusun katalog foto...');
 
   try {
-    const res = await fetch(`${WEB_APP_URL}?action=EXPORT_REKAP`);
+    const res = await gasGet('EXPORT_REKAP');
     if (!res.ok) throw new Error("Gagal mengambil data dari cloud backend.");
     const json = await res.json();
     const allData = json.data || [];
@@ -3817,7 +3996,7 @@ async function fetchImageAsBase64(url) {
   if (!url) return null;
   if (url.startsWith('data:image')) return url;
   try {
-    const res = await fetch(`${WEB_APP_URL}?action=GET_IMAGE_BASE64&url=${encodeURIComponent(url)}`);
+    const res = await gasGet('GET_IMAGE_BASE64', { url: url });
     if (!res.ok) return null;
     const data = await res.json();
     return data.base64 || null;
@@ -3836,7 +4015,7 @@ async function loadCloudWorkOrders() {
   setSyncStatus('updating', 'Memeriksa update...');
 
   try {
-    const res = await fetch(`${WEB_APP_URL}?action=GET_CLOUD_WO`);
+    const res = await gasGet('GET_CLOUD_WO');
     if (res.ok) {
       const data = await res.json();
       if (data.workOrders && data.workOrders.length > 0) {
@@ -4004,8 +4183,7 @@ function mulaiAnimasiIntroDanLoadData() {
     if (statusText) statusText.innerText = 'SYNCHRONIZING TELEMETRY...';
   }, 1600);
 
-  loadExcelData();
-  loadAllVectorLayers();
+  initAuditDataThenLoad();
   loadCloudWorkOrders();
   initSupabaseRealtime();
   startSilentGpsTracking();
@@ -4034,8 +4212,7 @@ openModulePortal();
 }
 
 function catatLogKeServer(kegiatan, detailAktivitas) {
-  const targetUrl = `${WEB_APP_URL}?action=LOG_AKTIVITAS&nrp=${encodeURIComponent(currentNRP)}&kegiatan=${encodeURIComponent(kegiatan)}&detail=${encodeURIComponent(detailAktivitas)}`;
-  fetch(targetUrl, { mode: "no-cors" }).catch(err => console.error("Log error:", err));
+  GAS.write({ action: "LOG_AKTIVITAS", nrp: currentNRP, kegiatan: kegiatan, detail: detailAktivitas }).catch(err => console.error("Log error:", err));
 }
 
 let isBasemapActive = true;
@@ -4209,11 +4386,16 @@ function getGradePolygonBlockStyle(feature) {
     fillColor = "#eab308";   // Kuning (Warning 8% - 8.9%)
   }
 
-  return { 
-    color: "#0f172a",        // GARIS SEKAT FISIK STA: Garis gelap tegas pemisah antar-patok STA!
-    weight: 1.8,             // Ketebalan garis batas
-    fillColor: fillColor,    // Warna status kemiringan
-    fillOpacity: 0.88 
+  // Pita grade yang rapi: segmen AMAN dibuat satu pita mulus (tepi sewarna, celah di tikungan tertutup),
+  // sedangkan WARNING / OVERGRADE diberi bingkai gelap supaya langsung menonjol.
+  const isAlert = fillColor !== "#22c55e";
+  return {
+    color: isAlert ? "#0f172a" : fillColor,
+    weight: isAlert ? 1.6 : 1.4,
+    opacity: isAlert ? 0.95 : 0.78,
+    lineJoin: "round",
+    fillColor: fillColor,
+    fillOpacity: isAlert ? 0.92 : 0.78
   };
 }
 
@@ -4558,9 +4740,10 @@ map.on('click', (e) => {
 });
 
 async function loadAllVectorLayers() {
+  const doStatic = !staticLoaded;
   // Load Poligon Cluster GeoJSON jika tersedia
-  try {
-    const resCluster = await fetch('data/clusters.geojson');
+  if (doStatic) try {
+    const resCluster = await fetchStaticFile('clusters.geojson');
     if (resCluster.ok) {
       const geojsonClusters = await resCluster.json();
       clusterFeatures = geojsonClusters.features || [];
@@ -4571,9 +4754,9 @@ async function loadAllVectorLayers() {
   }
 
   try {
-    const resGrade = await fetch('data/Road_Grade_Polygons.geojson');
+    const resGrade = await fetchReleaseFile('Road_Grade_Polygons.geojson');
     if (resGrade.ok) {
-      const geojsonGrade = await resGrade.json();
+      const geojsonGrade = OW_NORM(await resGrade.json());
       allStaMarkers = [];
       roadGradeLayer = L.geoJSON(geojsonGrade, {
         style: getGradePolygonBlockStyle,
@@ -4613,6 +4796,7 @@ async function loadAllVectorLayers() {
           allStaMarkers.push(staMarker);
 
           layer.on('click', (e) => {
+            if (window.owPassThroughClick && window.owPassThroughClick(e)) return; // sedang gambar/ukur: biarkan klik sampai ke peta
             L.DomEvent.stopPropagation(e);
             handleFeatureClick(feature);
           });
@@ -4623,8 +4807,8 @@ async function loadAllVectorLayers() {
     console.warn("Info Layer Grade:", err.message);
   }
 
-  try {
-    const resMap = await fetch('data/Road_Map.geojson');
+  if (doStatic) try {
+    const resMap = await fetchStaticFile('Road_Map.geojson');
     if (resMap.ok) {
       const geojsonMap = await resMap.json();
       allRoadNameMarkers = [];
@@ -4651,6 +4835,7 @@ async function loadAllVectorLayers() {
           allRoadNameMarkers.push(roadMarker);
 
           layer.on('click', (e) => {
+            if (window.owPassThroughClick && window.owPassThroughClick(e)) return; // sedang gambar/ukur: biarkan klik sampai ke peta
             L.DomEvent.stopPropagation(e);
             handleFeatureClick(feature);
           });
@@ -4661,8 +4846,8 @@ async function loadAllVectorLayers() {
     console.warn("Layer Road_Map.geojson standby.");
   }
 
-  try {
-    const resNonSarana = await fetch('data/Road_Non_Sarana.geojson');
+  if (doStatic) try {
+    const resNonSarana = await fetchStaticFile('Road_Non_Sarana.geojson');
     if (resNonSarana.ok) {
       const geojsonNonSarana = await resNonSarana.json();
       roadNonSaranaLayer = L.geoJSON(geojsonNonSarana, {
@@ -4678,9 +4863,9 @@ async function loadAllVectorLayers() {
   }
 
   try {
-    const resWidth = await fetch('data/Road_Layers.geojson');
+    const resWidth = await fetchReleaseFile('Road_Layers.geojson');
     if (resWidth.ok) {
-      const geojsonWidth = await resWidth.json();
+      const geojsonWidth = OW_NORM(await resWidth.json());
       rawWidthFeatures = geojsonWidth.features || [];
 
       if (roadWidthLayer) map.removeLayer(roadWidthLayer);
@@ -4689,6 +4874,7 @@ async function loadAllVectorLayers() {
         renderer: canvasRenderer,
         onEachFeature: function(feature, layer) {
           layer.on('click', (e) => {
+            if (window.owPassThroughClick && window.owPassThroughClick(e)) return; // sedang gambar/ukur: biarkan klik sampai ke peta
             L.DomEvent.stopPropagation(e);
             handleFeatureClick(feature);
           });
@@ -4699,21 +4885,39 @@ async function loadAllVectorLayers() {
     console.warn("Info Layer Road Layers:", err.message);
   }
 
+  if (roadMapLayer) staticLoaded = true;
   refreshVisibleLayers();
 }
 
 async function loadExcelData() {
   try {
-    const response = await fetch('data/Overwatch.xlsx');
-    const arrayBuffer = await response.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-
-    monitoringData = XLSX.utils.sheet_to_json(workbook.Sheets["Data_Monitoring"]);
-    crossSectionData = XLSX.utils.sheet_to_json(workbook.Sheets["CrossSection_3Pts"]);
+    let loadedFast = false;
+    // Rilis baru menyimpan hasil konversi xlsx sebagai JSON (jauh lebih ringan di HP).
+    if (DATA_API && activeReleaseId) {
+      try {
+        const rj = await owApi('/data/releases/' + encodeURIComponent(activeReleaseId) + '/monitoring.json');
+        if (rj.ok) {
+          const j = await rj.json();
+          monitoringData = j.monitoring || [];
+          crossSectionData = j.crossSection || [];
+          loadedFast = true;
+        }
+      } catch (e) { console.warn('monitoring.json gagal, coba xlsx:', e.message); }
+    }
+    if (!loadedFast) {
+      const response = await fetchReleaseFile('Overwatch.xlsx');
+      const arrayBuffer = await response.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      monitoringData = XLSX.utils.sheet_to_json(workbook.Sheets["Data_Monitoring"]);
+      crossSectionData = XLSX.utils.sheet_to_json(workbook.Sheets["CrossSection_3Pts"]);
+    }
 
     if (monitoringData.length > 0) {
       roadNames = [...new Set(monitoringData.map(d => (d["Nama Jalan"] || "").trim()))].filter(n => n.length > 0);
-      activeRoad = roadNames[0] || "Jl Bontang";
+      // pertahankan ruas yang sedang dibuka kalau masih ada di rilis ini
+      if (!activeRoad || !roadNames.some(r => r.toLowerCase() === activeRoad.toLowerCase())) {
+        activeRoad = roadNames[0] || "Jl Bontang";
+      }
     }
     refreshVisibleLayers();
   } catch (error) {
@@ -5891,7 +6095,7 @@ async function renderWatermarkedEvidence(imgElement, meta) {
   const isPortrait = h > w;
 
   try {
-    const logoImg = await loadImageAsync('./Logo_Alamtri.png');
+    const logoImg = await loadImageAsync('./data/Logo_Alamtri.png');
     const logoW = Math.round(w * (isPortrait ? 0.20 : 0.15));
     const logoH = Math.round(logoImg.naturalHeight * (logoW / logoImg.naturalWidth));
     ctx.save();
@@ -6061,73 +6265,96 @@ function triggerGalleryUploadCapture() {
   if (input) input.click();
 }
 
+// Ambil posisi GPS terbaik: tunggu sampai ~6 detik, pakai pembacaan dengan akurasi terkecil.
+function getBestGpsFix(maxMs = 6000, goodEnough = 8) {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error('GPS tidak tersedia di perangkat ini'));
+    let best = null, done = false, wid = null;
+    const finish = () => {
+      if (done) return; done = true;
+      if (wid !== null) navigator.geolocation.clearWatch(wid);
+      best ? resolve(best) : reject(new Error('GPS belum memberi posisi'));
+    };
+    const timer = setTimeout(finish, maxMs);
+    wid = navigator.geolocation.watchPosition(
+      (pos) => {
+        const c = pos.coords;
+        if (!best || c.accuracy < best.accuracy) best = { lat: c.latitude, lng: c.longitude, accuracy: c.accuracy };
+        if (best.accuracy <= goodEnough) { clearTimeout(timer); finish(); }
+      },
+      (err) => { if (!best) { clearTimeout(timer); if (!done) { done = true; navigator.geolocation.clearWatch(wid); reject(err); } } },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: maxMs }
+    );
+  });
+}
+
+async function readPhotoExifLocation(file) {
+  if (!window.exifr) return null;
+  try {
+    const exif = await exifr.parse(file, { gps: true, tiff: true, exif: true });
+    if (exif && exif.latitude && exif.longitude) {
+      let takenAt = null;
+      try { if (exif.DateTimeOriginal) takenAt = new Date(exif.DateTimeOriginal).toISOString(); } catch (e) {}
+      return { lat: exif.latitude, lng: exif.longitude, takenAt: takenAt };
+    }
+  } catch (err) {}
+  return null;
+}
+
+// Data lokasi yang ikut dikirim bersama evidence (dicatat server: lat, lng, akurasi, cara lokasi, waktu foto)
+function geoEvidenceExtras() {
+  const m = window.geoLocMeta || {};
+  const ll = (currentCapturedMetadata && currentCapturedMetadata.latlng) || {};
+  return {
+    lat: ll.lat, lng: ll.lng,
+    accuracy: m.accuracy != null ? Math.round(m.accuracy * 10) / 10 : null,
+    locMode: window.geoForcedWoId ? 'manual-wo' : (m.mode || ''),
+    takenAt: m.takenAt || new Date().toISOString()
+  };
+}
+
 async function handleCameraNativeFileChosen(e) {
   const file = e.target.files ? e.target.files[0] : null;
+  e.target.value = '';
   if (!file) return;
   currentPendingPhotoFile = file;
   currentRawImageElement = await fileToImageElement(file);
+  window.geoForcedWoId = null;
+  const takenTime = UtilitiesFormatNowWita();
 
-  let lat = null;
-  let lng = null;
-  let takenTime = UtilitiesFormatNowWita();
-
-  if (window.exifr) {
-    try {
-      const exif = await exifr.parse(file, { gps: true, tiff: true });
-      if (exif && exif.latitude && exif.longitude) {
-        lat = exif.latitude;
-        lng = exif.longitude;
-      }
-    } catch (err) {}
+  const ex = await readPhotoExifLocation(file);
+  if (ex) {
+    window.geoLocMeta = { mode: 'exif', accuracy: null, takenAt: ex.takenAt || new Date().toISOString() };
+    return proceedWithPhotoLocation(ex.lat, ex.lng, takenTime, currentRawImageElement);
   }
-
-  if (!lat || !lng) {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => { proceedWithPhotoLocation(pos.coords.latitude, pos.coords.longitude, takenTime, currentRawImageElement); },
-        () => {
-          const c = map.getCenter();
-          proceedWithPhotoLocation(c.lat, c.lng, takenTime, currentRawImageElement);
-        },
-        { enableHighAccuracy: true, timeout: 6000 }
-      );
-    } else {
-      const c = map.getCenter();
-      proceedWithPhotoLocation(c.lat, c.lng, takenTime, currentRawImageElement);
-    }
-    return;
+  showToastNotification('📡 Membaca posisi GPS...');
+  try {
+    const fix = await getBestGpsFix(6000, 8);
+    window.geoLocMeta = { mode: 'gps', accuracy: fix.accuracy, takenAt: new Date().toISOString() };
+    proceedWithPhotoLocation(fix.lat, fix.lng, takenTime, currentRawImageElement);
+  } catch (err) {
+    // GPS error: jangan diam-diam pakai tengah peta. Minta pengguna memilih cara lain.
+    const warn = document.getElementById('geoExifWarningModal');
+    if (warn) warn.style.display = 'flex';
   }
-
-  proceedWithPhotoLocation(lat, lng, takenTime, currentRawImageElement);
 }
 
 async function handleGalleryFileChosen(e) {
   const file = e.target.files ? e.target.files[0] : null;
+  e.target.value = '';
   if (!file) return;
   currentPendingPhotoFile = file;
   currentRawImageElement = await fileToImageElement(file);
+  window.geoForcedWoId = null;
 
-  let lat = null;
-  let lng = null;
-  let takenTime = UtilitiesFormatNowWita();
-
-  if (window.exifr) {
-    try {
-      const exif = await exifr.parse(file, { gps: true, tiff: true });
-      if (exif && exif.latitude && exif.longitude) {
-        lat = exif.latitude;
-        lng = exif.longitude;
-      }
-    } catch (err) {}
-  }
-
-  if (!lat || !lng) {
+  const ex = await readPhotoExifLocation(file);
+  if (!ex) {
     const warn = document.getElementById('geoExifWarningModal');
     if (warn) warn.style.display = 'flex';
     return;
   }
-
-  proceedWithPhotoLocation(lat, lng, takenTime, currentRawImageElement);
+  window.geoLocMeta = { mode: 'exif', accuracy: null, takenAt: ex.takenAt || new Date().toISOString() };
+  proceedWithPhotoLocation(ex.lat, ex.lng, UtilitiesFormatNowWita(), currentRawImageElement);
 }
 
 function chooseNewGeoPhoto() {
@@ -6135,21 +6362,28 @@ function chooseNewGeoPhoto() {
   triggerGalleryUploadCapture();
 }
 
-function useCurrentLiveGpsFallback() {
+async function useCurrentLiveGpsFallback() {
   closeGeoExifWarningModal();
-  if (!navigator.geolocation) return;
-  navigator.geolocation.getCurrentPosition(
-    (pos) => { proceedWithPhotoLocation(pos.coords.latitude, pos.coords.longitude, UtilitiesFormatNowWita(), currentRawImageElement); },
-    (err) => { alert("Gagal membaca GPS: " + err.message); },
-    { enableHighAccuracy: true, timeout: 8000 }
-  );
+  showToastNotification('📡 Membaca posisi GPS...');
+  try {
+    const fix = await getBestGpsFix(8000, 8);
+    window.geoLocMeta = { mode: 'gps', accuracy: fix.accuracy, takenAt: new Date().toISOString() };
+    proceedWithPhotoLocation(fix.lat, fix.lng, UtilitiesFormatNowWita(), currentRawImageElement);
+  } catch (err) {
+    alert("Gagal membaca GPS: " + (err.message || err) + "\nPilih 'Tandai lokasi manual di peta'.");
+    const warn = document.getElementById('geoExifWarningModal');
+    if (warn) warn.style.display = 'flex';
+  }
 }
 
 function pickManualPointOnMapFallback() {
   closeGeoExifWarningModal();
-  alert("Silakan ketuk titik lokasi jalan pada peta!");
+  showToastNotification('👆 Ketuk titik lokasi pada peta');
+  window.owMapPicking = true;
   const oneTimeClick = (e) => {
+    window.owMapPicking = false;
     map.off('click', oneTimeClick);
+    window.geoLocMeta = { mode: 'map', accuracy: null, takenAt: new Date().toISOString() };
     proceedWithPhotoLocation(e.latlng.lat, e.latlng.lng, UtilitiesFormatNowWita(), currentRawImageElement);
   };
   map.on('click', oneTimeClick);
@@ -6327,6 +6561,7 @@ function fileToImageElement(file) {
 function closeGeoPreviewModal() {
   const modal = document.getElementById('geoPreviewReportModal');
   if (modal) modal.style.display = 'none';
+  window.geoForcedWoId = null;
   currentCapturedMetadata = null;
   currentWatermarkedBase64 = null;
   currentPendingPhotoFile = null;
@@ -6388,6 +6623,10 @@ async function executeSubmitGeoEvidence() {
   const status = statusSelect ? statusSelect.value : "PROGRESS";
   const matchedWo = currentCapturedMetadata.matchedWo;
 
+  if (!matchedWo && currentUserRole === 'viewer') {
+    alert("Akun viewer hanya bisa mengirim update untuk WO yang sudah ada. Minta inspector membuat WO-nya dulu, atau pilih WO manual di formulir.");
+    return;
+  }
   if (!finalRoadName) {
     alert("Nama Ruas Jalan wajib diisi, bre!");
     if (roadInput) roadInput.focus();
@@ -6438,7 +6677,8 @@ async function executeSubmitGeoEvidence() {
       toolType: toolType,
       egi: egi,
       photoId: currentCapturedMetadata.photoId,
-      images: imagePayload
+      images: imagePayload,
+      ...geoEvidenceExtras()
     });
 
     if (matchedWo.jobs && matchedWo.jobs[jobIdx]) {
@@ -6498,7 +6738,8 @@ async function executeSubmitGeoEvidence() {
       status: status,
       linkedLineId: "",
       photoId: currentCapturedMetadata.photoId,
-      images: imagePayload
+      images: imagePayload,
+      ...geoEvidenceExtras()
     });
 
     broadcastWoSync('CREATE_WO', sanitizeWoForBroadcast(newWo), `${reporter} melaporkan temuan baru di ${newWo.road}`);
@@ -6557,8 +6798,8 @@ window.switchMainTab = switchMainTab;
 window.toggleParameterDropdown = toggleParameterDropdown;
 window.selectParameter = selectParameter;
 window.handleDataUpdateClick = handleDataUpdateClick;
-window.closeAdminDataUpdateModal = closeAdminDataUpdateModal;
-window.saveAdminDataUpdateDate = saveAdminDataUpdateDate;
+window.selectRelease = selectRelease;
+window.closeReleaseDropdown = closeReleaseDropdown;
 window.changeRoad = changeRoad;
 window.changeYInterval = changeYInterval;
 window.resetSegmentSelection = resetSegmentSelection;
@@ -6606,13 +6847,10 @@ if ('serviceWorker' in navigator) {
 // ==========================================
 async function exportBlastmapOfflineHtml() {
   const activeDate = currentLoadedBlastDate || getTodayYMDWita();
-  const targetFile = `data/blastmaps/blast_${activeDate}.geojson`;
-  const fallbackFile = `data/blastmaps/overwatch.geojson`;
-
   let geojsonData = null;
   try {
-    let res = await fetch(targetFile);
-    if (!res.ok) res = await fetch(fallbackFile);
+    const res = await fetchBlastFile(activeDate);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     geojsonData = await res.json();
   } catch (e) {
     alert("Gagal mengambil data GeoJSON untuk diekspor!");
