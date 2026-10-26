@@ -4677,6 +4677,7 @@ function refreshVisibleLayers() {
 }
 
 function handleFeatureClick(feature) {
+  if (window.OwHistory && OwHistory.intercept && OwHistory.intercept(feature)) return; // alat RIWAYAT menunggu ketukan segmen
   if (isWorkOrderModeActive) {
     handleWorkOrderClick(feature);
     return;

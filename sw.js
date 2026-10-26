@@ -1,5 +1,5 @@
 // Naikkan angka versi ini setiap kali ada perubahan besar pada app.js / index.html / style.css
-const CACHE_NAME = 'overwatch-cache-v4';
+const CACHE_NAME = 'overwatch-cache-v5';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -13,7 +13,9 @@ const ASSETS_TO_CACHE = [
   './measure.js',
   './dashboard.js',
   './compare.js',
+  './history.js',
   './drone.js',
+  './mobile-ui.js',
   './app.js',
   './logo_overwatch.png'
   // Data audit TIDAK di-precache lagi: sekarang datang dari server (per rilis) dan

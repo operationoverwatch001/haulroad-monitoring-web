@@ -1057,3 +1057,195 @@ body.ow-drone-on #map { display: none !important; }
 #owDrone .ow-dr-pop { font-size: 12px; line-height: 1.5; color: #0f172a; }
 #owDrone .maplibregl-ctrl-bottom-right { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); right: 6px; }
 #owDrone .maplibregl-ctrl-group button { width: 40px; height: 40px; }
+
+/* ========================================================== */
+/* MENU TOOLS (ORBIT) + PERAPIAN TAMPILAN HP                 */
+/* 1 tombol pemicu; DASH / BANDING / UKUR / 3D mengorbit keluar. Perilaku: mobile-ui.js */
+/* ========================================================== */
+.left-sidebar-controls .left-btn-round {
+  width: 46px; height: 46px; padding: 0; border-radius: 50%;
+  flex-direction: column; justify-content: center; align-items: center; gap: 1px;
+  font-size: 8px; line-height: 1; letter-spacing: 0.2px; position: relative; flex: 0 0 auto;
+}
+.left-sidebar-controls .left-btn-round .text-xs { font-size: 15px; line-height: 1; }
+.left-sidebar-controls .left-btn-round svg { display: block; }
+#notifBadgeDot { position: absolute; top: 5px; right: 5px; }
+
+.ow-orbit {
+  /* variabel gerak: mode "hemat gerak" HP hanya memperkecil putaran, animasinya TIDAK dimatikan */
+  --ow-ring-from: -100deg; --ow-dur: 0.55s; --ow-in: 45ms; --ow-out: 28ms; --ow-s0: 0.4; --ow-pull: 0.2;
+  position: relative; width: 46px; height: 46px; flex: 0 0 auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ow-orbit { --ow-ring-from: -28deg; --ow-dur: 0.34s; --ow-in: 18ms; --ow-out: 12ms; --ow-s0: 0.6; --ow-pull: 0.5; }
+}
+.left-sidebar-controls { --ow-arc-shift: 118px; }   /* seberapa jauh LEGENDA turun saat busur TOOLS terbuka (jari-jari busur 116 + sedikit jarak) */
+.left-sidebar-controls .ow-orbit-trigger { color: #fbbf24; border-color: rgba(245, 158, 11, 0.65); }
+.left-sidebar-controls .ow-orbit-trigger .ow-orbit-ico { transition: transform var(--ow-dur) var(--ow-pop); }
+.ow-orbit.open .ow-orbit-trigger { background: #f59e0b; color: #0f172a; border-color: #fcd34d; box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.22), 0 4px 14px rgba(0, 0, 0, 0.6); }
+.ow-orbit.open .ow-orbit-trigger .ow-orbit-ico { transform: rotate(180deg); }
+.left-sidebar-controls .ow-orbit-trigger.is-active { border-color: #22d3ee; box-shadow: 0 0 10px rgba(34, 211, 238, 0.55), 0 4px 12px rgba(0, 0, 0, 0.6); }
+
+/* cincin berputar dari --ow-ring-from ke 0; tiap tombol berputar balik sebesar itu supaya tetap tegak = tampak mengorbit.
+   Buka: urut dari DASH ke 3D. Tutup: urut terbalik (3D dulu) supaya ruang di bawah cepat kosong untuk LEGENDA naik lagi. */
+.ow-orbit-ring {
+  position: absolute; left: 23px; top: 23px; width: 0; height: 0; pointer-events: none;
+  transform: rotate(var(--ow-ring-from)); transition: transform var(--ow-dur) var(--ow-pop);
+}
+.ow-orbit.open .ow-orbit-ring { transform: rotate(0deg); }
+.left-sidebar-controls .ow-orbit-ring .ow-orbit-item {
+  position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; font-size: 7.5px; letter-spacing: 0;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: translate(calc(var(--x) * var(--ow-pull)), calc(var(--y) * var(--ow-pull))) rotate(calc(var(--ow-ring-from) * -1)) scale(var(--ow-s0));
+  transition: transform var(--ow-dur) var(--ow-pop) calc((4 - var(--i)) * var(--ow-out)), opacity 0.2s ease calc((4 - var(--i)) * var(--ow-out)),
+              visibility 0s linear calc(var(--ow-dur) + 0.16s), background 0.2s ease, border-color 0.2s ease, color 0.2s ease, scale 0.15s var(--ow-ease);
+}
+.ow-orbit.open .ow-orbit-ring .ow-orbit-item {
+  opacity: 1; visibility: visible; pointer-events: auto;
+  transform: translate(var(--x), var(--y)) rotate(0deg) scale(1);
+  transition: transform var(--ow-dur) var(--ow-pop) calc(var(--i) * var(--ow-in)), opacity 0.2s ease calc(var(--i) * var(--ow-in)),
+              visibility 0s, background 0.2s ease, border-color 0.2s ease, color 0.2s ease, scale 0.15s var(--ow-ease);
+}
+
+/* LEGENDA turun mulus saat busur TOOLS terbuka (tombol LEGENDA adalah saudara sesudah #owOrbit). Naik lagi sesaat setelah busur menutup. */
+.left-sidebar-controls #btnLegendToggle {
+  translate: 0 0;
+  transition: translate 0.46s var(--ow-ease) 0.14s, transform 0.2s var(--ow-ease), scale 0.15s var(--ow-ease), background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease !important;
+}
+.left-sidebar-controls .ow-orbit.open ~ #btnLegendToggle { translate: 0 var(--ow-arc-shift); transition-delay: 0s !important; }
+
+/* ---- HP: header ringkas + tumpukan kanan (Satelit, Infra, OUTSTANDING) tidak menimpa pil Online / badge sync ---- */
+@media (max-width: 640px) {
+  #btnActiveWoDate { padding-left: 6px !important; padding-right: 6px !important; gap: 3px !important; }
+  #labelActiveWoDate.ow-short { font-size: 0 !important; }
+  #labelActiveWoDate.ow-short::after { content: attr(data-short); font-size: 10px; font-weight: 700; letter-spacing: -0.2px; }
+  body #btnToggleBasemap { top: 58px; right: 10px; padding: 6px 9px; min-height: 30px; font-size: 10px; }
+  #infraCtl { top: 94px; right: 10px; }
+  #btnToggleInfra, #btnInfraFilter { padding: 6px 9px; font-size: 10px; min-height: 30px; }
+  #rightSidebarContainer { top: 132px; right: 10px; }
+  /* badge sync di tengah: pesan panjang melipat ke bawah, tidak melebar ke tumpukan kanan */
+  #syncStatusBadge { max-width: calc(100vw - 252px); }
+  #syncStatusText, #syncStatusSub { white-space: normal; overflow-wrap: anywhere; }
+  #syncStatusDot { flex-shrink: 0; min-width: 8px; min-height: 8px; }
+}
+@media (max-width: 380px) {
+  #centerTabsContainer button { padding-left: 8px !important; padding-right: 8px !important; }
+  #btnDataUpdateStatus { padding-left: 6px !important; padding-right: 6px !important; }
+}
+
+/* ========================================================== */
+/* ANIMASI HALUS: popup / dropdown / drawer buka-TUTUP, tekan tombol, geser OUTSTANDING      */
+/* Popup tidak lagi display:none; ia tetap ada tapi transparan + visibility:hidden, jadi bisa dianimasikan saat menutup.  */
+/* Semua pakai properti individual translate/scale supaya tidak bentrok dengan transform bawaan elemen.                    */
+/* ========================================================== */
+:root {
+  --ow-ease: cubic-bezier(0.22, 1, 0.36, 1);       /* cepat di awal, melambat mulus di ujung */
+  --ow-ease-in: cubic-bezier(0.4, 0, 0.9, 0.6);    /* untuk menutup: ringan lalu hilang */
+  --ow-pop: cubic-bezier(0.2, 0.9, 0.25, 1.08);    /* sedikit memantul */
+  --ow-out-top: 102px;                              /* posisi atas drawer OUTSTANDING (HP: 132px) */
+  --ow-py: -10px; --ow-ps: 0.96;                    /* jarak geser & skala awal popup */
+}
+@media (prefers-reduced-motion: reduce) { :root { --ow-py: -4px; --ow-ps: 0.985; } }
+@media (max-width: 640px) { :root { --ow-out-top: 132px; } }   /* HP: tombol OUTSTANDING ada di bawah Satelit & Infra */
+
+#notificationDrawer, #outstandingDrawer, #legendDrawer, #releaseDropdown { display: flex !important; }
+#paramDropdownMenu, #infraPanel { display: block !important; }
+#notificationDrawer { top: 122px !important; left: 62px !important; max-width: calc(100vw - 72px) !important; transform-origin: top left; }   /* di kanan kolom tombol, jadi LOG/TOOLS/LEGENDA tetap bisa diketuk saat terbuka */
+#outstandingDrawer { top: calc(var(--ow-out-top) + var(--ow-right-shift, 0px)) !important; transform-origin: top right; }
+#legendDrawer { position: fixed; top: 174px !important; left: 38px !important; width: 16rem; max-width: 80vw; transform-origin: top left; }   /* sejajar tombol LEGENDA, di kanan kolom tombol */
+#paramDropdownMenu { transform-origin: top left; }
+#infraPanel { transform-origin: top right; }
+#releaseDropdown { transform-origin: 50% 0; }
+
+/* tertutup */
+#notificationDrawer, #outstandingDrawer, #legendDrawer, #paramDropdownMenu, #infraPanel, #releaseDropdown {
+  visibility: hidden; opacity: 0; pointer-events: none;
+  translate: 0 var(--ow-py); scale: var(--ow-ps);
+  animation: none !important;
+  transition: opacity 0.16s ease, translate 0.22s var(--ow-ease-in), scale 0.22s var(--ow-ease-in), top 0.45s var(--ow-ease), visibility 0s linear 0.22s;
+}
+/* terbuka */
+#notificationDrawer.active-drawer, #outstandingDrawer.active-drawer, #legendDrawer:not(.hidden),
+#paramDropdownMenu:not(.hidden), #infraPanel:not(.hidden),
+#releaseDropdown[style*="display: flex"], #releaseDropdown[style*="display:flex"] {
+  visibility: visible; opacity: 1; pointer-events: auto; translate: 0 0; scale: 1;
+  transition: opacity 0.22s ease, translate 0.42s var(--ow-ease), scale 0.42s var(--ow-ease), top 0.45s var(--ow-ease), visibility 0s;
+}
+
+/* panah PARAMETER berputar, tombol Infra menyala saat dropdown-nya terbuka */
+#tabParamBtn > span:last-child { display: inline-block; transition: rotate 0.32s var(--ow-ease); }
+#paramDropdownWrap:has(#paramDropdownMenu:not(.hidden)) #tabParamBtn > span:last-child { rotate: 180deg; }
+#infraCtl:has(#infraPanel:not(.hidden)) #btnInfraFilter { background: #1e293b; border-color: #fbbf24; color: #fbbf24; }
+#btnToggleInfra, #btnInfraFilter { transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, scale 0.15s var(--ow-ease); }
+
+/* OUTSTANDING turun otomatis bila dropdown Infra terbuka dan menutupinya (nilainya dihitung mobile-ui.js) */
+#rightSidebarContainer { translate: 0 var(--ow-right-shift, 0px); transition: translate 0.5s var(--ow-ease); }
+
+/* umpan balik tekan: tombol mengecil sedikit lalu pulih mulus */
+.left-btn:active, #btnToggleBasemap:active, #btnToggleInfra:active, #btnInfraFilter:active, .ow-ic-foot button:active,
+.wo-sub-btn:active, .wo-plus-floating-btn:active, .wo-floating-btn:active, .camera-btn:active, .annotation-btn:active, .gps-btn:active,
+#centerTabsContainer button:active, #paramDropdownMenu button:active, .release-dd-item:active { scale: 0.93; }
+#centerTabsContainer button, #paramDropdownMenu button, .release-dd-item {
+  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease, transform 0.16s var(--ow-ease), scale 0.16s var(--ow-ease);
+}
+#btnOutstandingToggle:active { transform: scale(0.93); }
+
+/* modal & lightbox: latar memudar, kartu naik pelan-pelan saat dibuka (animasi masuk; display diatur lewat inline style oleh app.js) */
+@keyframes owFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes owCardIn { from { opacity: 0; translate: 0 18px; scale: 0.95; } to { opacity: 1; translate: 0 0; scale: 1; } }
+:is(#woModalOverlay, #evidenceStatusModalOverlay, #jobUpdateModalOverlay, #progressTimelineModal, #calendarFilterModal, #imageLightboxModal, #pdfModalOverlay, #roadSummaryModalOverlay, #geoCameraChooserModal, #geoPreviewReportModal, #geoExifWarningModal)[style*="display: flex"] { animation: owFadeIn 0.22s ease backwards; }
+:is(#woModalOverlay, #evidenceStatusModalOverlay, #jobUpdateModalOverlay, #progressTimelineModal, #calendarFilterModal, #imageLightboxModal, #pdfModalOverlay, #roadSummaryModalOverlay, #geoCameraChooserModal, #geoPreviewReportModal, #geoExifWarningModal)[style*="display: flex"] > :first-child { animation: owCardIn 0.36s var(--ow-ease) backwards; }
+
+/* ========================================================== */
+/* RIWAYAT SEGMEN (history.js)                                */
+/* ========================================================== */
+#owHistHint {
+  position: fixed; left: 50%; bottom: calc(112px + env(safe-area-inset-bottom, 0px)); z-index: 100003;
+  display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; max-width: calc(100vw - 24px);
+  border-radius: 999px; background: rgba(15, 23, 42, 0.96); border: 1px solid #00f0ff; color: #e2e8f0;
+  font: 600 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7), 0 0 14px rgba(0, 240, 255, 0.25);
+  translate: -50% 16px; opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity 0.2s ease, translate 0.3s var(--ow-ease-in), visibility 0s linear 0.3s;
+}
+#owHistHint.open { translate: -50% 0; opacity: 1; visibility: visible; pointer-events: auto; transition: opacity 0.25s ease, translate 0.45s var(--ow-ease), visibility 0s; }
+#owHistHint b { color: #00f0ff; letter-spacing: 0.4px; }
+#owHistHint button { width: 32px; height: 32px; border-radius: 50%; border: none; background: #1e293b; color: #e2e8f0; font-size: 14px; cursor: pointer; flex: none; }
+#owHist {
+  position: fixed; left: 0; right: 0; bottom: 0; margin: 0 auto; width: 100%; max-width: 520px; max-height: 60vh; z-index: 100003;
+  display: flex; flex-direction: column; background: rgba(2, 6, 23, 0.97); border: 1px solid #334155; border-bottom: none; border-radius: 16px 16px 0 0;
+  box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.75); color: #e2e8f0; backdrop-filter: blur(10px); padding-bottom: env(safe-area-inset-bottom, 0px);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  translate: 0 105%; opacity: 0; visibility: hidden; pointer-events: none;
+  transition: translate 0.4s var(--ow-ease-in), opacity 0.25s ease, visibility 0s linear 0.4s;
+}
+#owHist.open { translate: 0 0; opacity: 1; visibility: visible; pointer-events: auto; transition: translate 0.55s var(--ow-ease), opacity 0.25s ease, visibility 0s; }
+#owHist .oh-grab { width: 38px; height: 4px; border-radius: 2px; background: #475569; margin: 8px auto 2px; flex: none; }
+#owHist .oh-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 14px 8px; border-bottom: 1px solid #1e293b; flex: none; }
+#owHist .oh-head b { display: block; font-size: 14px; color: #00f0ff; letter-spacing: 0.4px; }
+#owHist .oh-head small { font-size: 11px; color: #94a3b8; }
+#owHist .oh-head button { width: 40px; height: 40px; border-radius: 50%; background: #1e293b; color: #e2e8f0; border: none; font-size: 16px; cursor: pointer; flex: none; }
+#owHist .oh-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 10px 14px 16px; }
+#owHist .oh-chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 4px; }
+#owHist .oh-chip { background: #0f172a; border: 1px solid #1e293b; border-left: 3px solid #64748b; border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+#owHist .oh-chip small { font-size: 10px; color: #94a3b8; }
+#owHist .oh-chip b { font-size: 14px; white-space: nowrap; }
+#owHist .oh-chip.ok { border-left-color: #22c55e; } #owHist .oh-chip.ok b { color: #22c55e; }
+#owHist .oh-chip.warn { border-left-color: #eab308; } #owHist .oh-chip.warn b { color: #eab308; }
+#owHist .oh-chip.bad { border-left-color: #e11d48; } #owHist .oh-chip.bad b { color: #fb7185; }
+#owHist .oh-d { font-style: normal; font-size: 10px; font-weight: 700; }
+#owHist .oh-d.good { color: #22c55e; } #owHist .oh-d.bad { color: #fb7185; } #owHist .oh-d.zero { color: #94a3b8; }
+#owHist section { margin-top: 8px; }
+#owHist section h4 { font-size: 11px; color: #cbd5e1; margin: 0 0 2px; font-weight: 700; }
+#owHist .oh-k { font-size: 10px; font-weight: 600; margin-left: 6px; }
+#owHist .oh-note { font-size: 11px; color: #94a3b8; padding: 6px 0; }
+#owHist .oh-note.err { color: #fda4af; }
+#owHist .oh-empty { font-size: 11px; color: #64748b; padding: 10px 0; }
+#owHist .oh-tab { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px; font-variant-numeric: tabular-nums; }
+#owHist .oh-tab th { text-align: left; color: #94a3b8; font-weight: 600; padding: 4px 6px; border-bottom: 1px solid #1e293b; }
+#owHist .oh-tab td { padding: 5px 6px; border-bottom: 1px solid #0f172a; }
+#owHist .oh-tab tr.cur td:first-child { color: #00f0ff; font-weight: 700; }
+#owHist .oh-tab tr.na td { color: #64748b; }
+#owHist .oh-tab .ok { color: #22c55e; } #owHist .oh-tab .warn { color: #eab308; } #owHist .oh-tab .bad { color: #fb7185; } #owHist .oh-tab .na { color: #64748b; }
+#owHist .oh-foot { font-size: 10px; color: #64748b; margin-top: 10px; line-height: 1.4; }
+body.ow-history-on #floatingCameraBtn, body.ow-history-on #woFloatingBtn, body.ow-history-on #woPlusBtn, body.ow-history-on #woSubmenu { visibility: hidden; }
